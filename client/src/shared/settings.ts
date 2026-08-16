@@ -33,6 +33,12 @@ export interface AccountConfig {
    * 改动后需重新登录该账号才会以新设备名重新配对。
    */
   deviceLabel?: string
+  /**
+   * 平台凭证（非扫码类平台用）：
+   * - Telegram: { botToken }
+   * - LINE: { channelAccessToken, channelSecret }
+   */
+  credentials?: Record<string, string>
 }
 
 export interface SyncConfig {

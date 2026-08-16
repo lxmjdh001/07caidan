@@ -9,6 +9,7 @@ export type ChannelStatus =
   | 'stopped'
   | 'connecting'
   | 'waiting_qr'
+  | 'need_credentials'
   | 'connected'
   | 'logged_out'
   | 'error'

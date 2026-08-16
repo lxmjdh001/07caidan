@@ -5,6 +5,7 @@ import { WhatsAppAdapter } from './whatsapp-adapter'
 export const whatsAppPlugin: ChannelPlugin = {
   kind: 'whatsapp',
   displayName: 'WhatsApp',
+  authType: 'qr',
   createAdapter(accountId, ctx) {
     return new WhatsAppAdapter({
       accountId,

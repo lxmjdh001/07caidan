@@ -1191,6 +1191,51 @@ body {
   width: 400px;
 }
 
+/* 平台选择器 */
+.modal.picker {
+  width: 380px;
+}
+.picker-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 8px 0 6px;
+}
+.picker-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 18px 10px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-alt);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.picker-item:hover {
+  border-color: var(--accent);
+  background: #fff;
+}
+.picker-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 18px;
+  display: grid;
+  place-items: center;
+}
+.picker-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+.picker-auth {
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .account-name {
   font-size: 13.5px;
   font-weight: 700;

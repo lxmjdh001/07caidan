@@ -11,6 +11,7 @@ import { ClientAuthRepo } from './client-auth.ts'
 import type { ServerConfig } from './config.ts'
 import { openDb } from './db.ts'
 import { createEmailSender } from './email.ts'
+import { LineRelay } from './line-relay.ts'
 import { Repo } from './repo.ts'
 import type { SyncPayload } from './types.ts'
 
@@ -28,6 +29,7 @@ export function buildServer(config: ServerConfig): FastifyInstance {
   const repo = new Repo(db)
   const auth = new AuthRepo(db)
   const clientAuth = new ClientAuthRepo(db)
+  const lineRelay = new LineRelay(db)
   const mailer = createEmailSender(config)
   auth.bootstrap(config.adminTenant, config.adminUser, config.adminPassword)
   mkdirSync(config.mediaDir, { recursive: true })
@@ -38,6 +40,16 @@ export function buildServer(config: ServerConfig): FastifyInstance {
   const app = Fastify({ logger: true, bodyLimit: 64 * 1024 * 1024 })
   // 前后端分离：管理后台是独立前端（admin/），这里开放跨域即可
   void app.register(cors, { origin: true })
+
+  // 保留 JSON 原始字符串（LINE Webhook 验签需原始字节）
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+    ;(req as unknown as { rawBody?: string }).rawBody = body as string
+    try {
+      done(null, body ? JSON.parse(body as string) : {})
+    } catch (err) {
+      done(err as Error)
+    }
+  })
 
   const bearer = (req: FastifyRequest): string | null => {
     const a = req.headers.authorization
@@ -292,6 +304,45 @@ export function buildServer(config: ServerConfig): FastifyInstance {
     if (!requirePerm(req, reply, 'conversations:read')) return
     const id = (req.params as { id: string }).id
     return { messages: repo.listMessages(ctxOf(req).tenant, id, 500) }
+  })
+
+  // ── LINE Webhook 中转 ──
+  // 客户端注册 LINE 账号（存 channelSecret 用于验签），返回 Webhook 地址
+  app.post('/api/line/register', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const b = (req.body ?? {}) as { accountId?: string; channelSecret?: string }
+    if (!b.accountId || !b.channelSecret) {
+      return reply.code(400).send({ error: 'accountId/channelSecret required' })
+    }
+    const tenant = ctxOf(req).tenant
+    lineRelay.register(tenant, b.accountId, b.channelSecret)
+    return {
+      ok: true,
+      webhookUrl: `${config.publicUrl.replace(/\/$/, '')}/webhook/line/${encodeURIComponent(tenant)}/${encodeURIComponent(b.accountId)}`
+    }
+  })
+
+  // LINE 平台回调（公开，靠签名验证）：/webhook/line/:tenant/:accountId
+  app.post('/webhook/line/:tenant/:accountId', async (req, reply) => {
+    const { tenant, accountId } = req.params as { tenant: string; accountId: string }
+    const acct = lineRelay.lookup(tenant, accountId)
+    if (!acct) return reply.code(404).send({ error: 'unknown line account' })
+    const raw = (req as unknown as { rawBody?: string }).rawBody ?? ''
+    const sig = (req.headers['x-line-signature'] as string) || ''
+    if (!lineRelay.verifySignature(acct.channelSecret, raw, sig)) {
+      return reply.code(401).send({ error: 'bad signature' })
+    }
+    const events = (req.body as { events?: unknown[] }).events ?? []
+    lineRelay.enqueue(tenant, accountId, events)
+    return { ok: true }
+  })
+
+  // 客户端拉取待处理事件
+  app.get('/api/line/pull', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const accountId = (req.query as { accountId?: string }).accountId
+    if (!accountId) return reply.code(400).send({ error: 'accountId required' })
+    return { events: lineRelay.pull(ctxOf(req).tenant, accountId) }
   })
 
   // ── AI 分析（需 analyze:run）──

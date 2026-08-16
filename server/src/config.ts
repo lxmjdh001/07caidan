@@ -28,6 +28,8 @@ export interface ServerConfig {
   clientTenant: string
   /** SMTP 配置；未配置则开发模式（验证码打日志） */
   smtp: { host: string; port: number; user: string; pass: string; from: string } | undefined
+  /** 对外可访问的公网地址（生成 LINE Webhook 地址用） */
+  publicUrl: string
 }
 
 export function loadConfig(): ServerConfig {
@@ -58,6 +60,9 @@ export function loadConfig(): ServerConfig {
           pass: process.env.SMTP_PASS || '',
           from: process.env.SMTP_FROM || process.env.SMTP_USER || 'no-reply@omnichat'
         }
-      : undefined
+      : undefined,
+    publicUrl:
+      process.env.OMNI_PUBLIC_URL ||
+      `http://localhost:${Number(process.env.PORT || 8787)}`
   }
 }

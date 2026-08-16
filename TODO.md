@@ -30,15 +30,18 @@
 - [x] 出站气泡双显（发出的译文 + 坐席原文）
 - [ ] 出站翻译预览确认交互（输入 → 显示译文 → 确认发送，可设免确认）
 
-## M3 — Telegram
-- [ ] Telegram 适配器（Bot API long-polling，可完全跑在客户端，无需服务器）
-- [ ] 多渠道会话在同一收件箱聚合验证（架构验收点：不改核心层代码）
+## M3 — Telegram ✅
+- [x] Telegram 适配器（Bot API 长轮询，纯客户端，无需服务器）；收发文本/图片/语音/视频/文件，媒体下载
+- [x] Telegram/LINE mapper 纯函数单测
+- [x] 账号类型选择器（新增账号选 WhatsApp/Telegram/LINE），凭证类平台填 Token 表单
+- [x] 多渠道会话在同一收件箱聚合（核心层零改动，验证插件架构）
 
-## M4 — LINE
-- [ ] LINE 适配器（Messaging API）
-- [ ] ⚠️ LINE 只支持公网 Webhook 收消息，无法纯客户端 —— 需要一个轻量中转服务
-      （服务器只做 Webhook→WebSocket 转发，不存消息，发送仍从客户端直连 LINE API）
-- [ ] 中转服务的部署脚本与鉴权
+## M4 — LINE ✅
+- [x] LINE 适配器（Messaging API）：发信客户端直连；收信经后台 Webhook 中转
+- [x] 后台 LINE 中转：注册（存 channelSecret）+ Webhook 验签（HMAC）+ 事件队列 + 客户端轮询拉取
+- [x] 会话来源标签已支持 telegram/line（品牌色）
+- [ ] LINE 生产验证（需真实 LINE 频道凭证 + 公网后台地址）
+- [ ] Telegram/LINE 代理支持（undici ProxyAgent）
 
 ## M5 — 后端（聊天记录归档 + AI 分析，前后端分离）
 > 技术栈：**Fastify 5** + **Drizzle ORM**（开发期 SQLite，schema 可平滑迁 PostgreSQL）

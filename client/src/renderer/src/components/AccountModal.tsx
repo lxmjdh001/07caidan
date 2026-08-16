@@ -1,11 +1,15 @@
 import { useState } from 'react'
 import type { ChannelState } from '@shared/domain'
+import type { ChannelPluginInfo } from '@shared/ipc'
 import { LANGUAGES } from '@shared/langs'
 import type { AccountConfig } from '@shared/settings'
 import { useI18n } from '../i18n'
 
+const api = window.omni
+
 interface Props {
   accountKey: string
+  plugin?: ChannelPluginInfo
   state: ChannelState | undefined
   config: AccountConfig
   onSave: (key: string, config: AccountConfig) => Promise<void>
@@ -14,9 +18,10 @@ interface Props {
   onClose: () => void
 }
 
-/** 单账号设置弹窗（备注名 / 默认客户语言 / 代理 / 退出 / 删除） */
+/** 单账号设置弹窗（凭证 / 备注名 / 默认客户语言 / 代理 / 退出 / 删除） */
 export function AccountModal({
   accountKey,
+  plugin,
   state,
   config,
   onSave,
@@ -29,17 +34,36 @@ export function AccountModal({
   const [defaultLang, setDefaultLang] = useState(config.defaultLang ?? '')
   const [proxyUrl, setProxyUrl] = useState(config.proxyUrl ?? '')
   const [deviceLabel, setDeviceLabel] = useState(config.deviceLabel ?? '')
+  const [creds, setCreds] = useState<Record<string, string>>(config.credentials ?? {})
   const [saving, setSaving] = useState(false)
+
+  const isWhatsApp = plugin?.kind === 'whatsapp' || accountKey.startsWith('whatsapp:')
+  const credFields = plugin?.credentialFields ?? []
+
+  const buildConfig = (): AccountConfig => ({
+    label: label.trim() || undefined,
+    defaultLang: defaultLang || undefined,
+    proxyUrl: proxyUrl.trim() || undefined,
+    deviceLabel: isWhatsApp ? deviceLabel.trim() || undefined : undefined,
+    credentials: credFields.length > 0 ? creds : config.credentials
+  })
 
   const save = async (): Promise<void> => {
     setSaving(true)
     try {
-      await onSave(accountKey, {
-        label: label.trim() || undefined,
-        defaultLang: defaultLang || undefined,
-        proxyUrl: proxyUrl.trim() || undefined,
-        deviceLabel: deviceLabel.trim() || undefined
-      })
+      await onSave(accountKey, buildConfig())
+      onClose()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // 填凭证类：保存后立即连接
+  const saveAndConnect = async (): Promise<void> => {
+    setSaving(true)
+    try {
+      await onSave(accountKey, buildConfig())
+      await api.startChannel(accountKey)
       onClose()
     } finally {
       setSaving(false)
@@ -59,6 +83,23 @@ export function AccountModal({
             {t(`status.${state?.status ?? 'stopped'}` as 'status.stopped')}
           </span>
         </div>
+
+        {credFields.length > 0 && (
+          <>
+            {credFields.map((f) => (
+              <label key={f.key} className="field">
+                <span>{f.label}</span>
+                <input
+                  type={f.secret ? 'password' : 'text'}
+                  value={creds[f.key] ?? ''}
+                  placeholder={f.placeholder}
+                  onChange={(e) => setCreds((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                />
+              </label>
+            ))}
+            {state?.detail && <p className="field-hint">{state.detail}</p>}
+          </>
+        )}
 
         <label className="field">
           <span>{t('account.label')}</span>
@@ -93,16 +134,20 @@ export function AccountModal({
         </label>
         <p className="field-hint">{t('settings.proxyHint')}</p>
 
-        <label className="field">
-          <span>{t('account.device')}</span>
-          <input
-            type="text"
-            value={deviceLabel}
-            placeholder={t('account.deviceAuto')}
-            onChange={(e) => setDeviceLabel(e.target.value)}
-          />
-        </label>
-        <p className="field-hint">{t('account.deviceHint')}</p>
+        {isWhatsApp && (
+          <>
+            <label className="field">
+              <span>{t('account.device')}</span>
+              <input
+                type="text"
+                value={deviceLabel}
+                placeholder={t('account.deviceAuto')}
+                onChange={(e) => setDeviceLabel(e.target.value)}
+              />
+            </label>
+            <p className="field-hint">{t('account.deviceHint')}</p>
+          </>
+        )}
 
         <div className="account-actions">
           <button
@@ -137,9 +182,25 @@ export function AccountModal({
           <button type="button" className="ghost-btn" onClick={onClose}>
             {t('settings.cancel')}
           </button>
-          <button type="button" className="primary-btn" disabled={saving} onClick={() => void save()}>
-            {t('settings.save')}
-          </button>
+          {credFields.length > 0 ? (
+            <button
+              type="button"
+              className="primary-btn"
+              disabled={saving}
+              onClick={() => void saveAndConnect()}
+            >
+              {t('account.saveConnect')}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="primary-btn"
+              disabled={saving}
+              onClick={() => void save()}
+            >
+              {t('settings.save')}
+            </button>
+          )}
         </footer>
       </div>
     </div>

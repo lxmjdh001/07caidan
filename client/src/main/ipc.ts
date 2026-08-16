@@ -2,6 +2,7 @@ import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { IPC_METHODS, type OmniEvent, type OutboundPreview } from '@shared/ipc'
 import type { AppSettings } from '@shared/settings'
 import type { ClientAuth } from './auth/client-auth'
+import type { ChannelRegistry } from './channels/registry'
 import type { ChannelManager } from './core/channel-manager'
 import type { MessageStore } from './core/message-store'
 import type { SettingsStore } from './core/settings-store'
@@ -12,6 +13,7 @@ export interface IpcDeps {
   store: MessageStore
   settings: SettingsStore
   auth: ClientAuth
+  channels: ChannelRegistry
   translators: TranslatorRegistry
   /** 设置更新后的回调（重新装配翻译管道等） */
   onSettingsChanged: (settings: AppSettings) => void
@@ -28,6 +30,14 @@ export function registerIpc(deps: IpcDeps): void {
   const { manager, store, settings, translators } = deps
 
   ipcMain.handle(IPC_METHODS.listChannels, () => manager.listChannels())
+  ipcMain.handle(IPC_METHODS.listChannelPlugins, () =>
+    deps.channels.list().map((p) => ({
+      kind: p.kind,
+      displayName: p.displayName,
+      authType: p.authType,
+      credentialFields: p.credentialFields
+    }))
+  )
   ipcMain.handle(IPC_METHODS.startChannel, (_e, key: string) => manager.start(key))
   ipcMain.handle(IPC_METHODS.logoutChannel, (_e, key: string) => manager.logout(key))
   ipcMain.handle(IPC_METHODS.addAccount, (_e, channel: string) => deps.onAddAccount(channel))

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChannelState, Conversation, UnifiedMessage } from '@shared/domain'
 import type { AppSettings } from '@shared/settings'
-import type { OutboundPreview, TranslatorInfo } from '@shared/ipc'
+import type { ChannelPluginInfo, OutboundPreview, TranslatorInfo } from '@shared/ipc'
 import { AccountList, type AccountRow } from './components/AccountList'
 import { AccountModal } from './components/AccountModal'
+import { ChannelPicker } from './components/ChannelPicker'
 import { ChatView } from './components/ChatView'
 import { ConversationList } from './components/ConversationList'
 import { QrPanel } from './components/QrPanel'
@@ -24,6 +25,8 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   const [showSettings, setShowSettings] = useState(false)
   /** 打开中的账号设置弹窗（channel key） */
   const [accountModalKey, setAccountModalKey] = useState<string | null>(null)
+  const [plugins, setPlugins] = useState<ChannelPluginInfo[]>([])
+  const [showPicker, setShowPicker] = useState(false)
   const activeIdRef = useRef<string | null>(null)
   activeIdRef.current = activeId
 
@@ -41,6 +44,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
     void api.listConversations().then((list) => setConversations(list))
     void api.getSettings().then(setSettings)
     void api.listTranslators().then(setTranslators)
+    void api.listChannelPlugins().then(setPlugins)
 
     return api.onEvent((evt) => {
       switch (evt.type) {
@@ -158,23 +162,31 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
     [activeId]
   )
 
-  const addAccount = useCallback(async () => {
-    const key = await api.addAccount('whatsapp')
-    setActiveAccountKey(key)
-    setActiveId(null)
-  }, [])
+  const addAccountOfKind = useCallback(
+    async (kind: string) => {
+      setShowPicker(false)
+      const key = await api.addAccount(kind)
+      setActiveAccountKey(key)
+      setActiveId(null)
+      // 填凭证类平台：新建后直接打开账号设置让用户填 token
+      const plugin = plugins.find((p) => p.kind === kind)
+      if (plugin?.authType === 'credentials') setAccountModalKey(key)
+    },
+    [plugins]
+  )
 
   const locale: Locale = settings && isLocale(settings.locale) ? settings.locale : 'zh-CN'
 
+  // main 账号永远排最前，其余按 key
+  const sortKeys = (a: string, b: string): number =>
+    a === 'whatsapp:main' ? -1 : b === 'whatsapp:main' ? 1 : a.localeCompare(b)
+
   /** 账号显示名：备注名 > 登录名 > 序号 */
   const accountLabels = useMemo(() => {
-    const keys = Object.keys(channels)
-      .filter((k) => k.startsWith('whatsapp:'))
-      .sort((a, b) => (a === 'whatsapp:main' ? -1 : b === 'whatsapp:main' ? 1 : a.localeCompare(b)))
+    const keys = Object.keys(channels).sort(sortKeys)
     const labels: Record<string, string> = {}
     keys.forEach((key, i) => {
-      labels[key] =
-        settings?.accounts[key]?.label || channels[key]?.selfName || `账号 ${i + 1}`
+      labels[key] = settings?.accounts[key]?.label || channels[key]?.selfName || `账号 ${i + 1}`
     })
     return labels
   }, [channels, settings])
@@ -191,10 +203,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
 
   const accountRows = useMemo<AccountRow[]>(() => {
     return Object.entries(channels)
-      .filter(([key]) => key.startsWith('whatsapp:'))
-      .sort(([a], [b]) =>
-        a === 'whatsapp:main' ? -1 : b === 'whatsapp:main' ? 1 : a.localeCompare(b)
-      )
+      .sort(([a], [b]) => sortKeys(a, b))
       .map(([key, state]) => ({
         key,
         label: accountLabels[key] ?? key,
@@ -273,7 +282,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
               }
             }}
             onAccountSettings={(key) => setAccountModalKey(key)}
-            onAddAccount={() => void addAccount()}
+            onAddAccount={() => setShowPicker(true)}
             onOpenSettings={() => setShowSettings(true)}
           />
           <ConversationList
@@ -317,9 +326,17 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             onClose={() => setShowSettings(false)}
           />
         )}
+        {showPicker && (
+          <ChannelPicker
+            plugins={plugins}
+            onPick={(kind) => void addAccountOfKind(kind)}
+            onClose={() => setShowPicker(false)}
+          />
+        )}
         {accountModalKey && settings && (
           <AccountModal
             accountKey={accountModalKey}
+            plugin={plugins.find((p) => p.kind === accountModalKey.split(':')[0])}
             state={channels[accountModalKey]}
             config={settings.accounts[accountModalKey] ?? {}}
             onSave={async (key, config) => {

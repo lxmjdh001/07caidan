@@ -8,6 +8,8 @@ import { SyncClient } from './sync/sync-client'
 import { ClientAuth } from './auth/client-auth'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { whatsAppPlugin } from './channels/whatsapp'
+import { telegramPlugin } from './channels/telegram'
+import { linePlugin } from './channels/line'
 import { ChannelRegistry } from './channels/registry'
 import { channelKey } from '@shared/domain'
 import { ChannelManager } from './core/channel-manager'
@@ -84,21 +86,28 @@ async function bootstrap(): Promise<void> {
     globalDefault: settings.get().translation.targetLangDefault
   })
 
-  // ── 渠道插件装配。新增平台：注册插件 + 在此为账号创建适配器 ──
+  // ── 渠道插件装配。新增平台：注册插件即可（下面按 kind 通用创建适配器）──
   const channels = new ChannelRegistry()
   channels.register(whatsAppPlugin)
+  channels.register(telegramPlugin)
+  channels.register(linePlugin)
 
-  const registerWaAccount = (accountId: string): void => {
-    const key = channelKey('whatsapp', accountId)
+  const registerAccount = (kind: string, accountId: string): void => {
+    const plugin = channels.get(kind as never)
+    const key = `${kind}:${accountId}`
     manager.register(
-      channels.get('whatsapp').createAdapter(accountId, {
-        dataDir: join(userData, 'channels', 'whatsapp'),
+      plugin.createAdapter(accountId, {
+        dataDir: join(userData, 'channels', kind),
         logger,
         getAccountConfig: () => {
           const cfg = settings.accountConfig(key)
-          return { proxyUrl: cfg.proxyUrl, deviceLabel: cfg.deviceLabel }
+          return { proxyUrl: cfg.proxyUrl, deviceLabel: cfg.deviceLabel, credentials: cfg.credentials }
         },
-        saveMedia: (data, ext) => media.save(data, ext)
+        saveMedia: (data, ext) => media.save(data, ext),
+        getBackend: () => {
+          const s = settings.get().sync
+          return { url: s.serverUrl, token: s.token }
+        }
       })
     )
   }
@@ -108,7 +117,7 @@ async function bootstrap(): Promise<void> {
     const sep = key.indexOf(':')
     const kind = key.slice(0, sep)
     const accountId = key.slice(sep + 1)
-    if (kind === 'whatsapp' && accountId) registerWaAccount(accountId)
+    if (accountId && channels.has(kind as never)) registerAccount(kind, accountId)
   }
 
   // ── 聊天记录后台同步（批量定时） ──
@@ -139,6 +148,7 @@ async function bootstrap(): Promise<void> {
     store,
     settings,
     auth,
+    channels,
     translators: translatorRegistry,
     broadcast,
     onSettingsChanged: (updated) => {
@@ -146,12 +156,14 @@ async function bootstrap(): Promise<void> {
       logger.info('设置已更新')
     },
     onAddAccount: async (channel) => {
-      if (channel !== 'whatsapp') throw new Error(`暂不支持添加 ${channel} 账号`)
-      const accountId = `wa${Date.now().toString(36)}`
-      const key = channelKey('whatsapp', accountId)
+      if (!channels.has(channel as never)) throw new Error(`暂不支持添加 ${channel} 账号`)
+      const accountId = `${channel.slice(0, 2)}${Date.now().toString(36)}`
+      const key = channelKey(channel as never, accountId)
       await settings.update({ accounts: { [key]: {} } })
-      registerWaAccount(accountId)
-      await manager.start(key)
+      registerAccount(channel, accountId)
+      // 扫码类立即启动（显示二维码）；填凭证类等用户填完凭证再连
+      const plugin = channels.get(channel as never)
+      if (plugin.authType === 'qr') await manager.start(key)
       logger.info('新增账号', { key })
       return key
     },

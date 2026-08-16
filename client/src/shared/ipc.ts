@@ -7,6 +7,7 @@ export const OMNI_EVENT_CHANNEL = 'omni:event'
 /** 渲染进程 → 主进程 的调用方法名（ipcMain.handle 注册名与之一一对应） */
 export const IPC_METHODS = {
   listChannels: 'omni:listChannels',
+  listChannelPlugins: 'omni:listChannelPlugins',
   startChannel: 'omni:startChannel',
   logoutChannel: 'omni:logoutChannel',
   addAccount: 'omni:addAccount',
@@ -41,6 +42,14 @@ export interface TranslatorInfo {
   displayName: string
 }
 
+/** 渠道插件元信息（UI 渲染平台选择与凭证表单） */
+export interface ChannelPluginInfo {
+  kind: string
+  displayName: string
+  authType: 'qr' | 'credentials'
+  credentialFields?: Array<{ key: string; label: string; placeholder?: string; secret?: boolean }>
+}
+
 /** 客户端账号登录状态 */
 export interface AuthState {
   authenticated: boolean
@@ -71,6 +80,8 @@ export interface OmniApi {
   /** 运行平台（darwin / win32 / linux），用于标题栏等平台差异化渲染 */
   platform: string
   listChannels(): Promise<ChannelState[]>
+  /** 可用渠道插件（平台类型 + 凭证字段） */
+  listChannelPlugins(): Promise<ChannelPluginInfo[]>
   startChannel(key: string): Promise<void>
   logoutChannel(key: string): Promise<void>
   /** 新增一个账号（当前支持 whatsapp），返回其 channel key（如 whatsapp:wa1abc） */

@@ -62,6 +62,16 @@ export function openDb(dbPath: string): Db {
     CREATE TABLE IF NOT EXISTS email_codes (
       email TEXT PRIMARY KEY, code TEXT NOT NULL, expires_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS line_accounts (
+      tenant TEXT NOT NULL, account_id TEXT NOT NULL, channel_secret TEXT NOT NULL,
+      created_at INTEGER NOT NULL, PRIMARY KEY (tenant, account_id)
+    );
+    CREATE TABLE IF NOT EXISTS line_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, tenant TEXT NOT NULL, account_id TEXT NOT NULL,
+      payload TEXT NOT NULL, created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_line_events ON line_events (tenant, account_id);
   `)
 
   return drizzle(sqlite, { schema })

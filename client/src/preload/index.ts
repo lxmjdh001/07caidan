@@ -12,6 +12,7 @@ import type { AppSettings } from '@shared/settings'
 const api: OmniApi = {
   platform: process.platform,
   listChannels: () => ipcRenderer.invoke(IPC_METHODS.listChannels),
+  listChannelPlugins: () => ipcRenderer.invoke(IPC_METHODS.listChannelPlugins),
   startChannel: (key: string) => ipcRenderer.invoke(IPC_METHODS.startChannel, key),
   logoutChannel: (key: string) => ipcRenderer.invoke(IPC_METHODS.logoutChannel, key),
   addAccount: (channel: string) => ipcRenderer.invoke(IPC_METHODS.addAccount, channel),

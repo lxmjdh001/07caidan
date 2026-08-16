@@ -93,6 +93,23 @@ export const emailCodes = sqliteTable('email_codes', {
   expiresAt: integer('expires_at').notNull()
 })
 
+/** LINE 账号注册（客户端把 channelSecret 存到后台用于 Webhook 验签） */
+export const lineAccounts = sqliteTable('line_accounts', {
+  tenant: text('tenant').notNull(),
+  accountId: text('account_id').notNull(),
+  channelSecret: text('channel_secret').notNull(),
+  createdAt: integer('created_at').notNull()
+}, (t) => [primaryKey({ columns: [t.tenant, t.accountId] })])
+
+/** LINE Webhook 事件队列（客户端轮询拉取后删除） */
+export const lineEvents = sqliteTable('line_events', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  tenant: text('tenant').notNull(),
+  accountId: text('account_id').notNull(),
+  payload: text('payload').notNull(),
+  createdAt: integer('created_at').notNull()
+}, (t) => [index('idx_line_events').on(t.tenant, t.accountId)])
+
 export const media = sqliteTable(
   'media',
   {
