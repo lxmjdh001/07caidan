@@ -32,6 +32,8 @@ export interface TranslatorInfo {
 
 /** preload 暴露到 window.omni 的 API，渲染进程唯一的主进程入口 */
 export interface OmniApi {
+  /** 运行平台（darwin / win32 / linux），用于标题栏等平台差异化渲染 */
+  platform: string
   listChannels(): Promise<ChannelState[]>
   startChannel(key: string): Promise<void>
   logoutChannel(key: string): Promise<void>

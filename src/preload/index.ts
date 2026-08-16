@@ -4,6 +4,7 @@ import type { AppSettings } from '@shared/settings'
 
 /** 渲染进程唯一的主进程入口：window.omni（contextIsolation 隔离下的白名单桥） */
 const api: OmniApi = {
+  platform: process.platform,
   listChannels: () => ipcRenderer.invoke(IPC_METHODS.listChannels),
   startChannel: (key: string) => ipcRenderer.invoke(IPC_METHODS.startChannel, key),
   logoutChannel: (key: string) => ipcRenderer.invoke(IPC_METHODS.logoutChannel, key),

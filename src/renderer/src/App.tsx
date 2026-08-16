@@ -132,8 +132,12 @@ export function App(): React.JSX.Element {
 
   return (
     <I18nProvider locale={locale}>
-      <div className="app">
-        <ChannelRail
+      <div className={`app platform-${api.platform}`}>
+        <header className="titlebar">
+          <span className="titlebar-title">OmniChat</span>
+        </header>
+        <div className="app-body">
+          <ChannelRail
           channels={channels}
           onChannelClick={(key) => {
             const st = channels[key]
@@ -149,19 +153,20 @@ export function App(): React.JSX.Element {
           waState={waState}
           onSelect={selectConversation}
         />
-        <main className="content">
-          {showQr ? (
-            <QrPanel qrDataUrl={waState?.qrDataUrl} />
-          ) : (
-            <ChatView
-              conversation={activeConversation}
-              messages={activeId ? messages[activeId] ?? [] : []}
-              connected={waState?.status === 'connected'}
-              onSend={sendText}
-              onSendMedia={sendMediaFile}
-            />
-          )}
-        </main>
+          <main className="content">
+            {showQr ? (
+              <QrPanel qrDataUrl={waState?.qrDataUrl} />
+            ) : (
+              <ChatView
+                conversation={activeConversation}
+                messages={activeId ? messages[activeId] ?? [] : []}
+                connected={waState?.status === 'connected'}
+                onSend={sendText}
+                onSendMedia={sendMediaFile}
+              />
+            )}
+          </main>
+        </div>
         {showSettings && settings && (
           <SettingsModal
             settings={settings}

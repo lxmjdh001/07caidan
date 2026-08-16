@@ -11,6 +11,7 @@ import { JsonMessageStore } from './core/json-message-store'
 import { SettingsStore } from './core/settings-store'
 import { registerIpc } from './ipc'
 import { initLogging } from './logging'
+import { installAppMenu } from './menu'
 import { TranslationPipeline } from './translation/pipeline'
 import { PassthroughTranslator } from './translation/passthrough-translator'
 import { configurePipeline, createTranslatorRegistry } from './translation/plugins'
@@ -90,6 +91,7 @@ async function bootstrap(): Promise<void> {
     }
   })
 
+  installAppMenu()
   createMainWindow()
   void manager.startAll()
 
