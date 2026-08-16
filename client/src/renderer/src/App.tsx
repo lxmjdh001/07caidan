@@ -223,7 +223,8 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
           key,
           label: accountLabels[key] ?? key,
           channel: key.split(':')[0] ?? '',
-          accountId: key.split(':').slice(1).join(':')
+          accountId: key.split(':').slice(1).join(':'),
+          selfHandle: channels[key]?.selfHandle
         })),
     [channels, accountLabels]
   )

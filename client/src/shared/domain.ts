@@ -36,6 +36,11 @@ export interface ChannelState {
   pairingCode?: string
   /** 登录后的账号显示名 */
   selfName?: string
+  /**
+   * 本账号对外的联系方式（WhatsApp 为手机号、Telegram 为用户名）。
+   * 用于生成客户找上门的入口链接，登录后才有；LINE 拿不到，需用户自己填。
+   */
+  selfHandle?: string
 }
 
 export type MessageDirection = 'in' | 'out'

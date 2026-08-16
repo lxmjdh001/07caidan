@@ -1,12 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  detectLeadSource,
-  fromAdReply,
-  lineLink,
-  parseTrackingCode,
-  tgLink,
-  waLink
-} from './lead-source'
+import { detectLeadSource, fromAdReply, parseTrackingCode } from './lead-source'
 
 describe('parseTrackingCode', () => {
   it('识别方括号格式并归一化为小写', () => {
@@ -54,27 +47,5 @@ describe('detectLeadSource', () => {
   })
   it('两者都没有则不归因', () => {
     expect(detectLeadSource('你好')).toBeUndefined()
-  })
-})
-
-describe('入口链接生成', () => {
-  it('WhatsApp：号码只保留数字，追踪码进预填文案', () => {
-    const url = waLink('+86 138 0013 8000', 'fb01')
-    expect(url.startsWith('https://wa.me/8613800138000?text=')).toBe(true)
-    expect(decodeURIComponent(url)).toContain('[ref:fb01]')
-  })
-  it('Telegram：去掉 @，用 ?text= 而不是 ?start=（普通账号没有 start）', () => {
-    const url = tgLink('@myshop', 'tg9')
-    expect(url.startsWith('https://t.me/myshop?text=')).toBe(true)
-    expect(url).not.toContain('start=')
-  })
-  it('LINE：自动补 @ 前缀', () => {
-    expect(lineLink('myoa', 'l1')).toContain('%40myoa')
-  })
-  it('生成的链接能被自己解析回来（闭环）', () => {
-    for (const url of [waLink('+8613800138000', 'x1'), tgLink('shop', 'x1'), lineLink('@oa', 'x1')]) {
-      const text = decodeURIComponent(url.split(/[?/]\??/).pop() ?? '')
-      expect(parseTrackingCode(text)).toBe('x1')
-    }
   })
 })

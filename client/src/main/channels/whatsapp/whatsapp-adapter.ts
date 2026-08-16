@@ -282,7 +282,9 @@ export class WhatsAppAdapter extends ChannelAdapter {
       if (connection === 'open') {
         this.reconnectDelay = RECONNECT_BASE_MS
         const selfName = sock.user?.name || sock.user?.id
-        this.setState('connected', { selfName })
+        // JID 形如 8613800138000:12@s.whatsapp.net，冒号前即国际格式手机号
+        const selfHandle = sock.user?.id?.split(':')[0]?.split('@')[0]
+        this.setState('connected', { selfName, selfHandle })
         this.log.info('连接成功', { user: sock.user?.id })
       }
 
@@ -426,6 +428,7 @@ export class WhatsAppAdapter extends ChannelAdapter {
       detail?: string
       qrDataUrl?: string
       selfName?: string
+      selfHandle?: string
       pairingCode?: string
     } = {}
   ): void {

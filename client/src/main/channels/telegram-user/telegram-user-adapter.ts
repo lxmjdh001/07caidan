@@ -180,7 +180,9 @@ export class TelegramUserAdapter extends ChannelAdapter {
         void this.handleEvent(event)
       }, new NewMessage({}))
 
-      this.setState('connected', { selfName })
+      // 优先用户名（t.me/xxx 链接要用它），没有设置用户名时退回手机号
+      const selfHandle = (me as Api.User).username || this.phone || undefined
+      this.setState('connected', { selfName, selfHandle })
       this.log.info('连接成功', { user: this.selfId })
     } catch (err) {
       if (this.stopping) return
@@ -380,7 +382,12 @@ export class TelegramUserAdapter extends ChannelAdapter {
 
   private setState(
     status: ChannelStatus,
-    extra: { detail?: string; selfName?: string; qrDataUrl?: string } = {}
+    extra: {
+      detail?: string
+      selfName?: string
+      selfHandle?: string
+      qrDataUrl?: string
+    } = {}
   ): void {
     this.status = status
     this.emit('state', this.makeState({ status, ...extra }))

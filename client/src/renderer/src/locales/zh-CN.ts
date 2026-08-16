@@ -255,7 +255,22 @@ export const zhCN = {
   'campaign.sourceVia': '归因方式',
   'campaign.noSource': '未归因',
   'campaign.viaAd': '广告点击',
-  'campaign.viaCode': '追踪码'
+  'campaign.viaCode': '追踪码',
+  'campaign.tabLinks': '推广链接',
+  'campaign.linkGen': '生成带追踪码的入口链接',
+  'campaign.linkGenHint': '把链接挂在不同广告上，客户点进来发出的第一句话会带上追踪码，系统据此判断他从哪个广告来。',
+  'campaign.handle': '账号联系方式',
+  'campaign.handlePlaceholder': '手机号 / 用户名 / LINE ID',
+  'campaign.handleAuto': '留空则用该账号登录后自动获取的手机号或用户名。',
+  'campaign.handleLine': 'LINE 取不到官方账号 ID，需要你手动填（形如 @abc1234）。',
+  'campaign.trackCode': '追踪码',
+  'campaign.greeting': '预填文案',
+  'campaign.codeInvalid': '追踪码只能是字母、数字、下划线、连字符，1-32 位',
+  'campaign.channelUnsupported': '该平台暂不支持生成入口链接',
+  'campaign.linkGenTips': '使用要点',
+  'campaign.tipAd': '· WhatsApp 若客户是点 Meta 广告进来的，系统会直接读广告归因，比追踪码更准，不需要改链接。',
+  'campaign.tipEdit': '· 客户可能把预填文案删掉再发，那样就归不到来源，属于正常损耗。',
+  'campaign.tipOnce': '· 来源只在客户第一条消息识别一次，之后不会变。'
 }
 
 export type MessageKey = keyof typeof zhCN

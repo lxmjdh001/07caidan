@@ -9,6 +9,7 @@ import {
   toLocalInput,
   type DatePreset
 } from '../components/form-bits'
+import { DEFAULT_GREETING, entryLink, isValidCode, type EntryChannel } from '@shared/entry-link'
 import { useI18n } from '../i18n'
 
 const api = window.omni
@@ -18,13 +19,15 @@ export interface AccountOption {
   label: string
   channel: string
   accountId: string
+  /** 该账号对外的联系方式（登录后才有；LINE 取不到） */
+  selfHandle?: string
 }
 
 interface Props {
   accounts: AccountOption[]
 }
 
-type Tab = 'campaigns' | 'libraries'
+type Tab = 'campaigns' | 'libraries' | 'links'
 
 function fmt(ts?: number): string {
   if (!ts) return '—'
@@ -93,6 +96,13 @@ export function CampaignPage({ accounts }: Props): React.JSX.Element {
           >
             {t('campaign.tabLibraries')}
           </button>
+          <button
+            type="button"
+            className={tab === 'links' ? 'on' : ''}
+            onClick={() => setTab('links')}
+          >
+            {t('campaign.tabLinks')}
+          </button>
         </div>
       </header>
 
@@ -157,6 +167,8 @@ export function CampaignPage({ accounts }: Props): React.JSX.Element {
         {!loading && tab === 'libraries' && (
           <LibraryPanel libraries={libraries} accounts={accounts} onChanged={load} />
         )}
+
+        {tab === 'links' && <EntryLinkPanel accounts={accounts} />}
       </div>
     </div>
   )
@@ -825,6 +837,113 @@ function LibraryPanel({
             ))}
           </ul>
         )}
+      </section>
+    </div>
+  )
+}
+
+/**
+ * 推广入口链接生成。
+ *
+ * 三个平台都只有「预填文案」这一个可用参数位，所以追踪码写进客户要发的第一句话。
+ * 客户发出后，系统解析出 [ref:xxx] 并固定为该客户的来源，工单统计里按来源拆分。
+ */
+function EntryLinkPanel({ accounts }: { accounts: AccountOption[] }): React.JSX.Element {
+  const { t } = useI18n()
+  const [accountKey, setAccountKey] = useState(accounts[0]?.key ?? '')
+  const [handle, setHandle] = useState('')
+  const [code, setCode] = useState('')
+  const [greeting, setGreeting] = useState(DEFAULT_GREETING)
+  const [copied, setCopied] = useState(false)
+
+  const account = accounts.find((a) => a.key === accountKey)
+  const channel = (account?.channel ?? 'whatsapp') as EntryChannel
+  const supported = channel === 'whatsapp' || channel === 'telegram' || channel === 'line'
+
+  // 账号登录后能拿到自己的手机号/用户名，优先用它；LINE 拿不到需手填
+  const effectiveHandle = handle.trim() || account?.selfHandle || ''
+  const codeOk = isValidCode(code)
+  const url =
+    supported && effectiveHandle && codeOk
+      ? entryLink(channel, effectiveHandle, code.trim(), greeting.trim() || DEFAULT_GREETING)
+      : ''
+
+  return (
+    <div className="form-page">
+      <section className="form-card">
+        <h3>{t('campaign.linkGen')}</h3>
+        <p className="field-hint">{t('campaign.linkGenHint')}</p>
+
+        <div className="field-row">
+          <label className="field">
+            <span>{t('campaign.account')}</span>
+            <select value={accountKey} onChange={(e) => setAccountKey(e.target.value)}>
+              {accounts.map((a) => (
+                <option key={a.key} value={a.key}>
+                  {a.label}（{a.channel}）
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>{t('campaign.handle')}</span>
+            <input
+              type="text"
+              value={handle}
+              placeholder={account?.selfHandle || t('campaign.handlePlaceholder')}
+              onChange={(e) => setHandle(e.target.value)}
+            />
+          </label>
+        </div>
+        <p className="field-hint">
+          {channel === 'line' ? t('campaign.handleLine') : t('campaign.handleAuto')}
+        </p>
+
+        <div className="field-row">
+          <label className="field">
+            <span>{t('campaign.trackCode')}</span>
+            <input
+              type="text"
+              value={code}
+              placeholder="fb01 / tiktok_a"
+              onChange={(e) => setCode(e.target.value)}
+            />
+          </label>
+          <label className="field">
+            <span>{t('campaign.greeting')}</span>
+            <input
+              type="text"
+              value={greeting}
+              onChange={(e) => setGreeting(e.target.value)}
+            />
+          </label>
+        </div>
+        {code && !codeOk && <p className="auth-err">{t('campaign.codeInvalid')}</p>}
+        {!supported && <p className="auth-err">{t('campaign.channelUnsupported')}</p>}
+
+        {url && (
+          <div className="link-preview">
+            <code>{url}</code>
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={() => {
+                void navigator.clipboard.writeText(url)
+                setCopied(true)
+                setTimeout(() => setCopied(false), 1500)
+              }}
+            >
+              {copied ? t('campaign.copied') : t('campaign.copy')}
+            </button>
+          </div>
+        )}
+      </section>
+
+      <section className="form-card">
+        <h3>{t('campaign.linkGenTips')}</h3>
+        <p className="field-hint">{t('campaign.tipAd')}</p>
+        <p className="field-hint">{t('campaign.tipEdit')}</p>
+        <p className="field-hint">{t('campaign.tipOnce')}</p>
       </section>
     </div>
   )

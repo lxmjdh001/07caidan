@@ -88,21 +88,3 @@ export function detectLeadSource(
   const code = parseTrackingCode(text)
   return code ? { code, via: 'code' } : undefined
 }
-
-/** 生成带追踪码的 WhatsApp 入口链接 */
-export function waLink(phone: string, code: string, greeting = '你好，我想了解一下'): string {
-  const digits = phone.replace(/\D/g, '')
-  return `https://wa.me/${digits}?text=${encodeURIComponent(`${greeting} [ref:${code}]`)}`
-}
-
-/** 生成带追踪码的 Telegram 入口链接（普通账号用 ?text=，Bot 才有 ?start=） */
-export function tgLink(username: string, code: string, greeting = '你好，我想了解一下'): string {
-  const name = username.replace(/^@/, '')
-  return `https://t.me/${name}?text=${encodeURIComponent(`${greeting} [ref:${code}]`)}`
-}
-
-/** 生成带追踪码的 LINE 入口链接（官方账号预填消息） */
-export function lineLink(lineId: string, code: string, greeting = '你好，我想了解一下'): string {
-  const id = lineId.startsWith('@') ? lineId : `@${lineId}`
-  return `https://line.me/R/oaMessage/${encodeURIComponent(id)}/?${encodeURIComponent(`${greeting} [ref:${code}]`)}`
-}

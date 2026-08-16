@@ -258,5 +258,20 @@ export const en: Record<MessageKey, string> = {
   'campaign.sourceVia': 'Attribution',
   'campaign.noSource': 'Unattributed',
   'campaign.viaAd': 'Ad click',
-  'campaign.viaCode': 'Tracking code'
+  'campaign.viaCode': 'Tracking code',
+  'campaign.tabLinks': 'Entry links',
+  'campaign.linkGen': 'Generate a tracked entry link',
+  'campaign.linkGenHint': 'Put a different link behind each ad. The first message the customer sends carries the tracking code, which is how the system knows which ad they came from.',
+  'campaign.handle': 'Account handle',
+  'campaign.handlePlaceholder': 'Phone / username / LINE ID',
+  'campaign.handleAuto': 'Leave empty to use the phone or username detected after this account logged in.',
+  'campaign.handleLine': 'LINE does not expose the official account ID, so enter it yourself (like @abc1234).',
+  'campaign.trackCode': 'Tracking code',
+  'campaign.greeting': 'Prefilled message',
+  'campaign.codeInvalid': 'Tracking code must be 1-32 letters, digits, underscores or hyphens',
+  'campaign.channelUnsupported': 'Entry links are not supported for this platform yet',
+  'campaign.linkGenTips': 'Notes',
+  'campaign.tipAd': '· On WhatsApp, if the customer clicked a Meta ad, the system reads the ad attribution directly — more reliable than a tracking code, and no link changes needed.',
+  'campaign.tipEdit': '· Customers may delete the prefilled text before sending, in which case they stay unattributed. That is expected loss.',
+  'campaign.tipOnce': '· The source is detected once, on the first message, and never changes afterwards.'
 }
