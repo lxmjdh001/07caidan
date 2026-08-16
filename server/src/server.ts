@@ -26,6 +26,7 @@ export function buildServer(config: ServerConfig): FastifyInstance {
     : null
 
   const app = Fastify({ logger: true, bodyLimit: 64 * 1024 * 1024 })
+  // 前后端分离：管理后台是独立前端（admin/），这里开放跨域即可
   void app.register(cors, { origin: true })
 
   // 鉴权：所有 /api 路由需带有效 Bearer token
