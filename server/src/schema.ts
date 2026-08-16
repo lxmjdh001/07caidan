@@ -368,6 +368,83 @@ export const orders = sqliteTable(
   ]
 )
 
+// ══════════ AI 供应商与模型积分 ══════════
+
+/** AI 供应商配置。apiKey 明文存库，接口返回时必须打码 */
+export const aiProviders = sqliteTable(
+  'ai_providers',
+  {
+    tenant: text('tenant').notNull(),
+    id: text('id').notNull(),
+    /** openai / anthropic / openrouter / openai_compatible */
+    type: text('type').notNull(),
+    name: text('name').notNull(),
+    /** 自定义 baseUrl，兼容各种中转；留空用该协议默认地址 */
+    baseUrl: text('base_url').notNull().default(''),
+    apiKey: text('api_key').notNull().default(''),
+    enabled: integer('enabled').notNull().default(1),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: integer('created_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.id] })]
+)
+
+/** 某供应商下的可用模型与积分单价 */
+export const aiModels = sqliteTable(
+  'ai_models',
+  {
+    tenant: text('tenant').notNull(),
+    id: text('id').notNull(),
+    providerId: text('provider_id').notNull(),
+    /** 调用时传给供应商的模型名 */
+    modelName: text('model_name').notNull(),
+    label: text('label').notNull().default(''),
+    /** JSON 数组：asr / translate / autoreply */
+    purposes: text('purposes').notNull().default('[]'),
+    /** 每百万输入/输出 token 的积分数（整数） */
+    creditsPerMillionInput: integer('credits_per_million_input').notNull().default(0),
+    creditsPerMillionOutput: integer('credits_per_million_output').notNull().default(0),
+    /** 语音识别按秒计费 */
+    creditsPerAudioSecond: integer('credits_per_audio_second').notNull().default(0),
+    minCredits: integer('min_credits').notNull().default(0),
+    enabled: integer('enabled').notNull().default(1),
+    createdAt: integer('created_at').notNull()
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenant, t.id] }),
+    index('idx_ai_models_provider').on(t.tenant, t.providerId)
+  ]
+)
+
+/** 模型调用用量流水；对账与分析用量分布都靠它 */
+export const modelUsage = sqliteTable(
+  'model_usage',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    tenant: text('tenant').notNull(),
+    userId: integer('user_id').notNull(),
+    modelId: text('model_id').notNull(),
+    /** asr / translate / autoreply */
+    purpose: text('purpose').notNull(),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    audioSeconds: integer('audio_seconds').notNull().default(0),
+    credits: integer('credits').notNull().default(0),
+    createdAt: integer('created_at').notNull()
+  },
+  (t) => [index('idx_usage_user').on(t.tenant, t.userId, t.createdAt)]
+)
+
+/** 租户级计费参数 */
+export const billingSettings = sqliteTable('billing_settings', {
+  tenant: text('tenant').primaryKey(),
+  /** 1 美元可兑换多少积分 */
+  creditsPerUsd: integer('credits_per_usd').notNull().default(1000),
+  /** 积分不足时是否自动从余额兑换补足 */
+  autoTopUpCredits: integer('auto_top_up_credits').notNull().default(1),
+  updatedAt: integer('updated_at').notNull()
+})
+
 export const media = sqliteTable(
   'media',
   {

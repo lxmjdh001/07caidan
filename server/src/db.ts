@@ -175,6 +175,46 @@ export function openDb(dbPath: string): Db {
       PRIMARY KEY (tenant, id)
     );
     CREATE INDEX IF NOT EXISTS idx_orders_user ON orders (tenant, user_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS ai_providers (
+      tenant TEXT NOT NULL, id TEXT NOT NULL, type TEXT NOT NULL, name TEXT NOT NULL,
+      base_url TEXT NOT NULL DEFAULT '', api_key TEXT NOT NULL DEFAULT '',
+      enabled INTEGER NOT NULL DEFAULT 1, sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, id)
+    );
+
+    CREATE TABLE IF NOT EXISTS ai_models (
+      tenant TEXT NOT NULL, id TEXT NOT NULL, provider_id TEXT NOT NULL,
+      model_name TEXT NOT NULL, label TEXT NOT NULL DEFAULT '',
+      purposes TEXT NOT NULL DEFAULT '[]',
+      credits_per_million_input INTEGER NOT NULL DEFAULT 0,
+      credits_per_million_output INTEGER NOT NULL DEFAULT 0,
+      credits_per_audio_second INTEGER NOT NULL DEFAULT 0,
+      min_credits INTEGER NOT NULL DEFAULT 0,
+      enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ai_models_provider ON ai_models (tenant, provider_id);
+
+    CREATE TABLE IF NOT EXISTS model_usage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant TEXT NOT NULL, user_id INTEGER NOT NULL, model_id TEXT NOT NULL,
+      purpose TEXT NOT NULL,
+      input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0,
+      audio_seconds INTEGER NOT NULL DEFAULT 0,
+      credits INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_usage_user ON model_usage (tenant, user_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS billing_settings (
+      tenant TEXT PRIMARY KEY,
+      credits_per_usd INTEGER NOT NULL DEFAULT 1000,
+      auto_top_up_credits INTEGER NOT NULL DEFAULT 1,
+      updated_at INTEGER NOT NULL
+    );
   `)
 
   migrate(sqlite)
