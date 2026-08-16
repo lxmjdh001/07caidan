@@ -350,5 +350,16 @@ export const en: Record<MessageKey, string> = {
   'auth.forgotSub': 'Reset your password with an email code',
   'auth.newPassword': 'New password (min 8 chars)',
   'auth.doReset': 'Reset password',
-  'auth.resetDone': 'Password reset. Sign in with the new password.'
+  'auth.resetDone': 'Password reset. Sign in with the new password.',
+  'settings.about': 'About',
+  'settings.version': 'Version',
+  'settings.checkUpdates': 'Check for updates',
+  'settings.upd.idle': 'New versions download in the background and install automatically on quit.',
+  'settings.upd.checking': 'Checking for updates…',
+  'settings.upd.uptodate': 'You are up to date.',
+  'settings.upd.available': 'Version v{v} found, downloading in the background…',
+  'settings.upd.downloading': 'Downloading',
+  'settings.upd.ready': 'Version v{v} is ready and will install on next quit.',
+  'settings.upd.restart': 'Restart to update now',
+  'settings.upd.error': 'Update check failed'
 }

@@ -30,6 +30,8 @@ export interface ServerConfig {
   smtp: { host: string; port: number; user: string; pass: string; from: string } | undefined
   /** 对外可访问的公网地址（生成 LINE Webhook 地址用） */
   publicUrl: string
+  /** 客户端自动更新产物目录（latest*.yml + 安装包）；发布 = 把文件拷进来 */
+  updatesDir: string
 }
 
 export function loadConfig(): ServerConfig {
@@ -63,6 +65,7 @@ export function loadConfig(): ServerConfig {
       : undefined,
     publicUrl:
       process.env.OMNI_PUBLIC_URL ||
-      `http://localhost:${Number(process.env.PORT || 8787)}`
+      `http://localhost:${Number(process.env.PORT || 8787)}`,
+    updatesDir: process.env.OMNI_UPDATES_DIR || join(dataDir, 'updates')
   }
 }

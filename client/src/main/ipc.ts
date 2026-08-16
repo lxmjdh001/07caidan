@@ -7,6 +7,7 @@ import type { BillingApi } from './billing/billing-api'
 import type { CampaignApi } from './campaigns/campaign-api'
 import type { MediaStore } from './core/media-store'
 import type { Notifier } from './core/notifier'
+import type { AppUpdater } from './core/updater'
 import { transcribeMessage } from './core/transcriber'
 import type { ChannelManager } from './core/channel-manager'
 import type { MessageStore } from './core/message-store'
@@ -24,6 +25,8 @@ export interface IpcDeps {
   billingApi: BillingApi
   media: MediaStore
   notifier: Notifier
+  updater: AppUpdater
+  version: string
   /** 设置更新后的回调（重新装配翻译管道等） */
   onSettingsChanged: (settings: AppSettings) => void
   /** 主动推送事件到渲染进程 */
@@ -108,6 +111,13 @@ export function registerIpc(deps: IpcDeps): void {
       messageId
     )
   )
+
+  ipcMain.handle(IPC_METHODS.appInfo, () => ({
+    version: deps.version,
+    updateState: deps.updater.state
+  }))
+  ipcMain.handle(IPC_METHODS.checkUpdates, () => deps.updater.checkNow())
+  ipcMain.handle(IPC_METHODS.installUpdate, () => deps.updater.quitAndInstall())
 
   ipcMain.handle(IPC_METHODS.setUnreadTotal, (_e, total: number) => {
     deps.notifier.setUnreadTotal(Number(total) || 0)

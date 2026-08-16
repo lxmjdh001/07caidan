@@ -19,7 +19,15 @@ const iconDir = join(here, '..', 'branding', brandName)
 const macIcon = join(iconDir, 'icon.icns')
 const winIcon = join(iconDir, 'icon.ico')
 
+/**
+ * 更新源地址：发布时用 UPDATE_URL 指定（如 https://api.example.com/updates）。
+ * publish 配置的作用是让 builder 产出 latest-mac.yml / latest.yml 等元数据，
+ * 发布 = 把 release/<brand>/ 里的 yml + 安装包一起拷到后台 updates 目录。
+ */
+const updateUrl = process.env.UPDATE_URL || 'https://example.com/updates'
+
 export default {
+  publish: [{ provider: 'generic', url: updateUrl }],
   appId: `com.${brand.shortName || 'omnichat'}.desktop`,
   productName: brand.appName,
   // 各品牌独立输出目录，多品牌连续打包互不覆盖

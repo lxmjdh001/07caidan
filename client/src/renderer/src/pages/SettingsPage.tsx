@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { TranslatorInfo } from '@shared/ipc'
 import { LANGUAGES } from '@shared/langs'
 import type { AppSettings, ThemeMode } from '@shared/settings'
@@ -71,6 +71,18 @@ export function SettingsPage({
   const [llmModel, setLlmModel] = useState(tr.llm.model)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [version, setVersion] = useState('')
+  const [update, setUpdate] = useState<import('@shared/update').UpdateStateInfo>({ status: 'idle' })
+
+  useEffect(() => {
+    void window.omni.appInfo().then((info) => {
+      setVersion(info.version)
+      setUpdate(info.updateState)
+    })
+    return window.omni.onEvent((evt) => {
+      if (evt.type === 'update:state') setUpdate(evt.state)
+    })
+  }, [])
 
   const save = async (): Promise<void> => {
     setSaving(true)
@@ -228,6 +240,43 @@ export function SettingsPage({
               </label>
               <p className="field-hint">{t('settings.handoffHint')}</p>
               <p className="field-hint">{t('settings.autoReplyHint')}</p>
+
+              <h3 style={{ marginTop: 22 }}>{t('settings.about')}</h3>
+              <div className="about-row">
+                <span>
+                  {t('settings.version')}: <code>v{version || '…'}</code>
+                </span>
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  disabled={update.status === 'checking' || update.status === 'downloading'}
+                  onClick={() => void window.omni.checkUpdates()}
+                >
+                  {t('settings.checkUpdates')}
+                </button>
+              </div>
+              <p className="field-hint">
+                {update.status === 'checking' && t('settings.upd.checking')}
+                {update.status === 'uptodate' && t('settings.upd.uptodate')}
+                {update.status === 'available' &&
+                  t('settings.upd.available').replace('{v}', update.version ?? '')}
+                {update.status === 'downloading' &&
+                  `${t('settings.upd.downloading')} ${update.percent ?? 0}%`}
+                {update.status === 'error' && `${t('settings.upd.error')}: ${update.error ?? ''}`}
+                {update.status === 'idle' && t('settings.upd.idle')}
+              </p>
+              {update.status === 'ready' && (
+                <div className="update-ready">
+                  <span>{t('settings.upd.ready').replace('{v}', update.version ?? '')}</span>
+                  <button
+                    type="button"
+                    className="primary-btn"
+                    onClick={() => void window.omni.installUpdate()}
+                  >
+                    {t('settings.upd.restart')}
+                  </button>
+                </div>
+              )}
             </section>
           )}
 

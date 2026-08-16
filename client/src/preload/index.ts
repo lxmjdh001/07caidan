@@ -23,6 +23,9 @@ const api: OmniApi = {
   billing: (method: string, ...args: unknown[]) =>
     ipcRenderer.invoke(IPC_METHODS.billingCall, method, args),
   setUnreadTotal: (total: number) => ipcRenderer.invoke(IPC_METHODS.setUnreadTotal, total),
+  appInfo: () => ipcRenderer.invoke(IPC_METHODS.appInfo),
+  checkUpdates: () => ipcRenderer.invoke(IPC_METHODS.checkUpdates),
+  installUpdate: () => ipcRenderer.invoke(IPC_METHODS.installUpdate),
   logoutChannel: (key: string) => ipcRenderer.invoke(IPC_METHODS.logoutChannel, key),
   addAccount: (channel: string) => ipcRenderer.invoke(IPC_METHODS.addAccount, channel),
   removeAccount: (key: string) => ipcRenderer.invoke(IPC_METHODS.removeAccount, key),

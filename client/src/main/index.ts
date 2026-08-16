@@ -26,6 +26,8 @@ import { installAppMenu } from './menu'
 import { TranslationPipeline } from './translation/pipeline'
 import { PassthroughTranslator } from './translation/passthrough-translator'
 import { configurePipeline, createTranslatorRegistry } from './translation/plugins'
+import { AppTray } from './core/tray'
+import { AppUpdater, type UpdateState } from './core/updater'
 import { createMainWindow } from './window'
 import { brand } from '@shared/branding'
 
@@ -222,6 +224,31 @@ async function bootstrap(): Promise<void> {
   const campaignApi = new CampaignApi(() => settings.get().sync, logger)
   const billingApi = new BillingApi(() => settings.get().sync, logger)
 
+  // 自动更新：更新源 = 后台地址 + /updates；未登录后台时禁用
+  const updater = new AppUpdater({
+    feedUrl: () => {
+      const url = settings.get().sync.serverUrl
+      return url ? `${url.replace(/\/$/, '')}/updates` : ''
+    },
+    onState: (state) => broadcast({ type: 'update:state', state }),
+    logger
+  })
+  void updater.start()
+
+  const tray = new AppTray({
+    getWindow: () => BrowserWindow.getAllWindows()[0],
+    checkUpdates: () => void updater.checkNow(),
+    version: app.getVersion()
+  })
+  tray.create()
+  // 未读数同步到托盘 tooltip 与菜单
+  const origSetUnread = notifier.setUnreadTotal.bind(notifier)
+  notifier.setUnreadTotal = (total) => {
+    origSetUnread(total)
+    tray.setUnread(total)
+  }
+
+
   registerIpc({
     manager,
     store,
@@ -233,6 +260,8 @@ async function bootstrap(): Promise<void> {
     billingApi,
     media,
     notifier,
+    updater,
+    version: app.getVersion(),
     broadcast,
     onSettingsChanged: (updated) => {
       configurePipeline(pipeline, translatorRegistry, updated.translation, pipelineExtras)
@@ -260,7 +289,14 @@ async function bootstrap(): Promise<void> {
   })
 
   installAppMenu()
-  createMainWindow()
+  const win = createMainWindow()
+  // 关窗进托盘而不是退出：客服工具要保持后台在线收消息。
+  // 从托盘选"退出"或 app 正在退出时放行。
+  win.on('close', (e) => {
+    if (tray.quitting) return
+    e.preventDefault()
+    win.hide()
+  })
   void manager.startAll()
 
   app.on('second-instance', () => {
@@ -281,6 +317,10 @@ async function bootstrap(): Promise<void> {
   })
 
   app.on('before-quit', () => {
+    // 任何路径触发退出（Cmd+Q、更新安装）都要放行 close
+    tray.quitting = true
+    updater.stop()
+    tray.destroy()
     syncClient.stop()
     void manager.stopAll()
     void store.flush()

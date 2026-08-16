@@ -347,7 +347,18 @@ export const zhCN = {
   'auth.forgotSub': '通过邮箱验证码重置密码',
   'auth.newPassword': '新密码（至少 8 位）',
   'auth.doReset': '重置密码',
-  'auth.resetDone': '密码已重置，请用新密码登录'
+  'auth.resetDone': '密码已重置，请用新密码登录',
+  'settings.about': '关于',
+  'settings.version': '当前版本',
+  'settings.checkUpdates': '检查更新',
+  'settings.upd.idle': '有新版本时会自动在后台下载，退出时自动完成安装。',
+  'settings.upd.checking': '正在检查更新…',
+  'settings.upd.uptodate': '已是最新版本。',
+  'settings.upd.available': '发现新版本 v{v}，正在后台下载…',
+  'settings.upd.downloading': '下载中',
+  'settings.upd.ready': '新版本 v{v} 已就绪，将在下次退出时自动安装。',
+  'settings.upd.restart': '立即重启更新',
+  'settings.upd.error': '检查更新失败'
 }
 
 export type MessageKey = keyof typeof zhCN

@@ -44,7 +44,8 @@ function makeConfig(dbPath: string): ServerConfig {
     requireEmailVerify: false,
     clientTenant: 'dev-token',
     smtp: undefined,
-    publicUrl: 'http://localhost:8787'
+    publicUrl: 'http://localhost:8787',
+    updatesDir: join(dir, 'updates')
   }
 }
 

@@ -37,7 +37,10 @@ export const IPC_METHODS = {
   authLogout: 'omni:authLogout',
   campaignCall: 'omni:campaignCall',
   billingCall: 'omni:billingCall',
-  setUnreadTotal: 'omni:setUnreadTotal'
+  setUnreadTotal: 'omni:setUnreadTotal',
+  appInfo: 'omni:appInfo',
+  checkUpdates: 'omni:checkUpdates',
+  installUpdate: 'omni:installUpdate'
 } as const
 
 export type OmniEvent =
@@ -48,6 +51,8 @@ export type OmniEvent =
   | { type: 'channel:removed'; key: string }
   /** 用户点击系统通知 → 打开该会话 */
   | { type: 'conversation:open'; conversationId: string }
+  /** 自动更新状态变化 */
+  | { type: 'update:state'; state: import('./update').UpdateStateInfo }
 
 export interface TranslatorInfo {
   id: string
@@ -174,6 +179,12 @@ export interface OmniApi {
   billing<T = unknown>(method: string, ...args: unknown[]): Promise<T>
   /** 上报总未读数，主进程据此更新程序坞/任务栏角标 */
   setUnreadTotal(total: number): Promise<void>
+  /** 应用信息（版本号等，设置页"关于"展示） */
+  appInfo(): Promise<{ version: string; updateState: import('./update').UpdateStateInfo }>
+  /** 手动检查更新 */
+  checkUpdates(): Promise<void>
+  /** 更新已就绪时：立即重启安装 */
+  installUpdate(): Promise<void>
   /** 订阅主进程推送，返回取消订阅函数 */
   onEvent(cb: (evt: OmniEvent) => void): () => void
 }

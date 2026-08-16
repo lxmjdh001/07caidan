@@ -1,4 +1,4 @@
-import { createWriteStream } from 'node:fs'
+import { createReadStream, createWriteStream, statSync } from 'node:fs'
 import { mkdirSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
@@ -140,6 +140,31 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   }
 
   app.get('/health', async () => ({ ok: true }))
+
+  /**
+   * 客户端自动更新分发：/updates/<file>。
+   * 只允许安全文件名（防路径穿越），流式返回大安装包。
+   * 发布流程：electron-builder 打包后把 latest*.yml 与安装包拷进 updatesDir。
+   */
+  mkdirSync(config.updatesDir, { recursive: true })
+  app.get('/updates/:file', async (req, reply) => {
+    const file = (req.params as { file: string }).file
+    if (!/^[\w][\w.\- ]*$/.test(file) || file.includes('..')) {
+      return reply.code(400).send({ error: 'bad filename' })
+    }
+    const path = join(config.updatesDir, file)
+    try {
+      const stat = statSync(path)
+      if (!stat.isFile()) return reply.code(404).send({ error: 'not found' })
+      reply.header('content-length', stat.size)
+      // yml 给文本类型，安装包按二进制流
+      if (file.endsWith('.yml')) reply.type('text/yaml')
+      else reply.type('application/octet-stream')
+      return reply.send(createReadStream(path))
+    } catch {
+      return reply.code(404).send({ error: 'not found' })
+    }
+  })
 
   // 到期订阅续费/过期 + 超时订单清理；随服务停止
   const stopBillingCron = startBillingCron({

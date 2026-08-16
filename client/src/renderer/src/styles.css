@@ -2097,3 +2097,12 @@ body {
   letter-spacing: 0.04em;
   margin-bottom: 4px;
 }
+
+/* 关于 / 更新 */
+.about-row { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.update-ready {
+  display: flex; align-items: center; gap: 12px;
+  margin-top: 8px; padding: 10px 14px;
+  border: 1px solid var(--accent); border-radius: 9px; background: var(--accent-soft);
+  font-size: 13px;
+}
