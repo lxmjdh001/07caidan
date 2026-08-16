@@ -398,6 +398,7 @@ export function ChatView({
         {messages.map((m) => (
           <div key={m.id} className={`bubble-row ${m.direction === 'out' ? 'out' : 'in'}`}>
             <div className="bubble">
+              {m.origin === 'autoreply' && <span className="ai-chip">AI</span>}
               {conversation.isGroup && m.direction === 'in' && m.authorName && (
                 <div className="bubble-author">{m.authorName}</div>
               )}

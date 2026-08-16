@@ -61,6 +61,11 @@ export interface AutoReplyConfig {
   systemPrompt: string
   /** 同一会话两次自动回复的最小间隔（秒），防连发与机器人互怼 */
   cooldownSec: number
+  /**
+   * 转人工关键词（逗号/换行分隔）。客户消息命中任一关键词时：
+   * 停用该会话的自动回复并弹通知提醒客服接管。
+   */
+  handoffKeywords: string
 }
 
 /** 桌面通知与角标 */
@@ -120,7 +125,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     enabled: false,
     systemPrompt:
       '你是一名专业客服。用客户使用的语言简短友好地回复，不要编造价格与承诺，拿不准时请客户稍等人工回复。',
-    cooldownSec: 20
+    cooldownSec: 20,
+    handoffKeywords: '人工, 转人工, 真人, human, agent, operator'
   },
   sync: { enabled: false, serverUrl: '', token: '', email: '', uploadMedia: true },
   platform: { telegramApiId: '', telegramApiHash: '' },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Conversation, UnifiedMessage } from '@shared/domain'
-import { AutoReplyService, toContext, type AutoReplyDeps } from './auto-reply'
+import { AutoReplyService, matchesHandoff, toContext, type AutoReplyDeps } from './auto-reply'
 
 function msg(over: Partial<UnifiedMessage> = {}): UnifiedMessage {
   return {
@@ -39,7 +39,7 @@ function makeService(over: Partial<AutoReplyDeps> = {}): {
 } {
   const state = { sent: [] as string[], generated: 0 }
   const svc = new AutoReplyService({
-    getConfig: () => ({ enabled: true, systemPrompt: '客服', cooldownSec: 20 }),
+    getConfig: () => ({ enabled: true, systemPrompt: '客服', cooldownSec: 20, handoffKeywords: '人工, human' }),
     getMessages: async () => [msg()],
     generate: async () => {
       state.generated++
@@ -56,7 +56,7 @@ function makeService(over: Partial<AutoReplyDeps> = {}): {
 describe('shouldReply 触发条件', () => {
   it('全局关闭不回', () => {
     const { svc } = makeService({
-      getConfig: () => ({ enabled: false, systemPrompt: '', cooldownSec: 20 })
+      getConfig: () => ({ enabled: false, systemPrompt: '', cooldownSec: 20, handoffKeywords: '' })
     })
     expect(svc.shouldReply(msg(), conv())).toBe(false)
   })
@@ -147,5 +147,83 @@ describe('toContext', () => {
   it('未转写的媒体用占位符', () => {
     const ctx = toContext([msg({ body: { type: 'media', mediaType: 'image', mediaId: 'i' } })])
     expect(ctx[0]!.content).toBe('[image]')
+  })
+})
+
+describe('转人工', () => {
+  it('关键词匹配：包含式、大小写不敏感、中英分隔符都认', () => {
+    const kw = '人工, 转人工，human\nagent'
+    expect(matchesHandoff('我要转人工！', kw)).toBe(true)
+    expect(matchesHandoff('I want a HUMAN please', kw)).toBe(true)
+    expect(matchesHandoff('多少钱', kw)).toBe(false)
+    expect(matchesHandoff('anything', '')).toBe(false)
+  })
+
+  it('命中关键词：停用会话自动回复 + 提醒客服 + 不生成回复', async () => {
+    const paused: string[] = []
+    let notified = 0
+    let generated = 0
+    const svc = new AutoReplyService({
+      getConfig: () => ({
+        enabled: true,
+        systemPrompt: '',
+        cooldownSec: 20,
+        handoffKeywords: '人工'
+      }),
+      getMessages: async () => [],
+      generate: async () => {
+        generated++
+        return { text: 'x' }
+      },
+      send: async () => {},
+      pauseConversation: async (id) => {
+        paused.push(id)
+      },
+      notifyHandoff: () => {
+        notified++
+      }
+    })
+    await svc.onInbound(msg({ body: { type: 'text', text: '给我转人工' } }), conv())
+    expect(paused).toEqual(['c1'])
+    expect(notified).toBe(1)
+    expect(generated).toBe(0)
+  })
+
+  it('语音转写文本同样能触发转人工', async () => {
+    const paused: string[] = []
+    const svc = new AutoReplyService({
+      getConfig: () => ({
+        enabled: true,
+        systemPrompt: '',
+        cooldownSec: 20,
+        handoffKeywords: '人工'
+      }),
+      getMessages: async () => [],
+      generate: async () => ({ text: 'x' }),
+      send: async () => {},
+      pauseConversation: async (id) => {
+        paused.push(id)
+      }
+    })
+    await svc.onInbound(
+      msg({ body: { type: 'media', mediaType: 'audio', mediaId: 'v', transcript: '我要人工客服' } }),
+      conv()
+    )
+    expect(paused).toEqual(['c1'])
+  })
+
+  it('会话未开自动回复时不触发转人工逻辑（没开就无所谓停）', async () => {
+    const paused: string[] = []
+    const svc = new AutoReplyService({
+      getConfig: () => ({ enabled: true, systemPrompt: '', cooldownSec: 20, handoffKeywords: '人工' }),
+      getMessages: async () => [],
+      generate: async () => ({ text: 'x' }),
+      send: async () => {},
+      pauseConversation: async (id) => {
+        paused.push(id)
+      }
+    })
+    await svc.onInbound(msg({ body: { type: 'text', text: '人工' } }), conv({ autoReply: false }))
+    expect(paused).toEqual([])
   })
 })

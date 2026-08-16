@@ -162,7 +162,8 @@ export class ChannelManager {
   async sendText(
     convId: string,
     text: string,
-    prepared?: OutboundPreview
+    prepared?: OutboundPreview,
+    origin?: 'agent' | 'autoreply'
   ): Promise<UnifiedMessage> {
     const { channel, accountId, externalChatId } = parseConversationId(convId)
     const adapter = this.requireAdapter(`${channel}:${accountId}`)
@@ -182,6 +183,7 @@ export class ChannelManager {
         outbound.engine !== undefined
           ? { text: outbound.original, targetLang, engine: outbound.engine }
           : undefined,
+      origin,
       timestamp: Date.now(),
       status: 'pending'
     }

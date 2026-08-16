@@ -12,6 +12,10 @@ export interface AutoReplyDeps {
   }) => Promise<{ text: string }>
   /** 发出回复（走 prepared 跳过出站翻译 —— 模型已按客户语言作答，再翻一次会翻坏） */
   send: (conversationId: string, text: string) => Promise<void>
+  /** 客户要求人工：停用该会话的自动回复 */
+  pauseConversation?: (conversationId: string) => Promise<void>
+  /** 提醒客服接管（系统通知） */
+  notifyHandoff?: (conversation: Conversation) => void
   log?: { info: (msg: string, meta?: unknown) => void; warn: (msg: string, meta?: unknown) => void }
 }
 
@@ -54,6 +58,17 @@ export class AutoReplyService {
 
   /** 入站消息钩子；不满足条件时静默返回 */
   async onInbound(message: UnifiedMessage, conversation: Conversation): Promise<void> {
+    // 转人工优先于一切：哪怕在冷却期，客户喊人也要立刻停机器并提醒
+    if (
+      conversation.autoReply &&
+      message.direction === 'in' &&
+      matchesHandoff(inboundText(message), this.deps.getConfig().handoffKeywords)
+    ) {
+      await this.deps.pauseConversation?.(conversation.id)
+      this.deps.notifyHandoff?.(conversation)
+      this.deps.log?.info('客户要求人工，自动回复已停用', { conversationId: conversation.id })
+      return
+    }
     if (!this.shouldReply(message, conversation)) return
     const cfg = this.deps.getConfig()
     this.inFlight.add(conversation.id)
@@ -102,4 +117,24 @@ function textOf(m: UnifiedMessage): string {
     return `[${b.mediaType}]`
   }
   return ''
+}
+
+/** 入站消息的可读文本（含语音转写），供转人工关键词匹配 */
+function inboundText(m: UnifiedMessage): string {
+  return textOf(m)
+}
+
+/**
+ * 转人工关键词匹配。
+ * 大小写不敏感；关键词按逗号/换行拆分；空配置不匹配任何内容。
+ * 用「包含」而不是全等 —— 客户说的是"我要转人工！"而不是干净的关键词。
+ */
+export function matchesHandoff(text: string, keywords: string): boolean {
+  if (!text || !keywords.trim()) return false
+  const lower = text.toLowerCase()
+  return keywords
+    .split(/[,，\n]/)
+    .map((k) => k.trim().toLowerCase())
+    .filter((k) => k.length > 0)
+    .some((k) => lower.includes(k))
 }

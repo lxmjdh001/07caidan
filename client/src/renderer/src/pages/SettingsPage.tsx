@@ -52,6 +52,7 @@ export function SettingsPage({
   const [arOn, setArOn] = useState(settings.autoReply.enabled)
   const [arPrompt, setArPrompt] = useState(settings.autoReply.systemPrompt)
   const [arCooldown, setArCooldown] = useState(String(settings.autoReply.cooldownSec))
+  const [arHandoff, setArHandoff] = useState(settings.autoReply.handoffKeywords)
   const [engine, setEngine] = useState(tr.engine)
   const [inbound, setInbound] = useState(tr.inboundEnabled)
   const [outbound, setOutbound] = useState(tr.outboundEnabled)
@@ -81,7 +82,8 @@ export function SettingsPage({
         autoReply: {
           enabled: arOn,
           systemPrompt: arPrompt,
-          cooldownSec: Math.max(5, Number(arCooldown) || 20)
+          cooldownSec: Math.max(5, Number(arCooldown) || 20),
+          handoffKeywords: arHandoff
         },
         translation: {
           engine,
@@ -216,6 +218,15 @@ export function SettingsPage({
                   style={{ maxWidth: 90 }}
                 />
               </label>
+              <label className="field">
+                <span>{t('settings.handoffKeywords')}</span>
+                <input
+                  type="text"
+                  value={arHandoff}
+                  onChange={(e) => setArHandoff(e.target.value)}
+                />
+              </label>
+              <p className="field-hint">{t('settings.handoffHint')}</p>
               <p className="field-hint">{t('settings.autoReplyHint')}</p>
             </section>
           )}

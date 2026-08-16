@@ -2084,3 +2084,16 @@ body {
   gap: 8px;
   align-items: center;
 }
+
+/* AI 自动回复的气泡标识 */
+.ai-chip {
+  display: inline-block;
+  padding: 0 6px;
+  border-radius: 6px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}

@@ -79,6 +79,11 @@ export interface UnifiedMessage {
    * 临时字段：由适配器映射时填入，ChannelManager 消费后写到会话上，不入库。
    */
   leadSource?: LeadSourceInfo
+  /**
+   * 出站消息来源：autoreply = AI 自动发出。
+   * 界面据此给气泡标"AI"，客服接管时一眼能分清哪些是机器说的。
+   */
+  origin?: 'agent' | 'autoreply'
   /** 内部唯一 ID */
   id: string
   /** 平台侧消息 ID（用于去重、状态回执） */

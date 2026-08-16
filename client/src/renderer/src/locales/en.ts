@@ -343,5 +343,7 @@ export const en: Record<MessageKey, string> = {
   'settings.autoReplyEnabled': 'Enable auto-reply (each conversation must also opt in)',
   'settings.autoReplyPrompt': 'Persona / instructions (system prompt sent to the model)',
   'settings.autoReplyCooldown': 'Minimum interval per conversation (seconds)',
-  'settings.autoReplyHint': 'Billed in credits (purpose: auto-reply). Two-level switches: after enabling globally, only conversations that opt in are affected.'
+  'settings.autoReplyHint': 'Billed in credits (purpose: auto-reply). Two-level switches: after enabling globally, only conversations that opt in are affected.',
+  'settings.handoffKeywords': 'Handoff keywords (comma separated)',
+  'settings.handoffHint': 'When a customer message (including voice transcripts) matches any keyword, auto-reply for that conversation is disabled and you get notified to take over.'
 }

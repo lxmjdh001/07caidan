@@ -95,11 +95,32 @@ async function bootstrap(): Promise<void> {
     generate: (body) => billingApi.reply(body),
     // prepared 跳过出站翻译：模型已按客户语言作答，再翻一次只会翻坏
     send: async (conversationId, text) => {
-      await manager.sendText(conversationId, text, {
-        send: text,
-        original: text,
-        targetLang: ''
-      })
+      await manager.sendText(
+        conversationId,
+        text,
+        { send: text, original: text, targetLang: '' },
+        'autoreply'
+      )
+    },
+    // 客户喊人工：关掉该会话的自动回复并广播，界面开关同步熄灭
+    pauseConversation: async (conversationId) => {
+      const updated = await store.patchConversation({ id: conversationId, autoReply: false })
+      if (updated) broadcast({ type: 'conversation:updated', conversation: updated })
+    },
+    notifyHandoff: (conversation) => {
+      notifier.notifyInbound(
+        {
+          id: 'handoff',
+          conversationId: conversation.id,
+          channel: conversation.channel,
+          accountId: conversation.accountId,
+          direction: 'in',
+          body: { type: 'text', text: '客户要求人工服务，自动回复已停用' },
+          timestamp: Date.now(),
+          status: 'delivered'
+        },
+        conversation
+      )
     },
     log: logger.child('auto-reply')
   })
