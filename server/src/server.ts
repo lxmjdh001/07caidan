@@ -147,6 +147,21 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   })
   app.addHook('onClose', async () => stopBillingCron())
 
+  // LINE 事件队列超龄清理：客户端长期离线时 3 天前的事件已无时效价值
+  const linePrune = setInterval(
+    () => {
+      try {
+        const n = lineRelay.pruneStale(config.clientTenant)
+        if (n > 0) app.log.info({ pruned: n }, 'LINE 超龄事件已清理')
+      } catch (err) {
+        app.log.warn({ err: String(err) }, 'LINE 事件清理失败')
+      }
+    },
+    60 * 60 * 1000
+  )
+  linePrune.unref?.()
+  app.addHook('onClose', async () => clearInterval(linePrune))
+
   registerBillingRoutes(app, {
     billing: billingRepo,
     orders: orderRepo,
