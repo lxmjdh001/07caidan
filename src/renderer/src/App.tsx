@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChannelState, Conversation, UnifiedMessage } from '@shared/domain'
 import type { AppSettings } from '@shared/settings'
-import type { TranslatorInfo } from '@shared/ipc'
+import type { OutboundPreview, TranslatorInfo } from '@shared/ipc'
 import { ChannelRail } from './components/ChannelRail'
 import { ChatView } from './components/ChatView'
 import { ConversationList } from './components/ConversationList'
@@ -94,9 +94,9 @@ export function App(): React.JSX.Element {
   )
 
   const sendText = useCallback(
-    async (text: string) => {
+    async (text: string, prepared?: OutboundPreview) => {
       if (!activeId) return
-      const msg = await api.sendText(activeId, text)
+      const msg = await api.sendText(activeId, text, prepared)
       setMessages((prev) => {
         const list = prev[activeId] ?? []
         if (list.some((m) => m.id === msg.id)) return prev
@@ -116,6 +116,14 @@ export function App(): React.JSX.Element {
       return { ...prev, [activeId]: [...list, msg] }
     })
   }, [activeId])
+
+  const previewOutbound = useCallback(
+    async (text: string): Promise<OutboundPreview> => {
+      if (!activeId) return { send: text, original: text, targetLang: 'en' }
+      return api.previewOutbound(activeId, text)
+    },
+    [activeId]
+  )
 
   const setConvLang = useCallback(
     async (lang: string | null) => {
@@ -183,6 +191,8 @@ export function App(): React.JSX.Element {
                 onSend={sendText}
                 onSendMedia={sendMediaFile}
                 onSetLang={setConvLang}
+                onPreview={previewOutbound}
+                confirmBeforeSend={settings?.translation.confirmBeforeSend ?? true}
               />
             )}
           </main>

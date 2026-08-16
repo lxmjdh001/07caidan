@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { ChannelState, UnifiedMessage } from '@shared/domain'
 import { conversationId, parseConversationId } from '@shared/domain'
-import type { OmniEvent } from '@shared/ipc'
+import type { OmniEvent, OutboundPreview } from '@shared/ipc'
 import { basename } from 'node:path'
 import type { TranslationPipeline } from '../translation/pipeline'
 import type { ChannelAdapter } from './channel-adapter'
@@ -118,13 +118,27 @@ export class ChannelManager {
   /** 由装配层注入：读取账号级/全局默认客户语言 */
   getLangDefaults?: (channelKey: string) => { accountDefault?: string; globalDefault: string }
 
-  /** UI 发送文本：翻译成客户语言（可关）→ 适配器发出 → 入库 → 回推 UI */
-  async sendText(convId: string, text: string): Promise<UnifiedMessage> {
+  /** 出站翻译预览：完成翻译但不发送（预览确认交互用） */
+  async previewOutbound(convId: string, text: string): Promise<OutboundPreview> {
+    const targetLang = await this.resolveTargetLang(convId)
+    const outbound = await this.translation.processOutbound(text, targetLang)
+    return { ...outbound, targetLang }
+  }
+
+  /**
+   * UI 发送文本：翻译成客户语言（可关）→ 适配器发出 → 入库 → 回推 UI。
+   * prepared 传入预览结果时直接采用，不重复翻译。
+   */
+  async sendText(
+    convId: string,
+    text: string,
+    prepared?: OutboundPreview
+  ): Promise<UnifiedMessage> {
     const { channel, accountId, externalChatId } = parseConversationId(convId)
     const adapter = this.requireAdapter(`${channel}:${accountId}`)
 
-    const targetLang = await this.resolveTargetLang(convId)
-    const outbound = await this.translation.processOutbound(text, targetLang)
+    const targetLang = prepared?.targetLang ?? (await this.resolveTargetLang(convId))
+    const outbound = prepared ?? (await this.translation.processOutbound(text, targetLang))
 
     const msg: UnifiedMessage = {
       id: randomUUID(),

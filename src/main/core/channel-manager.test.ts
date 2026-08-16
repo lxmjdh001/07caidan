@@ -190,6 +190,28 @@ describe('ChannelManager', () => {
     expect(events.some((e) => e.type === 'message:new')).toBe(true)
   })
 
+  it('previewOutbound 返回翻译与目标语言；sendText 传入 prepared 不重复翻译', async () => {
+    const upper = new TranslationPipeline(
+      { name: 'upper', translate: async (text) => ({ text: text.toUpperCase() }) },
+      { inboundEnabled: false, outboundEnabled: true, displayLang: 'zh-CN' }
+    )
+    const spy = vi.spyOn(upper, 'processOutbound')
+    const mgr = new ChannelManager(store, upper, (evt) => events.push(evt), noopLogger)
+    const a2 = new FakeAdapter()
+    mgr.register(a2)
+    mgr.getLangDefaults = () => ({ globalDefault: 'en' })
+
+    const preview = await mgr.previewOutbound('whatsapp:main:42@s.whatsapp.net', 'hello')
+    expect(preview).toEqual({ send: 'HELLO', original: 'hello', engine: 'upper', targetLang: 'en' })
+
+    spy.mockClear()
+    const msg = await mgr.sendText('whatsapp:main:42@s.whatsapp.net', 'hello', preview)
+    expect(spy).not.toHaveBeenCalled()
+    expect(msg.body).toEqual({ type: 'text', text: 'HELLO' })
+    expect(msg.translation).toMatchObject({ text: 'hello', targetLang: 'en', engine: 'upper' })
+    expect(a2.sendText).toHaveBeenCalledWith('42@s.whatsapp.net', 'HELLO')
+  })
+
   it('sendText 失败：消息标记 failed 但仍入库', async () => {
     adapter.sendText.mockRejectedValueOnce(new Error('network down'))
     const msg = await manager.sendText('whatsapp:main:42@s.whatsapp.net', 'oops')

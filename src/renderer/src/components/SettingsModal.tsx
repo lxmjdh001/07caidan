@@ -47,6 +47,7 @@ export function SettingsModal({
   const [engine, setEngine] = useState(tr.engine)
   const [inbound, setInbound] = useState(tr.inboundEnabled)
   const [outbound, setOutbound] = useState(tr.outboundEnabled)
+  const [confirmSend, setConfirmSend] = useState(tr.confirmBeforeSend)
   const [displayLang, setDisplayLang] = useState(tr.displayLang)
   const [targetLangDefault, setTargetLangDefault] = useState(tr.targetLangDefault)
   const [customUrl, setCustomUrl] = useState(tr.custom.url)
@@ -71,6 +72,7 @@ export function SettingsModal({
           engine,
           inboundEnabled: inbound,
           outboundEnabled: outbound,
+          confirmBeforeSend: confirmSend,
           displayLang,
           targetLangDefault,
           custom: { url: customUrl.trim(), apiKey: customKey.trim() },
@@ -196,6 +198,14 @@ export function SettingsModal({
               onChange={(e) => setOutbound(e.target.checked)}
             />
             <span>{t('settings.outbound')}</span>
+          </label>
+          <label className="field checkbox">
+            <input
+              type="checkbox"
+              checked={confirmSend}
+              onChange={(e) => setConfirmSend(e.target.checked)}
+            />
+            <span>{t('settings.confirmBeforeSend')}</span>
           </label>
           <label className="field">
             <span>{t('settings.displayLang')}</span>

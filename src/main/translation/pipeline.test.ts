@@ -29,6 +29,7 @@ function fullConfig(overrides: Partial<TranslationConfig> = {}): TranslationConf
     engine: 'google-free',
     inboundEnabled: true,
     outboundEnabled: true,
+    confirmBeforeSend: true,
     displayLang: 'zh-CN',
     targetLangDefault: 'en',
     custom: { url: '', apiKey: '' },

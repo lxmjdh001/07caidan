@@ -12,6 +12,7 @@ export const IPC_METHODS = {
   listConversations: 'omni:listConversations',
   listMessages: 'omni:listMessages',
   sendText: 'omni:sendText',
+  previewOutbound: 'omni:previewOutbound',
   markRead: 'omni:markRead',
   sendMedia: 'omni:sendMedia',
   setConversationLang: 'omni:setConversationLang',
@@ -31,6 +32,18 @@ export interface TranslatorInfo {
   displayName: string
 }
 
+/** 出站翻译预览：已完成翻译但尚未发送 */
+export interface OutboundPreview {
+  /** 将实际发出的文本（译文；未翻译时等于 original） */
+  send: string
+  /** 坐席输入的原文 */
+  original: string
+  /** 执行翻译的引擎名；为空表示没有发生翻译 */
+  engine?: string
+  /** 解析出的目标语言 */
+  targetLang: string
+}
+
 /** preload 暴露到 window.omni 的 API，渲染进程唯一的主进程入口 */
 export interface OmniApi {
   /** 运行平台（darwin / win32 / linux），用于标题栏等平台差异化渲染 */
@@ -40,7 +53,14 @@ export interface OmniApi {
   logoutChannel(key: string): Promise<void>
   listConversations(): Promise<Conversation[]>
   listMessages(conversationId: string, limit?: number): Promise<UnifiedMessage[]>
-  sendText(conversationId: string, text: string): Promise<UnifiedMessage>
+  /** prepared 传入预览结果时直接按其发送（不再重复翻译） */
+  sendText(
+    conversationId: string,
+    text: string,
+    prepared?: OutboundPreview
+  ): Promise<UnifiedMessage>
+  /** 出站翻译预览：翻译但不发送 */
+  previewOutbound(conversationId: string, text: string): Promise<OutboundPreview>
   /** 弹出文件选择框并发送所选媒体；用户取消返回 null */
   sendMedia(conversationId: string): Promise<UnifiedMessage | null>
   /** 设置会话的客户语言（null = 清除，回到自动） */

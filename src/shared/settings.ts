@@ -7,6 +7,8 @@ export interface TranslationConfig {
   inboundEnabled: boolean
   /** 发送时自动译为客户语言 */
   outboundEnabled: boolean
+  /** 发送前显示译文预览，确认后才发出（关闭则直发） */
+  confirmBeforeSend: boolean
   /** 坐席本地语言（收到的消息译成这个） */
   displayLang: string
   /** 全局默认客户语言：未识别到客户语言且账号未配置时使用 */
@@ -39,6 +41,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     engine: 'google-free',
     inboundEnabled: true,
     outboundEnabled: true,
+    confirmBeforeSend: true,
     displayLang: 'zh-CN',
     targetLangDefault: 'en',
     custom: { url: '', apiKey: '' },

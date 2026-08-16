@@ -1,5 +1,5 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron'
-import { IPC_METHODS, type OmniEvent } from '@shared/ipc'
+import { IPC_METHODS, type OmniEvent, type OutboundPreview } from '@shared/ipc'
 import type { AppSettings } from '@shared/settings'
 import type { ChannelManager } from './core/channel-manager'
 import type { MessageStore } from './core/message-store'
@@ -29,8 +29,13 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle(IPC_METHODS.listMessages, (_e, conversationId: string, limit?: number) =>
     store.listMessages(conversationId, limit)
   )
-  ipcMain.handle(IPC_METHODS.sendText, (_e, conversationId: string, text: string) =>
-    manager.sendText(conversationId, text)
+  ipcMain.handle(
+    IPC_METHODS.sendText,
+    (_e, conversationId: string, text: string, prepared?: OutboundPreview) =>
+      manager.sendText(conversationId, text, prepared)
+  )
+  ipcMain.handle(IPC_METHODS.previewOutbound, (_e, conversationId: string, text: string) =>
+    manager.previewOutbound(conversationId, text)
   )
   ipcMain.handle(IPC_METHODS.markRead, (_e, conversationId: string) =>
     store.markRead(conversationId)

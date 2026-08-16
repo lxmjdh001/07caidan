@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Conversation, MessageBody, UnifiedMessage } from '@shared/domain'
 import { previewOf } from '@shared/domain'
+import type { OutboundPreview } from '@shared/ipc'
 import { LANGUAGES, languageLabel } from '@shared/langs'
 import { useI18n } from '../i18n'
 import { formatBubbleTime } from '../time'
@@ -12,10 +13,14 @@ interface Props {
   connected: boolean
   /** 同一客户是否在其他账号/渠道有过会话 */
   knownFromOther: boolean
-  onSend: (text: string) => Promise<void>
+  onSend: (text: string, prepared?: OutboundPreview) => Promise<void>
   onSendMedia: () => Promise<void>
   /** 设置该会话的客户语言（null = 回到自动） */
   onSetLang: (lang: string | null) => Promise<void>
+  /** 出站翻译预览（翻译但不发送） */
+  onPreview: (text: string) => Promise<OutboundPreview>
+  /** 发送前是否需要预览确认 */
+  confirmBeforeSend: boolean
 }
 
 type MediaBody = Extract<MessageBody, { type: 'media' }>
@@ -55,16 +60,20 @@ export function ChatView({
   knownFromOther,
   onSend,
   onSendMedia,
-  onSetLang
+  onSetLang,
+  onPreview,
+  confirmBeforeSend
 }: Props): React.JSX.Element {
   const { t, locale } = useI18n()
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
+  const [preview, setPreview] = useState<OutboundPreview | null>(null)
   const [showConvSettings, setShowConvSettings] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setShowConvSettings(false)
+    setPreview(null)
   }, [conversation?.id])
 
   useEffect(() => {
@@ -80,15 +89,42 @@ export function ChatView({
     )
   }
 
-  const submit = async (): Promise<void> => {
-    const text = draft.trim()
-    if (!text || sending) return
+  const doSend = async (text: string, prepared?: OutboundPreview): Promise<void> => {
     setSending(true)
-    setDraft('')
     try {
-      await onSend(text)
+      await onSend(text, prepared)
+      setDraft('')
+      setPreview(null)
     } finally {
       setSending(false)
+    }
+  }
+
+  const submit = async (): Promise<void> => {
+    if (sending) return
+    // 预览已展示：本次提交即确认发送
+    if (preview) {
+      await doSend(preview.original, preview)
+      return
+    }
+    const text = draft.trim()
+    if (!text) return
+    if (confirmBeforeSend) {
+      setSending(true)
+      let p: OutboundPreview | null = null
+      try {
+        p = await onPreview(text)
+      } finally {
+        setSending(false)
+      }
+      // 发生了翻译才需要确认；没翻译（同语言/引擎关闭）直接发
+      if (p?.engine) {
+        setPreview(p)
+        return
+      }
+      await doSend(text)
+    } else {
+      await doSend(text)
     }
   }
 
@@ -189,6 +225,28 @@ export function ChatView({
           </div>
         ))}
       </div>
+      {preview && (
+        <div className="send-preview">
+          <div className="send-preview-head">
+            {t('chat.previewLabel')} · {languageLabel(preview.targetLang)}
+            {preview.engine ? ` · ${preview.engine}` : ''}
+          </div>
+          <div className="send-preview-text">{preview.send}</div>
+          <div className="send-preview-actions">
+            <button type="button" className="ghost-btn" onClick={() => setPreview(null)}>
+              {t('settings.cancel')}
+            </button>
+            <button
+              type="button"
+              className="primary-btn"
+              disabled={sending}
+              onClick={() => void submit()}
+            >
+              {t('chat.confirmSend')}
+            </button>
+          </div>
+        </div>
+      )}
       <footer className="composer">
         <button
           type="button"
@@ -204,11 +262,18 @@ export function ChatView({
           rows={1}
           value={draft}
           placeholder={t('chat.composer.placeholder')}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            // 修改草稿使已生成的预览失效
+            if (preview) setPreview(null)
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault()
               void submit()
+            }
+            if (e.key === 'Escape' && preview) {
+              setPreview(null)
             }
           }}
         />
