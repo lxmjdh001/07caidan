@@ -5,6 +5,7 @@ import type { OmniEvent, OutboundPreview } from '@shared/ipc'
 import { basename } from 'node:path'
 import type { TranslationPipeline } from '../translation/pipeline'
 import type { ChannelAdapter } from './channel-adapter'
+import { detectLeadSource } from './lead-source'
 import { noopLogger, type Logger } from './logger'
 import type { JsonContactStore } from './contact-store'
 import type { MediaStore } from './media-store'
@@ -262,6 +263,17 @@ export class ChannelManager {
         const updated = await this.store.patchConversation({ id: conversation.id, detectedLang })
         if (updated) this.broadcast({ type: 'conversation:updated', conversation: updated })
       }
+      // 投放归因：只认第一次，之后不再覆盖（同一个客户的来源不该变来变去）
+      if (msg.direction === 'in' && !conversation.leadSource) {
+        const source = msg.leadSource ?? detectLeadSource(textOf(msg))
+        if (source) {
+          const updated = await this.store.patchConversation({
+            id: conversation.id,
+            leadSource: source
+          })
+          if (updated) this.broadcast({ type: 'conversation:updated', conversation: updated })
+        }
+      }
       this.ensureAvatar(conversation)
       this.ensureTitle(conversation)
       this.ensureContactId(conversation)
@@ -348,4 +360,12 @@ export class ChannelManager {
     if (!adapter) throw new Error(`未注册的渠道: ${key}`)
     return adapter
   }
+}
+
+/** 取消息的可读文本（媒体取说明文字），用于解析预填文案里的追踪码 */
+function textOf(msg: UnifiedMessage): string | undefined {
+  const b = msg.body
+  if (b.type === 'text') return b.text
+  if (b.type === 'media') return b.caption
+  return undefined
 }

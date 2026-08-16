@@ -67,6 +67,11 @@ export interface Translation {
 }
 
 export interface UnifiedMessage {
+  /**
+   * 平台广告上下文识别出的来源（目前仅 WhatsApp Click-to-WhatsApp 有）。
+   * 临时字段：由适配器映射时填入，ChannelManager 消费后写到会话上，不入库。
+   */
+  leadSource?: LeadSourceInfo
   /** 内部唯一 ID */
   id: string
   /** 平台侧消息 ID（用于去重、状态回执） */
@@ -82,6 +87,17 @@ export interface UnifiedMessage {
   /** epoch 毫秒 */
   timestamp: number
   status: MessageStatus
+}
+
+/** 客户来源（投放归因），只在首条入站消息时识别一次 */
+export interface LeadSourceInfo {
+  /** 归一化的来源标识，用于分组统计 */
+  code: string
+  /** ad = 平台广告上下文（最可靠）；code = 预填文案里的追踪码 */
+  via: 'ad' | 'code'
+  clickId?: string
+  sourceUrl?: string
+  title?: string
 }
 
 export interface Conversation {
@@ -102,6 +118,8 @@ export interface Conversation {
   detectedLang?: string
   /** 手动指定的客户语言（会话级设置，优先级最高）；空 = 自动 */
   langOverride?: string
+  /** 投放归因：这个客户从哪个广告/链接来的（首条入站消息识别后固定不变） */
+  leadSource?: LeadSourceInfo
   isGroup: boolean
   lastMessageAt: number
   lastMessagePreview: string

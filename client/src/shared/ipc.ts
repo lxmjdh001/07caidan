@@ -30,7 +30,8 @@ export const IPC_METHODS = {
   authRegister: 'omni:authRegister',
   authLogin: 'omni:authLogin',
   authLogout: 'omni:authLogout',
-  campaignCall: 'omni:campaignCall'
+  campaignCall: 'omni:campaignCall',
+  setUnreadTotal: 'omni:setUnreadTotal'
 } as const
 
 export type OmniEvent =
@@ -39,6 +40,8 @@ export type OmniEvent =
   | { type: 'conversation:updated'; conversation: Conversation }
   | { type: 'channel:state'; state: ChannelState }
   | { type: 'channel:removed'; key: string }
+  /** 用户点击系统通知 → 打开该会话 */
+  | { type: 'conversation:open'; conversationId: string }
 
 export interface TranslatorInfo {
   id: string
@@ -138,6 +141,8 @@ export interface OmniApi {
    * 逐个开通道只会让 preload 和 handler 长出十几段一模一样的样板代码。
    */
   campaign<T = unknown>(method: string, ...args: unknown[]): Promise<T>
+  /** 上报总未读数，主进程据此更新程序坞/任务栏角标 */
+  setUnreadTotal(total: number): Promise<void>
   /** 订阅主进程推送，返回取消订阅函数 */
   onEvent(cb: (evt: OmniEvent) => void): () => void
 }

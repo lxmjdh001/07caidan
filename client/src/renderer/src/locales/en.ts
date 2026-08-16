@@ -244,5 +244,13 @@ export const en: Record<MessageKey, string> = {
   'campaign.copied': 'Copied',
   'campaign.newLib': 'New fan library',
   'campaign.exportAccounts': 'Export contacts from these accounts',
-  'campaign.noAccountsForChannel': 'No accounts on this platform yet'
+  'campaign.noAccountsForChannel': 'No accounts on this platform yet',
+  'settings.notifications': 'Notifications',
+  'settings.notifyEnabled': 'Show system notifications when the window is not focused',
+  'settings.notifyPreview': 'Show message content in notifications',
+  'settings.notifySound': 'Notification sound',
+  'settings.notifyHint': 'On a shared screen, turn off content preview so notifications only say a message arrived. Clicking a notification jumps straight to that conversation.',
+  'chat.from': 'from',
+  'chat.sourceAd': 'Came from an ad click (platform attribution, most reliable)',
+  'chat.sourceCode': 'Tracking code in the prefilled entry-link message'
 }

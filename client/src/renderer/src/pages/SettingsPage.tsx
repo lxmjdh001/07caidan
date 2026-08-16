@@ -46,6 +46,9 @@ export function SettingsPage({
   const [tab, setTab] = useState<Tab>('general')
   const [locale, setLocale] = useState(settings.locale)
   const [theme, setTheme] = useState<ThemeMode>(settings.theme)
+  const [notifyOn, setNotifyOn] = useState(settings.notifications.enabled)
+  const [notifyPreview, setNotifyPreview] = useState(settings.notifications.showPreview)
+  const [notifySound, setNotifySound] = useState(settings.notifications.sound)
   const [engine, setEngine] = useState(tr.engine)
   const [inbound, setInbound] = useState(tr.inboundEnabled)
   const [outbound, setOutbound] = useState(tr.outboundEnabled)
@@ -71,6 +74,7 @@ export function SettingsPage({
       await onSave({
         locale,
         theme,
+        notifications: { enabled: notifyOn, showPreview: notifyPreview, sound: notifySound },
         translation: {
           engine,
           inboundEnabled: inbound,
@@ -152,6 +156,35 @@ export function SettingsPage({
                 </div>
               </div>
               <p className="field-hint">{t('settings.themeHint')}</p>
+
+              <h3 style={{ marginTop: 22 }}>{t('settings.notifications')}</h3>
+              <label className="field checkbox">
+                <input
+                  type="checkbox"
+                  checked={notifyOn}
+                  onChange={(e) => setNotifyOn(e.target.checked)}
+                />
+                <span>{t('settings.notifyEnabled')}</span>
+              </label>
+              <label className="field checkbox">
+                <input
+                  type="checkbox"
+                  checked={notifyPreview}
+                  disabled={!notifyOn}
+                  onChange={(e) => setNotifyPreview(e.target.checked)}
+                />
+                <span>{t('settings.notifyPreview')}</span>
+              </label>
+              <label className="field checkbox">
+                <input
+                  type="checkbox"
+                  checked={notifySound}
+                  disabled={!notifyOn}
+                  onChange={(e) => setNotifySound(e.target.checked)}
+                />
+                <span>{t('settings.notifySound')}</span>
+              </label>
+              <p className="field-hint">{t('settings.notifyHint')}</p>
             </section>
           )}
 

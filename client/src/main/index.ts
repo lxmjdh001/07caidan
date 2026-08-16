@@ -7,6 +7,7 @@ import { MediaStore } from './core/media-store'
 import { SyncClient } from './sync/sync-client'
 import { ClientAuth } from './auth/client-auth'
 import { CampaignApi } from './campaigns/campaign-api'
+import { Notifier } from './core/notifier'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { whatsAppPlugin } from './channels/whatsapp'
 import { telegramBotPlugin } from './channels/telegram'
@@ -74,10 +75,26 @@ async function bootstrap(): Promise<void> {
     }
   }
 
+  const notifier = new Notifier({
+    getConfig: () => settings.get().notifications,
+    logger,
+    onActivate: (conversationId) => broadcast({ type: 'conversation:open', conversationId })
+  })
+
+  /** 收到入站消息时弹系统通知（窗口已聚焦则跳过，通知里带账号备注名） */
+  const notifyOnInbound = (evt: OmniEvent): void => {
+    if (evt.type !== 'message:new' || evt.message.direction !== 'in') return
+    const key = `${evt.message.channel}:${evt.message.accountId}`
+    notifier.notifyInbound(evt.message, evt.conversation, settings.accountConfig(key).label)
+  }
+
   const manager = new ChannelManager(
     store,
     pipeline,
-    broadcast,
+    (evt) => {
+      broadcast(evt)
+      notifyOnInbound(evt)
+    },
     logger.child('manager'),
     media,
     contacts
@@ -164,6 +181,7 @@ async function bootstrap(): Promise<void> {
     channels,
     translators: translatorRegistry,
     campaigns: campaignApi,
+    notifier,
     broadcast,
     onSettingsChanged: (updated) => {
       configurePipeline(pipeline, translatorRegistry, updated.translation)

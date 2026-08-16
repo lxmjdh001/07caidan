@@ -4,6 +4,7 @@ import type { AppSettings } from '@shared/settings'
 import type { ClientAuth } from './auth/client-auth'
 import type { ChannelRegistry } from './channels/registry'
 import type { CampaignApi } from './campaigns/campaign-api'
+import type { Notifier } from './core/notifier'
 import type { ChannelManager } from './core/channel-manager'
 import type { MessageStore } from './core/message-store'
 import type { SettingsStore } from './core/settings-store'
@@ -17,6 +18,7 @@ export interface IpcDeps {
   channels: ChannelRegistry
   translators: TranslatorRegistry
   campaigns: CampaignApi
+  notifier: Notifier
   /** 设置更新后的回调（重新装配翻译管道等） */
   onSettingsChanged: (settings: AppSettings) => void
   /** 主动推送事件到渲染进程 */
@@ -67,6 +69,9 @@ export function registerIpc(deps: IpcDeps): void {
     manager.submitAuthInput(key, value)
   )
   ipcMain.handle(IPC_METHODS.logoutChannel, (_e, key: string) => manager.logout(key))
+  ipcMain.handle(IPC_METHODS.setUnreadTotal, (_e, total: number) => {
+    deps.notifier.setUnreadTotal(Number(total) || 0)
+  })
 
   // 工单 / 重粉库：方法名 + 参数数组转发到后台客户端。
   // 白名单校验，避免渲染进程随便点名调用对象上的任意属性。

@@ -54,6 +54,14 @@ export interface SyncConfig {
   uploadMedia: boolean
 }
 
+/** 桌面通知与角标 */
+export interface NotificationConfig {
+  enabled: boolean
+  /** 通知里是否展示消息正文；关掉只显示「[新消息]」，适合共用屏幕的场景 */
+  showPreview: boolean
+  sound: boolean
+}
+
 /** 平台级默认凭证（账号未单独配置时回退到此） */
 export interface PlatformDefaults {
   /** Telegram 应用级 API 凭证（my.telegram.org 申请），普通账号登录必需 */
@@ -70,6 +78,7 @@ export interface AppSettings {
   /** 界面主题，默认跟随系统 */
   theme: ThemeMode
   translation: TranslationConfig
+  notifications: NotificationConfig
   sync: SyncConfig
   platform: PlatformDefaults
   /**
@@ -96,6 +105,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     googleCloud: { apiKey: '' },
     llm: { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: '' }
   },
+  notifications: { enabled: true, showPreview: true, sound: true },
   sync: { enabled: false, serverUrl: '', token: '', email: '', uploadMedia: true },
   platform: { telegramApiId: '', telegramApiHash: '' },
   accounts: { 'whatsapp:main': {} }

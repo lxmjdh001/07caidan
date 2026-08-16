@@ -1,4 +1,4 @@
-import type { Conversation, UnifiedMessage } from '@shared/domain'
+import type { Conversation, LeadSourceInfo, UnifiedMessage } from '@shared/domain'
 
 export interface RecordMessageOptions {
   /** 收到的入站消息才累计未读 */
@@ -21,6 +21,8 @@ export interface ConversationPatch {
   detectedLang?: string
   /** 手动客户语言；null 表示清除（回到自动） */
   langOverride?: string | null
+  /** 投放来源，首条入站消息识别后写入，之后不再变更 */
+  leadSource?: LeadSourceInfo
 }
 
 /**

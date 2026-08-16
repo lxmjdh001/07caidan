@@ -4,6 +4,7 @@ import { useI18n } from '../i18n'
 import { formatListTime } from '../time'
 import { Avatar } from './Avatar'
 import { AccountTag, ChannelTag } from './ChannelTag'
+import { UnreadBadge } from './UnreadBadge'
 
 interface Props {
   conversations: Conversation[]
@@ -97,7 +98,7 @@ export function ConversationList({
                 )}
                 <span className="conversation-bottom">
                   <span className="conversation-preview">{c.lastMessagePreview}</span>
-                  {c.unreadCount > 0 && <span className="unread-badge">{c.unreadCount}</span>}
+                  <UnreadBadge count={c.unreadCount} />
                 </span>
               </span>
             </button>

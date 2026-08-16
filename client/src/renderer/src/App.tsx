@@ -56,6 +56,12 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             [`${evt.state.kind}:${evt.state.accountId}`]: evt.state
           }))
           break
+        case 'conversation:open':
+          // 点击系统通知跳转过来：切回聊天视图并打开该会话
+          setView('chat')
+          setActiveAccountKey(null)
+          void selectConversation(evt.conversationId)
+          break
         case 'channel:removed':
           setChannels((prev) => {
             const next = { ...prev }
@@ -247,6 +253,11 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
     () => conversations.reduce((sum, c) => sum + c.unreadCount, 0),
     [conversations]
   )
+
+  // 总未读同步到系统角标：客服把窗口切走后也能看到有新客进线
+  useEffect(() => {
+    void api.setUnreadTotal(totalUnread)
+  }, [totalUnread])
 
   const visibleConversations = useMemo(
     () =>

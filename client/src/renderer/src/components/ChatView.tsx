@@ -213,6 +213,17 @@ export function ChatView({
               <span className="contact-id">{conversation.contactId.replace(/^wa:/, '')}</span>
             )}
             {knownFromOther && <span className="known-chip">{t('chat.knownContact')}</span>}
+            {conversation.leadSource && (
+              <span
+                className="source-chip"
+                title={
+                  conversation.leadSource.sourceUrl ||
+                  (conversation.leadSource.via === 'ad' ? t('chat.sourceAd') : t('chat.sourceCode'))
+                }
+              >
+                {t('chat.from')} {conversation.leadSource.title || conversation.leadSource.code}
+              </span>
+            )}
             {conversation.isGroup ? ' · 群组' : ''}
           </div>
         </div>

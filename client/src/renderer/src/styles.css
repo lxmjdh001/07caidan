@@ -1947,3 +1947,34 @@ body {
   padding-right: 16px;
   padding-left: 150px;
 }
+
+/* 未读会话整行加重，几十个会话里一眼能扫出来 */
+.conversation-row.unread .conversation-title {
+  font-weight: 700;
+}
+.conversation-row.unread .conversation-preview {
+  color: var(--text);
+}
+.unread-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  flex: none;
+}
+
+/* 客户来源标签（投放归因） */
+.source-chip {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}

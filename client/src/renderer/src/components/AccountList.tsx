@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { ChannelState } from '@shared/domain'
+import { UnreadBadge } from './UnreadBadge'
 import { useI18n } from '../i18n'
 
 const STATUS_COLOR: Record<string, string> = {
@@ -108,7 +109,7 @@ export function AccountList({
           <span className="account-row-main">
             <span className="account-row-name">{t('rail.allChats')}</span>
           </span>
-          {totalUnread > 0 && <span className="unread-badge">{totalUnread}</span>}
+          <UnreadBadge count={totalUnread} />
         </button>
 
         {filtered.map((a) => (
@@ -132,7 +133,7 @@ export function AccountList({
                 {t(`status.${a.state.status}` as 'status.stopped')}
               </span>
             </span>
-            {a.unread > 0 && <span className="unread-badge">{a.unread}</span>}
+            <UnreadBadge count={a.unread} />
             <button
               type="button"
               className="account-row-gear"

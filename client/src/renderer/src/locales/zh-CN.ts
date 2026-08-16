@@ -241,7 +241,15 @@ export const zhCN = {
   'campaign.copied': '已复制',
   'campaign.newLib': '新建重粉库',
   'campaign.exportAccounts': '导出这些账号的客户',
-  'campaign.noAccountsForChannel': '该平台下还没有账号'
+  'campaign.noAccountsForChannel': '该平台下还没有账号',
+  'settings.notifications': '消息提醒',
+  'settings.notifyEnabled': '窗口未聚焦时弹系统通知',
+  'settings.notifyPreview': '通知中显示消息内容',
+  'settings.notifySound': '通知提示音',
+  'settings.notifyHint': '共用屏幕时建议关掉「显示消息内容」，只提示有新消息。点击通知会直接跳到该会话。',
+  'chat.from': '来自',
+  'chat.sourceAd': '广告点击带来（平台归因，最可靠）',
+  'chat.sourceCode': '入口链接预填文案中的追踪码'
 }
 
 export type MessageKey = keyof typeof zhCN

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import type { MessageBody, UnifiedMessage } from '@shared/domain'
+import type { LeadSourceInfo, MessageBody, UnifiedMessage } from '@shared/domain'
 import { conversationId } from '@shared/domain'
+import { fromAdReply } from '../../core/lead-source'
 
 /**
  * Baileys 原始消息 → UnifiedMessage 的纯函数映射层。
@@ -19,6 +20,25 @@ export interface WaRawMessage {
   pushName?: string | null
   messageTimestamp?: number | { toNumber(): number } | bigint | null
   message?: Record<string, unknown> | null
+}
+
+/**
+ * 取首条消息里的 Click-to-WhatsApp 广告上下文。
+ * 客户从 Meta 广告点进来时，WhatsApp 会在 contextInfo.externalAdReply 里
+ * 附上广告 id 与点击 id —— 这是唯一不依赖预填文案的可靠归因来源。
+ * 各消息类型的 contextInfo 挂在各自的载荷下，这里逐个找第一个有的。
+ */
+export function extractAdReply(
+  message: Record<string, unknown> | null | undefined
+): Record<string, unknown> | undefined {
+  if (!message) return undefined
+  for (const value of Object.values(message)) {
+    if (!value || typeof value !== 'object') continue
+    const ctx = (value as { contextInfo?: { externalAdReply?: unknown } }).contextInfo
+    const ad = ctx?.externalAdReply
+    if (ad && typeof ad === 'object') return ad as Record<string, unknown>
+  }
+  return undefined
 }
 
 export function isGroupJid(jid: string): boolean {
@@ -174,9 +194,14 @@ export function mapWaMessage(raw: WaRawMessage, accountId: string): UnifiedMessa
   const chatJid = isBot ? participant! : jid
   const direction = isBot ? 'in' : raw.key.fromMe ? 'out' : 'in'
 
+  // 点击广告进来的首条消息带广告上下文，是最可靠的投放归因来源
+  const leadSource: LeadSourceInfo | undefined =
+    direction === 'in' ? fromAdReply(extractAdReply(raw.message)) : undefined
+
   return {
     id: randomUUID(),
     externalId: raw.key.id ?? undefined,
+    leadSource,
     channel: 'whatsapp',
     accountId,
     conversationId: conversationId('whatsapp', accountId, chatJid),
