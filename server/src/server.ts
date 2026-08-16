@@ -7,7 +7,12 @@ import { fileURLToPath } from 'node:url'
 import cors from '@fastify/cors'
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
 import { IntentAnalyzer } from './analyzer.ts'
+import { AiRepo } from './ai/ai-repo.ts'
 import { AuthRepo, type Principal } from './auth-repo.ts'
+import { BillingRepo } from './billing/billing-repo.ts'
+import { registerBillingRoutes } from './billing/billing-routes.ts'
+import { ChannelRepo } from './billing/channel-repo.ts'
+import { OrderRepo } from './billing/order-repo.ts'
 import { CampaignRepo, type CampaignInput } from './campaign-repo.ts'
 import { isLibraryChannel, normalizeContactList } from './contact-id.ts'
 import { PERMISSIONS, ROLE_PRESETS, ROLES, type Permission } from './auth.ts'
@@ -26,6 +31,8 @@ interface ReqCtx {
   principal?: Principal
   /** 是否为同步客户端令牌 */
   isSyncClient?: boolean
+  /** 客户端用户 id（邮箱登录的桌面端用户才有；静态令牌没有） */
+  clientUserId?: number
 }
 
 export function buildServer(config: ServerConfig): FastifyInstance {
@@ -35,6 +42,10 @@ export function buildServer(config: ServerConfig): FastifyInstance {
   const clientAuth = new ClientAuthRepo(db)
   const lineRelay = new LineRelay(db)
   const campaignRepo = new CampaignRepo(db)
+  const billingRepo = new BillingRepo(db)
+  const orderRepo = new OrderRepo(db, billingRepo)
+  const channelRepo = new ChannelRepo(db)
+  const aiRepo = new AiRepo(db, billingRepo)
   const mailer = createEmailSender(config)
   auth.bootstrap(config.adminTenant, config.adminUser, config.adminPassword)
   mkdirSync(config.mediaDir, { recursive: true })
@@ -90,7 +101,11 @@ export function buildServer(config: ServerConfig): FastifyInstance {
       }
       const clientUser = clientAuth.resolve(token)
       if (clientUser) {
-        ;(req as unknown as { ctx?: ReqCtx }).ctx = { tenant: clientUser.tenant, isSyncClient: true }
+        ;(req as unknown as { ctx?: ReqCtx }).ctx = {
+          tenant: clientUser.tenant,
+          isSyncClient: true,
+          clientUserId: clientUser.id
+        }
         return
       }
       if (config.tokens.includes(token)) {
@@ -114,6 +129,16 @@ export function buildServer(config: ServerConfig): FastifyInstance {
   }
 
   app.get('/health', async () => ({ ok: true }))
+
+  registerBillingRoutes(app, {
+    billing: billingRepo,
+    orders: orderRepo,
+    channels: channelRepo,
+    ai: aiRepo,
+    ctxOf,
+    requirePerm: (req, reply, perm) => requirePerm(req, reply, perm as Permission),
+    publicBase
+  })
 
   // ── 客户端用户（桌面端账号）──
   // 客户端启动时拉取：是否需要邮箱验证（决定注册界面是否显示发送验证码）

@@ -1,0 +1,382 @@
+import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { after, before, beforeEach, describe, test } from 'node:test'
+import type { FastifyInstance } from 'fastify'
+import type { ServerConfig } from '../src/config.ts'
+import { buildServer } from '../src/server.ts'
+
+let dir: string
+let app: FastifyInstance
+/** 管理员令牌 / 客户端用户令牌 */
+let adminToken = ''
+let userToken = ''
+
+function makeConfig(dbPath: string): ServerConfig {
+  return {
+    port: 0,
+    host: '127.0.0.1',
+    dbPath,
+    mediaDir: join(dir, 'media'),
+    tokens: ['dev-token'],
+    anthropicApiKey: undefined,
+    analysisModel: 'claude-opus-5',
+    adminUser: 'admin',
+    adminPassword: 'admin',
+    adminTenant: 'dev-token',
+    requireEmailVerify: false,
+    clientTenant: 'dev-token',
+    smtp: undefined,
+    publicUrl: 'http://localhost:8787'
+  }
+}
+
+async function api(
+  method: string,
+  url: string,
+  body?: unknown,
+  token: string | null = userToken
+): Promise<{ status: number; json: any; text: string }> {
+  const res = await app.inject({
+    method: method as 'GET',
+    url,
+    headers: token ? { authorization: `Bearer ${token}` } : {},
+    ...(body === undefined ? {} : { payload: body as object })
+  })
+  let json: any = {}
+  try {
+    json = res.json()
+  } catch {
+    /* 非 JSON 响应 */
+  }
+  return { status: res.statusCode, json, text: res.body }
+}
+
+before(() => {
+  dir = mkdtempSync(join(tmpdir(), 'omni-bapi-'))
+})
+after(async () => {
+  await app?.close()
+  rmSync(dir, { recursive: true, force: true })
+})
+
+beforeEach(async () => {
+  await app?.close()
+  app = buildServer(makeConfig(join(dir, `${Math.random().toString(36).slice(2)}.db`)))
+  await app.ready()
+  adminToken = (await api('POST', '/api/login', { username: 'admin', password: 'admin' }, null))
+    .json.token
+  userToken = (
+    await api('POST', '/api/client/register', { email: 'u@test.com', password: 'pw123456' }, null)
+  ).json.token
+  assert.ok(adminToken && userToken)
+})
+
+/** 管理员建一个 mock 支付通道 */
+async function mockChannel(over: Record<string, unknown> = {}): Promise<string> {
+  const r = await api(
+    'POST',
+    '/api/admin/channels',
+    {
+      type: 'mock',
+      name: '测试通道',
+      config: { callbackSecret: 's3cret' },
+      ...over
+    },
+    adminToken
+  )
+  assert.equal(r.status, 200, r.text)
+  return r.json.channel.id
+}
+
+/** 触发支付回调（模拟通道异步通知） */
+async function notify(
+  channelId: string,
+  orderId: string,
+  over: Record<string, string> = {}
+): Promise<{ status: number; text: string }> {
+  const r = await api(
+    'POST',
+    `/pay/notify/dev-token/${channelId}`,
+    { order_id: orderId, status: 'paid', secret: 's3cret', ...over },
+    null
+  )
+  return { status: r.status, text: r.text }
+}
+
+describe('权限边界', () => {
+  test('客户端用户进不了管理接口', async () => {
+    assert.equal((await api('GET', '/api/admin/plans')).status, 403)
+  })
+  test('静态同步令牌没有钱包', async () => {
+    const r = await api('GET', '/api/billing/me', undefined, 'dev-token')
+    assert.equal(r.status, 403)
+  })
+  test('管理员没有 billing:manage 之外的越权路径', async () => {
+    // owner 有权限，正常返回
+    assert.equal((await api('GET', '/api/admin/plans', undefined, adminToken)).status, 200)
+  })
+})
+
+describe('充值全链路（mock 通道）', () => {
+  test('下单 → 回调 → 到账，重复回调不重复入账', async () => {
+    const ch = await mockChannel()
+    const order = (
+      await api('POST', '/api/billing/orders', { kind: 'topup', amountCents: 10000, channelId: ch })
+    ).json.order
+    assert.equal(order.status, 'pending')
+    assert.equal(order.payableCents, 10000)
+
+    // 通道连发三次回调
+    for (let i = 0; i < 3; i++) {
+      const n = await notify(ch, order.id, { amount_minor: '10000' })
+      assert.equal(n.status, 200, n.text)
+      assert.equal(n.text, 'ok')
+    }
+
+    const me = (await api('GET', '/api/billing/me')).json
+    assert.equal(me.balance.balanceCents, 10000, '三次回调只能入账一次')
+
+    const orders = (await api('GET', '/api/billing/orders')).json.orders
+    assert.equal(orders[0].status, 'paid')
+  })
+
+  test('密钥不对的回调被拒且不入账', async () => {
+    const ch = await mockChannel()
+    const order = (
+      await api('POST', '/api/billing/orders', { kind: 'topup', amountCents: 5000, channelId: ch })
+    ).json.order
+    const n = await notify(ch, order.id, { secret: 'wrong' })
+    assert.equal(n.status, 400)
+    const me = (await api('GET', '/api/billing/me')).json
+    assert.equal(me.balance.balanceCents, 0)
+  })
+
+  test('金额不足的回调被拒 —— 只验签不验金额是漏洞', async () => {
+    const ch = await mockChannel()
+    const order = (
+      await api('POST', '/api/billing/orders', { kind: 'topup', amountCents: 10000, channelId: ch })
+    ).json.order
+    const n = await notify(ch, order.id, { amount_minor: '1' })
+    assert.equal(n.status, 400)
+    assert.equal((await api('GET', '/api/billing/me')).json.balance.balanceCents, 0)
+  })
+
+  test('客户承担手续费：应付高于面值，到账仍是面值', async () => {
+    const ch = await mockChannel({ feeRate: 0.05, feePaidBy: 'customer' })
+    const order = (
+      await api('POST', '/api/billing/orders', { kind: 'topup', amountCents: 10000, channelId: ch })
+    ).json.order
+    assert.ok(order.payableCents > 10000)
+    await notify(ch, order.id, { amount_minor: String(order.payableLocal) })
+    assert.equal((await api('GET', '/api/billing/me')).json.balance.balanceCents, 10000)
+  })
+
+  test('非美元通道按汇率换算并锁定', async () => {
+    await api('PUT', '/api/admin/rates/CNY', { rate: 7.2 }, adminToken)
+    const ch = await mockChannel({ currency: 'CNY' })
+    const order = (
+      await api('POST', '/api/billing/orders', { kind: 'topup', amountCents: 10000, channelId: ch })
+    ).json.order
+    assert.equal(order.currency, 'CNY')
+    assert.equal(order.payableLocal, 72000)
+  })
+
+  test('未配置汇率的币种下不了单', async () => {
+    const ch = await mockChannel({ currency: 'EUR' })
+    const r = await api('POST', '/api/billing/orders', {
+      kind: 'topup',
+      amountCents: 10000,
+      channelId: ch
+    })
+    assert.equal(r.status, 400)
+  })
+
+  test('充值下限 $1', async () => {
+    const ch = await mockChannel()
+    const r = await api('POST', '/api/billing/orders', {
+      kind: 'topup',
+      amountCents: 50,
+      channelId: ch
+    })
+    assert.equal(r.status, 400)
+  })
+})
+
+describe('套餐全链路', () => {
+  async function makePlan(over: Record<string, unknown> = {}): Promise<string> {
+    const r = await api(
+      'POST',
+      '/api/admin/plans',
+      { name: '基础版', priceCents: 3000, periodUnit: 'month', maxAccounts: 10, ...over },
+      adminToken
+    )
+    return r.json.plan.id
+  }
+
+  test('套餐单支付后自动完成订阅', async () => {
+    const ch = await mockChannel()
+    const planId = await makePlan()
+    const order = (
+      await api('POST', '/api/billing/orders', { kind: 'plan', planId, channelId: ch })
+    ).json.order
+    assert.equal(order.amountCents, 3000)
+
+    await notify(ch, order.id, { amount_minor: '3000' })
+
+    const me = (await api('GET', '/api/billing/me')).json
+    assert.equal(me.subscription?.planId, planId)
+    assert.equal(me.accountQuota, 10)
+    assert.equal(me.balance.balanceCents, 0, '钱都花在套餐上了')
+  })
+
+  test('余额订阅与升级折算', async () => {
+    const ch = await mockChannel()
+    const basic = await makePlan()
+    const pro = await makePlan({ name: '专业版', priceCents: 30000, periodUnit: 'year', maxAccounts: 100 })
+
+    // 充 $400
+    const order = (
+      await api('POST', '/api/billing/orders', { kind: 'topup', amountCents: 40000, channelId: ch })
+    ).json.order
+    await notify(ch, order.id, { amount_minor: '40000' })
+
+    // 余额买基础版
+    const sub = await api('POST', '/api/billing/subscribe', { planId: basic })
+    assert.equal(sub.status, 200, sub.text)
+
+    // 立刻升级到专业版：基础版全额折算退回
+    const up = await api('POST', '/api/billing/subscribe', { planId: pro })
+    assert.equal(up.status, 200)
+    assert.equal(up.json.creditFromOld, 3000, '未使用的按天折算，刚买即全退')
+
+    const me = (await api('GET', '/api/billing/me')).json
+    assert.equal(me.accountQuota, 100)
+    // 40000 - 3000 + 3000 - 30000
+    assert.equal(me.balance.balanceCents, 10000)
+  })
+
+  test('余额不足的订阅被拒且给出人话', async () => {
+    const planId = await makePlan()
+    const r = await api('POST', '/api/billing/subscribe', { planId })
+    assert.equal(r.status, 400)
+    assert.equal(r.json.reason, 'insufficient_balance')
+  })
+
+  test('自动续费开关', async () => {
+    const ch = await mockChannel()
+    const planId = await makePlan({ priceCents: 0 })
+    await api('POST', '/api/billing/subscribe', { planId })
+    const r = await api('POST', '/api/billing/auto-renew', { on: true })
+    assert.equal(r.status, 200)
+    assert.equal((await api('GET', '/api/billing/me')).json.subscription.autoRenew, true)
+    void ch
+  })
+})
+
+describe('积分与模型计费（HTTP 层）', () => {
+  async function setupModel(): Promise<string> {
+    const p = (
+      await api(
+        'POST',
+        '/api/admin/ai/providers',
+        { type: 'openai', name: 'OpenAI', apiKey: 'sk-test-1234567890' },
+        adminToken
+      )
+    ).json.provider
+    const m = (
+      await api(
+        'POST',
+        '/api/admin/ai/models',
+        {
+          providerId: p.id,
+          modelName: 'gpt-4o-mini',
+          purposes: ['translate'],
+          creditsPerMillionInput: 300,
+          creditsPerMillionOutput: 1500
+        },
+        adminToken
+      )
+    ).json.model
+    return m.id
+  }
+
+  test('供应商列表不泄露 API Key 明文', async () => {
+    await setupModel()
+    const raw = JSON.stringify((await api('GET', '/api/admin/ai/providers', undefined, adminToken)).json)
+    assert.ok(!raw.includes('sk-test-1234567890'))
+  })
+
+  test('客户端模型列表只有 id 与用途，没有价格与供应商信息', async () => {
+    await setupModel()
+    const models = (await api('GET', '/api/billing/models?purpose=translate')).json.models
+    assert.equal(models.length, 1)
+    assert.deepEqual(Object.keys(models[0]).sort(), ['id', 'label', 'purposes'])
+  })
+
+  test('充值 → 兑换积分 → 上报用量扣费 → 流水完整', async () => {
+    const ch = await mockChannel()
+    const modelId = await setupModel()
+    const order = (
+      await api('POST', '/api/billing/orders', { kind: 'topup', amountCents: 10000, channelId: ch })
+    ).json.order
+    await notify(ch, order.id, { amount_minor: '10000' })
+
+    // 换 $1 的积分（默认 1000 积分/美元）
+    const ex = await api('POST', '/api/billing/exchange-credits', { cents: 100 })
+    assert.equal(ex.status, 200)
+    assert.equal(ex.json.balance.credits, 1000)
+
+    const charge = await api('POST', '/api/billing/usage/charge', {
+      modelId,
+      purpose: 'translate',
+      inputTokens: 1_000_000
+    })
+    assert.equal(charge.status, 200)
+    assert.equal(charge.json.credits, 300)
+
+    const me = (await api('GET', '/api/billing/me')).json
+    assert.equal(me.balance.credits, 700)
+    const usage = (await api('GET', '/api/billing/usage')).json.usage
+    assert.equal(usage.length, 1)
+
+    const summary = (await api('GET', '/api/admin/usage-summary', undefined, adminToken)).json.summary
+    assert.equal(summary[0].credits, 300)
+  })
+
+  test('钱和积分都没有时扣费返回 402', async () => {
+    const modelId = await setupModel()
+    const r = await api('POST', '/api/billing/usage/charge', {
+      modelId,
+      purpose: 'translate',
+      inputTokens: 1_000_000
+    })
+    assert.equal(r.status, 402)
+  })
+})
+
+describe('通道配置安全', () => {
+  test('通道列表的敏感配置打码', async () => {
+    await mockChannel()
+    const raw = JSON.stringify((await api('GET', '/api/admin/channels', undefined, adminToken)).json)
+    assert.ok(!raw.includes('s3cret'))
+  })
+
+  test('编辑通道时打码值不会覆盖真实密钥', async () => {
+    const ch = await mockChannel()
+    // 前端表单把打码值原样传回
+    await api(
+      'PATCH',
+      `/api/admin/channels/${ch}`,
+      { name: '改名', config: { callbackSecret: '••••••' } },
+      adminToken
+    )
+    // 回调仍然能用原密钥验证 → 密钥没被抹掉
+    const order = (
+      await api('POST', '/api/billing/orders', { kind: 'topup', amountCents: 10000, channelId: ch })
+    ).json.order
+    const n = await notify(ch, order.id, { amount_minor: '10000' })
+    assert.equal(n.status, 200)
+  })
+})

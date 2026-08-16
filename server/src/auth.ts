@@ -5,6 +5,7 @@ export const PERMISSIONS = [
   'conversations:read', // 查看会话与聊天记录
   'analyze:run', // 运行 AI 意向分析
   'campaigns:manage', // 管理引流工单、分享链接与重粉库
+  'billing:manage', // 管理套餐、支付通道、汇率、AI 供应商与用量
   'users:manage' // 管理后台用户与权限
 ] as const
 
@@ -13,7 +14,7 @@ export type Permission = (typeof PERMISSIONS)[number]
 /** 角色预设 → 权限集合。用户实际权限 = 角色预设 ∪ 直接分配的权限。 */
 export const ROLE_PRESETS: Record<string, Permission[]> = {
   owner: [...PERMISSIONS],
-  admin: ['conversations:read', 'analyze:run', 'campaigns:manage', 'users:manage'],
+  admin: ['conversations:read', 'analyze:run', 'campaigns:manage', 'billing:manage', 'users:manage'],
   agent: ['conversations:read', 'analyze:run', 'campaigns:manage'],
   viewer: ['conversations:read']
 }
