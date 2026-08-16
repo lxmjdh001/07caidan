@@ -137,7 +137,8 @@
       打错品牌名硬失败，不悄悄回落默认
 - [x] 客户端：窗口标题/标题栏/登录 Logo/通知兜底标题/app 名；
       各品牌独立 userData 目录（贴牌版与原版共存不串数据）
-- [ ] electron-builder 打包接入（productName/appId/icon 从品牌配置取，待打包配置建立）
+- [x] electron-builder 打包接入：productName/appId/输出目录/NSIS 快捷方式名
+      随品牌走；品牌图标目录存在时自动使用；无证书时跳过签名自动发现
 - [x] 管理后台：登录页标题、侧栏 Logo/名称、浏览器标题（favicon/主题色预留）
 - [x] 后端：看板页标题占位符替换、验证码邮件署名（logo 预留）
 - [ ] logo 资源按品牌目录存放（`branding/<brand>/logo.svg`、`icon.icns`、`icon.ico`、`favicon`），
@@ -169,7 +170,9 @@
 - [x] WhatsApp 多账号支持（账号列表/按账号代理与指纹/生命周期）
 - [x] 媒体消息收发（图片/视频/语音/文件，微信风格语音条）
 - [ ] 存储替换为 SQLite（消息量大时的性能；MessageStore 接口不变）
-- [ ] electron-builder 打包：Mac 签名/公证、Win 安装包、自动更新（electron-updater）
+- [x] electron-builder 打包配置（dmg 双架构 / NSIS / AppImage；dist 与 dist:dir 脚本）
+- [ ] Mac 签名与公证（需开发者证书，发布流水线配 CSC_LINK）
+- [ ] 自动更新（electron-updater）
 - [ ] 关机期间消息：评估"云端托管会话"付费选项（适配器已设计为客户端/服务端同构可跑）
 - [ ] Facebook Messenger / Instagram 渠道（官方 Graph API，需提前启动 Meta App Review，周期约 1-2 个月）
 
