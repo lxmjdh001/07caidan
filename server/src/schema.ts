@@ -200,6 +200,94 @@ export const fanLibraryEntries = sqliteTable(
   ]
 )
 
+// ══════════ 计费：套餐 / 订阅 / 余额 / 流水 ══════════
+// 金额一律存**整数美分（USD）**；本地货币只在下单时换算并锁定汇率。
+
+/** 套餐：价格 + 周期 + 可登录账号数上限 */
+export const plans = sqliteTable(
+  'plans',
+  {
+    tenant: text('tenant').notNull(),
+    id: text('id').notNull(),
+    name: text('name').notNull(),
+    /** 价格，单位美分（USD） */
+    priceCents: integer('price_cents').notNull().default(0),
+    /** month / quarter / half_year / year / day */
+    periodUnit: text('period_unit').notNull().default('month'),
+    /** 几个周期；unit=day 时表示自定义天数 */
+    periodCount: integer('period_count').notNull().default(1),
+    /** 可登录的平台账号数上限 */
+    maxAccounts: integer('max_accounts').notNull().default(1),
+    enabled: integer('enabled').notNull().default(1),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: integer('created_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.id] })]
+)
+
+/** 用户订阅。一个客户端用户同一时间只有一条生效订阅 */
+export const subscriptions = sqliteTable(
+  'subscriptions',
+  {
+    tenant: text('tenant').notNull(),
+    userId: integer('user_id').notNull(),
+    planId: text('plan_id').notNull(),
+    startAt: integer('start_at').notNull(),
+    expiresAt: integer('expires_at').notNull(),
+    /** 到期是否自动从余额续费 */
+    autoRenew: integer('auto_renew').notNull().default(0),
+    /** active / expired / cancelled */
+    status: text('status').notNull().default('active'),
+    updatedAt: integer('updated_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.userId] })]
+)
+
+/**
+ * 余额与积分。
+ * 这张表是「当前值」，每一次变动都必须同时往 ledger 写一条流水，
+ * 且在同一个事务里 —— 对不上账的余额是不可接受的。
+ */
+export const balances = sqliteTable(
+  'balances',
+  {
+    tenant: text('tenant').notNull(),
+    userId: integer('user_id').notNull(),
+    /** 余额，美分 */
+    balanceCents: integer('balance_cents').notNull().default(0),
+    /** 模型积分 */
+    credits: integer('credits').notNull().default(0),
+    updatedAt: integer('updated_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.userId] })]
+)
+
+/**
+ * 资金/积分流水。只增不改，每一分钱的来去都能追溯。
+ * amountCents 与 creditsDelta 为有符号值：正数入账、负数出账。
+ */
+export const ledger = sqliteTable(
+  'ledger',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    tenant: text('tenant').notNull(),
+    userId: integer('user_id').notNull(),
+    /** topup / plan_purchase / proration_refund / renew / credit_exchange / model_usage / adjust */
+    kind: text('kind').notNull(),
+    amountCents: integer('amount_cents').notNull().default(0),
+    creditsDelta: integer('credits_delta').notNull().default(0),
+    /** 记账后的余额快照，便于对账时快速定位断点 */
+    balanceAfter: integer('balance_after').notNull(),
+    creditsAfter: integer('credits_after').notNull(),
+    /** 关联单据类型与 id（订单、订阅、用量记录等） */
+    refType: text('ref_type'),
+    refId: text('ref_id'),
+    note: text('note'),
+    createdAt: integer('created_at').notNull()
+  },
+  (t) => [index('idx_ledger_user').on(t.tenant, t.userId, t.createdAt)]
+)
+
 export const media = sqliteTable(
   'media',
   {

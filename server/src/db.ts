@@ -106,6 +106,45 @@ export function openDb(dbPath: string): Db {
       added_at INTEGER NOT NULL, PRIMARY KEY (tenant, library_id, contact_id)
     );
     CREATE INDEX IF NOT EXISTS idx_fan_entries_contact ON fan_library_entries (tenant, contact_id);
+
+    CREATE TABLE IF NOT EXISTS plans (
+      tenant TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL,
+      price_cents INTEGER NOT NULL DEFAULT 0,
+      period_unit TEXT NOT NULL DEFAULT 'month',
+      period_count INTEGER NOT NULL DEFAULT 1,
+      max_accounts INTEGER NOT NULL DEFAULT 1,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, id)
+    );
+
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      tenant TEXT NOT NULL, user_id INTEGER NOT NULL, plan_id TEXT NOT NULL,
+      start_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+      auto_renew INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'active',
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS balances (
+      tenant TEXT NOT NULL, user_id INTEGER NOT NULL,
+      balance_cents INTEGER NOT NULL DEFAULT 0,
+      credits INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS ledger (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant TEXT NOT NULL, user_id INTEGER NOT NULL, kind TEXT NOT NULL,
+      amount_cents INTEGER NOT NULL DEFAULT 0,
+      credits_delta INTEGER NOT NULL DEFAULT 0,
+      balance_after INTEGER NOT NULL, credits_after INTEGER NOT NULL,
+      ref_type TEXT, ref_id TEXT, note TEXT, created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ledger_user ON ledger (tenant, user_id, created_at);
   `)
 
   migrate(sqlite)
