@@ -149,6 +149,24 @@ export interface AiModelRow {
   createdAt: number
 }
 
+export interface SupportTicket {
+  id: string
+  userId: number
+  title: string
+  status: 'open' | 'replied' | 'closed'
+  createdAt: number
+  updatedAt: number
+}
+
+export interface SupportMsg {
+  id: number
+  sender: 'user' | 'admin'
+  senderName?: string
+  body: string
+  mediaId?: string
+  createdAt: number
+}
+
 export interface AnnouncementRow {
   id: string
   title: string
@@ -419,6 +437,39 @@ export class ApiClient {
 
   updateReminderSettings(body: Partial<ReminderSettingsRow>): Promise<{ settings: ReminderSettingsRow }> {
     return this.req('/api/admin/reminder-settings', { method: 'PUT', body: JSON.stringify(body) })
+  }
+
+  // ── 支持工单（需 support:manage）──
+  listSupportTickets(): Promise<{ tickets: SupportTicket[] }> {
+    return this.req('/api/admin/support/tickets')
+  }
+
+  supportTicket(id: string): Promise<{ ticket: SupportTicket; messages: SupportMsg[] }> {
+    return this.req(`/api/support/tickets/${encodeURIComponent(id)}`)
+  }
+
+  replySupportTicket(
+    id: string,
+    body: string
+  ): Promise<{ ticket: SupportTicket; messages: SupportMsg[] }> {
+    return this.req(`/api/support/tickets/${encodeURIComponent(id)}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ body })
+    })
+  }
+
+  closeSupportTicket(id: string): Promise<{ ok: boolean }> {
+    return this.req(`/api/support/tickets/${encodeURIComponent(id)}/close`, { method: 'POST' })
+  }
+
+  /** 拉取受保护媒体为对象 URL（img 标签不能带 Authorization 头） */
+  async mediaObjectUrl(mediaId: string): Promise<string> {
+    const res = await fetch(
+      `${this.base.replace(/\/$/, '')}/api/media/${encodeURIComponent(mediaId)}`,
+      { headers: { authorization: `Bearer ${this.token}` } }
+    )
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return URL.createObjectURL(await res.blob())
   }
 
   // ── 用户管理（需 users:manage）──

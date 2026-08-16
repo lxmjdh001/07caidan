@@ -57,6 +57,59 @@ export class BillingApi {
     return this.request('POST', '/api/billing/exchange-credits', { cents })
   }
 
+  // ── 支持工单 ──
+  listTickets(): Promise<unknown> {
+    return this.request('GET', '/api/support/tickets')
+  }
+
+  createTicket(body: { title: string; body: string; mediaId?: string }): Promise<unknown> {
+    return this.request('POST', '/api/support/tickets', body)
+  }
+
+  getTicket(id: string): Promise<unknown> {
+    return this.request('GET', `/api/support/tickets/${encodeURIComponent(id)}`)
+  }
+
+  replyTicket(id: string, body: { body: string; mediaId?: string }): Promise<unknown> {
+    return this.request('POST', `/api/support/tickets/${encodeURIComponent(id)}/messages`, body)
+  }
+
+  closeTicket(id: string): Promise<unknown> {
+    return this.request('POST', `/api/support/tickets/${encodeURIComponent(id)}/close`)
+  }
+
+  /** 工单贴图：上传本地文件到后台媒体库，返回 mediaId */
+  async uploadTicketImage(data: Uint8Array, mimeType: string): Promise<string> {
+    const cfg = this.getConfig()
+    if (!cfg.serverUrl || !cfg.token) throw new Error('请先登录后台账号')
+    const mediaId = `ticket-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    const res = await fetch(
+      `${cfg.serverUrl.replace(/\/$/, '')}/api/media/${encodeURIComponent(mediaId)}`,
+      {
+        method: 'PUT',
+        headers: { authorization: `Bearer ${cfg.token}`, 'content-type': mimeType },
+        body: new Uint8Array(data) as unknown as BodyInit
+      }
+    )
+    if (!res.ok) throw new Error(`上传失败（${res.status}）`)
+    return mediaId
+  }
+
+  /** 拉取受保护媒体（工单里的图） */
+  async fetchMedia(mediaId: string): Promise<{ data: Uint8Array; mimeType: string }> {
+    const cfg = this.getConfig()
+    if (!cfg.serverUrl || !cfg.token) throw new Error('未登录后台')
+    const res = await fetch(
+      `${cfg.serverUrl.replace(/\/$/, '')}/api/media/${encodeURIComponent(mediaId)}`,
+      { headers: { authorization: `Bearer ${cfg.token}` } }
+    )
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return {
+      data: new Uint8Array(await res.arrayBuffer()),
+      mimeType: res.headers.get('content-type') ?? 'image/png'
+    }
+  }
+
   /** 未读通知（公告 + 个人通知，如到期提醒） */
   listNotices(): Promise<unknown> {
     return this.request('GET', '/api/notices')

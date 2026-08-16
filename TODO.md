@@ -209,11 +209,29 @@
 - [x] 设置页「关于」：版本号/检查更新/下载进度/就绪提示与立即重启按钮
 
 ## M18 — 支持工单（软件使用问题，区别于打粉的引流工单）
-- [ ] 表：support_tickets（标题/状态 open|replied|closed/创建人）+
-      support_messages（发送方 user|admin / 文本 / 可选图片）
-- [ ] 客户端：提交工单（标题+描述+可贴图）、查看回复、追加消息、关闭
-- [ ] 管理后台「支持工单」页：列表/查看/图文回复/关闭；新权限 support:manage
-- [ ] 图片走现有 media 上传通道，消息里存 mediaId
+- [x] 表与状态机：open↔replied→closed；closed 后用户回复自动重开
+- [x] 客户端「帮助与反馈」页：提交（可贴图）/查看/追问/关闭
+- [x] 后台「支持工单」页（open 置顶、状态圆点、图文回复）+ support:manage 权限
+- [x] 贴图走 media 通道；新增带鉴权的媒体下载路由（img 转对象 URL 展示）
+
+## M20 — Crisp 在线客服（用户已确认要做）
+- [ ] 可行性结论：Electron 可集成 —— 独立 BrowserWindow 加载本地 HTML，
+      内嵌 Crisp 官方 widget 脚本（该窗口不受主窗口 CSP 限制）
+- [ ] 后台 /api/client/config 下发 crispWebsiteId（运营方配置一次）
+- [ ] 自定义数据随会话注入：邮箱、套餐名与到期时间、余额、软件版本、
+      系统类型与版本、设备 ID —— 客服一眼看到用户画像
+- [ ] 客户端入口（帮助页内"在线客服"按钮）；未配置 websiteId 时隐藏
+
+## M21 — 客户端 RBAC（老板/客服分权）
+> 设计见下轮实现；核心原则：**界面隐藏只是体验，服务端校验才是安全**。
+- [ ] clientUsers 加 role + permissions（沿用后台 RBAC 模型：预设 ∪ 直接分配）
+- [ ] 客户端权限点：campaigns:manage / billing:manage / accounts:manage /
+      settings:manage；聊天为基础能力人人可用
+- [ ] 预设：boss（全部）/ agent（仅聊天）
+- [ ] 角色由后台管理创建：后台新增「客户端用户」管理页（建号/角色/权限/
+      停用/重置密码）；自助注册默认 agent，首个用户 boss
+- [ ] 登录响应携带权限；客户端按权限渲染底部导航/设置页签/账号增删按钮
+- [ ] 服务端强制：客户端令牌访问工单/计费/推广链接接口时校验对应权限
 
 ## M19 — 客户端日志上报
 - [ ] 客户端硬件指纹设备 ID（machineId 派生，不含隐私原文）

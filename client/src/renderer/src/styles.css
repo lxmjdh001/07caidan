@@ -2116,3 +2116,14 @@ body {
 .notice-item p { font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
 .notice-time { display: block; margin-top: 6px; font-size: 11px; color: var(--text-secondary); }
 .notice-personal { border-color: var(--warn); background: var(--warn-bg); }
+
+/* 支持工单（客户端） */
+.sup-msgs { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+.sup-msg { max-width: 560px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); }
+.sup-msg.mine { align-self: flex-end; background: var(--bubble-out); }
+.sup-msg-head { display: flex; gap: 12px; justify-content: space-between; font-size: 11px; color: var(--text-secondary); margin-bottom: 4px; }
+.sup-msg p { font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+.ticket-img { max-width: 320px; max-height: 240px; border-radius: 8px; margin-top: 6px; display: block; }
+.sup-reply-row { display: flex; gap: 10px; align-items: flex-end; max-width: 720px; }
+.sup-reply-row textarea { flex: 1; border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; background: var(--panel-alt); color: var(--text); font-family: inherit; font-size: 13px; }
+.sup-reply-actions { display: flex; flex-direction: column; gap: 6px; }

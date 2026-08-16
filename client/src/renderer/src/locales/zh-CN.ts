@@ -360,7 +360,25 @@ export const zhCN = {
   'settings.upd.restart': '立即重启更新',
   'settings.upd.error': '检查更新失败',
   'notice.title': '通知',
-  'notice.gotIt': '我知道了'
+  'notice.gotIt': '我知道了',
+  'sup.title': '帮助与反馈',
+  'sup.new': '提交问题',
+  'sup.subject': '问题标题',
+  'sup.desc': '问题描述（越详细越好：做了什么操作、看到什么现象）',
+  'sup.attachImg': '附加截图',
+  'sup.imgAttached': '✓ 已附加截图',
+  'sup.imgTooBig': '图片不能超过 8MB',
+  'sup.submit': '提交',
+  'sup.empty': '还没有提交过问题。遇到软件问题点「提交问题」告诉我们。',
+  'sup.status.open': '处理中',
+  'sup.status.replied': '已回复',
+  'sup.status.closed': '已关闭',
+  'sup.me': '我',
+  'sup.staff': '官方客服',
+  'sup.send': '发送',
+  'sup.resolve': '问题已解决，关闭',
+  'sup.replyPlaceholder': '补充说明或回复…',
+  'sup.closedHint': '工单已关闭。问题再次出现时可直接回复重新打开。'
 }
 
 export type MessageKey = keyof typeof zhCN

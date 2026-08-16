@@ -207,6 +207,21 @@ export function openDb(dbPath: string): Db {
       PRIMARY KEY (tenant, user_id, threshold, expires_at)
     );
 
+    CREATE TABLE IF NOT EXISTS support_tickets (
+      tenant TEXT NOT NULL, id TEXT NOT NULL, user_id INTEGER NOT NULL,
+      title TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'open',
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_tickets_user ON support_tickets (tenant, user_id, updated_at);
+    CREATE TABLE IF NOT EXISTS support_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant TEXT NOT NULL, ticket_id TEXT NOT NULL, sender TEXT NOT NULL,
+      sender_name TEXT, body TEXT NOT NULL DEFAULT '', media_id TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_ticket_msgs ON support_messages (tenant, ticket_id, created_at);
+
     CREATE TABLE IF NOT EXISTS ai_providers (
       tenant TEXT NOT NULL, id TEXT NOT NULL, type TEXT NOT NULL, name TEXT NOT NULL,
       base_url TEXT NOT NULL DEFAULT '', api_key TEXT NOT NULL DEFAULT '',

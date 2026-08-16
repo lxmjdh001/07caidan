@@ -522,6 +522,44 @@ export const remindersSent = sqliteTable(
   (t) => [primaryKey({ columns: [t.tenant, t.userId, t.threshold, t.expiresAt] })]
 )
 
+// ══════════ 支持工单（软件使用问题，区别于引流 campaign） ══════════
+
+export const supportTickets = sqliteTable(
+  'support_tickets',
+  {
+    tenant: text('tenant').notNull(),
+    id: text('id').notNull(),
+    userId: integer('user_id').notNull(),
+    title: text('title').notNull(),
+    /** open / replied / closed */
+    status: text('status').notNull().default('open'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull()
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenant, t.id] }),
+    index('idx_tickets_user').on(t.tenant, t.userId, t.updatedAt)
+  ]
+)
+
+export const supportMessages = sqliteTable(
+  'support_messages',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    tenant: text('tenant').notNull(),
+    ticketId: text('ticket_id').notNull(),
+    /** user / admin */
+    sender: text('sender').notNull(),
+    /** 管理员回复时记录操作者用户名，便于追责 */
+    senderName: text('sender_name'),
+    body: text('body').notNull().default(''),
+    /** 附图（media 表的 mediaId） */
+    mediaId: text('media_id'),
+    createdAt: integer('created_at').notNull()
+  },
+  (t) => [index('idx_ticket_msgs').on(t.tenant, t.ticketId, t.createdAt)]
+)
+
 export const media = sqliteTable(
   'media',
   {

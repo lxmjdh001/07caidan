@@ -68,7 +68,14 @@ const BILLING_METHODS: Record<string, true> = {
   setAutoRenew: true,
   exchangeCredits: true,
   listNotices: true,
-  markNoticesRead: true
+  markNoticesRead: true,
+  listTickets: true,
+  createTicket: true,
+  getTicket: true,
+  replyTicket: true,
+  closeTicket: true,
+  uploadTicketImage: true,
+  fetchMedia: true
 }
 
 /** 渲染进程可调用的全部主进程能力，集中在此注册 */

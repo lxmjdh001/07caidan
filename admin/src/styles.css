@@ -354,3 +354,23 @@ input { font-family: inherit; }
   border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px;
   font-size: 13px; background: var(--panel-alt); color: var(--text); font-family: inherit;
 }
+
+/* 支持工单 */
+.sup-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.sup-dot.open { background: var(--danger); }
+.sup-dot.replied { background: var(--warn); }
+.sup-dot.closed { background: var(--muted); }
+.sup-msgs { display: flex; flex-direction: column; gap: 10px; padding: 4px 0 12px; }
+.sup-msg {
+  max-width: 640px; padding: 10px 14px; border-radius: 10px;
+  border: 1px solid var(--border); background: var(--panel);
+}
+.sup-msg.admin { align-self: flex-end; background: var(--accent-soft); }
+.sup-msg-head { display: flex; gap: 10px; justify-content: space-between; font-size: 11px; color: var(--muted); margin-bottom: 4px; }
+.sup-msg p { font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+.ticket-img { max-width: 320px; max-height: 240px; border-radius: 8px; margin-top: 6px; display: block; }
+.sup-reply { display: flex; gap: 10px; align-items: flex-end; }
+.sup-reply textarea {
+  flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+  font-size: 13px; background: var(--panel-alt); color: var(--text); font-family: inherit;
+}

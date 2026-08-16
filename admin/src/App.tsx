@@ -8,6 +8,7 @@ import { UsersView } from './components/UsersView'
 import { AnnouncementsView } from './components/AnnouncementsView'
 import { BillingView } from './components/BillingView'
 import { CampaignsView } from './components/CampaignsView'
+import { SupportView } from './components/SupportView'
 import { brand } from './branding'
 import { LOCALES, useI18n, type Locale } from './i18n'
 
@@ -15,7 +16,7 @@ export function App(): React.JSX.Element {
   const { t, locale, setLocale } = useI18n()
   const [client, setClient] = useState<ApiClient | null>(null)
   const [me, setMe] = useState<Me | null>(null)
-  const [view, setView] = useState<'chats' | 'campaigns' | 'billing' | 'announcements' | 'users'>('chats')
+  const [view, setView] = useState<'chats' | 'campaigns' | 'billing' | 'announcements' | 'support' | 'users'>('chats')
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
 
@@ -57,6 +58,7 @@ export function App(): React.JSX.Element {
   const canCampaigns = me.permissions.includes('campaigns:manage')
   const canBilling = me.permissions.includes('billing:manage')
   const canAnnounce = me.permissions.includes('announcements:manage')
+  const canSupport = me.permissions.includes('support:manage')
 
   return (
     <div className="layout">
@@ -94,6 +96,12 @@ export function App(): React.JSX.Element {
             >
               <BellIcon />
               {t('nav.announcements')}
+            </button>
+          )}
+          {canSupport && (
+            <button className={view === 'support' ? 'on' : ''} onClick={() => setView('support')}>
+              <LifebuoyIcon />
+              {t('nav.support')}
             </button>
           )}
           {canUsers && (
@@ -134,6 +142,8 @@ export function App(): React.JSX.Element {
           <BillingView client={client} />
         ) : view === 'announcements' && canAnnounce ? (
           <AnnouncementsView client={client} />
+        ) : view === 'support' && canSupport ? (
+          <SupportView client={client} />
         ) : (
           <div className="body">
             <ConversationList
@@ -169,6 +179,15 @@ function roleLabel(role: string, t: ReturnType<typeof useI18n>['t']): string {
   return known.includes(role) ? t(`role.${role}` as 'role.owner') : role
 }
 
+function LifebuoyIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="4" />
+      <path d="M4.9 4.9 9 9M15 15l4.1 4.1M19.1 4.9 15 9M9 15l-4.1 4.1" />
+    </svg>
+  )
+}
 function BellIcon(): React.JSX.Element {
   return (
     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>

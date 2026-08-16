@@ -122,6 +122,15 @@ export class Repo {
       .run()
   }
 
+  getMedia(tenant: string, mediaId: string): { path: string; mimeType: string | null } | null {
+    const r = this.db
+      .select()
+      .from(media)
+      .where(and(eq(media.tenant, tenant), eq(media.mediaId, mediaId)))
+      .get()
+    return r ? { path: r.path, mimeType: r.mimeType } : null
+  }
+
   hasMedia(tenant: string, mediaId: string): boolean {
     return !!this.db
       .select({ x: sql`1` })

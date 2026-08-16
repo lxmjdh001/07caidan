@@ -6,6 +6,7 @@ import { AccountList, type AccountRow } from './components/AccountList'
 import { AccountModal } from './components/AccountModal'
 import { NoticeModal, useNotices } from './components/NoticeModal'
 import { BillingPage } from './pages/BillingPage'
+import { SupportPage } from './pages/SupportPage'
 import { CampaignPage } from './pages/CampaignPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { ChannelPicker } from './components/ChannelPicker'
@@ -27,7 +28,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [translators, setTranslators] = useState<TranslatorInfo[]>([])
   /** 主视图：聊天 / 工单 / 设置。工单与设置做成整页，弹窗里放不下 */
-  const [view, setView] = useState<'chat' | 'campaigns' | 'billing' | 'settings'>('chat')
+  const [view, setView] = useState<'chat' | 'campaigns' | 'billing' | 'support' | 'settings'>('chat')
   /** 打开中的账号设置弹窗（channel key） */
   const [accountModalKey, setAccountModalKey] = useState<string | null>(null)
   const [plugins, setPlugins] = useState<ChannelPluginInfo[]>([])
@@ -336,6 +337,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             onOpenSettings={() => setView(view === 'settings' ? 'chat' : 'settings')}
             onOpenCampaigns={() => setView(view === 'campaigns' ? 'chat' : 'campaigns')}
             onOpenBilling={() => setView(view === 'billing' ? 'chat' : 'billing')}
+            onOpenSupport={() => setView(view === 'support' ? 'chat' : 'support')}
             activeView={view}
           />
 
@@ -343,6 +345,8 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             <CampaignPage accounts={accountOptions} />
           ) : view === 'billing' ? (
             <BillingPage />
+          ) : view === 'support' ? (
+            <SupportPage />
           ) : view === 'settings' && settings ? (
             <SettingsPage
               settings={settings}

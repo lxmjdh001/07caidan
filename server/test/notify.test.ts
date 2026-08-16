@@ -141,7 +141,7 @@ describe('到期提醒巡检', () => {
       billing,
       notify,
       emailOf: () => 'u@test.com',
-      sendMail: async (to, subject) => {
+      sendMail: async (to: string, subject: string) => {
         mails.push(`${to}|${subject}`)
       },
       appName: 'OmniChat',

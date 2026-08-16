@@ -27,6 +27,7 @@ import { NotifyRepo, type Audience } from './notify/notify-repo.ts'
 import { sweepReminders } from './notify/reminder-cron.ts'
 import { REMINDER_VARS } from './notify/template.ts'
 import { Repo } from './repo.ts'
+import { SupportRepo } from './support/support-repo.ts'
 import type { SyncPayload } from './types.ts'
 import { brand } from './branding.ts'
 
@@ -58,6 +59,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   const channelRepo = new ChannelRepo(db)
   const aiRepo = new AiRepo(db, billingRepo)
   const notifyRepo = new NotifyRepo(db)
+  const supportRepo = new SupportRepo(db)
   const aiClient = overrides.aiClient ?? new AiClient()
   const mailer = createEmailSender(config)
   auth.bootstrap(config.adminTenant, config.adminUser, config.adminPassword)
@@ -69,6 +71,10 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   const app = Fastify({ logger: true, bodyLimit: 64 * 1024 * 1024 })
   // 前后端分离：管理后台是独立前端（admin/），这里开放跨域即可
   void app.register(cors, { origin: true })
+
+  // 其它 content-type（图片上传等二进制）：不解析，原始流透传给路由
+  // —— 否则 Fastify 对未注册类型直接 415，带 image/png 头的上传会被拒
+  app.addContentTypeParser('*', (_req, payload, done) => done(null, payload))
 
   // 保留 JSON 原始字符串（LINE Webhook 验签需原始字节）
   app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
@@ -813,6 +819,97 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     notifyRepo.markAnnouncementsRead(ctx.tenant, ctx.clientUserId, b.announcementIds ?? [])
     notifyRepo.markNoticesRead(ctx.tenant, ctx.clientUserId, (b.noticeIds ?? []).map(Number))
     return { ok: true }
+  })
+
+  // ── 支持工单（软件问题反馈；区别于打粉的引流工单）──
+
+  /** 媒体下载：同租户内已认证即可读（工单贴图、后台看图共用） */
+  app.get('/api/media/:mediaId', async (req, reply) => {
+    const mediaId = (req.params as { mediaId: string }).mediaId
+    if (!/^[\w.\-]+$/.test(mediaId)) return reply.code(400).send({ error: 'bad id' })
+    const record = repo.getMedia(ctxOf(req).tenant, mediaId)
+    if (!record) return reply.code(404).send({ error: 'not found' })
+    reply.type(record.mimeType || 'application/octet-stream')
+    return reply.send(createReadStream(record.path))
+  })
+
+  // 客户端：我的工单
+  app.get('/api/support/tickets', async (req, reply) => {
+    const ctx = ctxOf(req)
+    if (ctx.clientUserId === undefined) return reply.code(403).send({ error: '需要客户端账号登录' })
+    return { tickets: supportRepo.listForUser(ctx.tenant, ctx.clientUserId) }
+  })
+
+  app.post('/api/support/tickets', async (req, reply) => {
+    const ctx = ctxOf(req)
+    if (ctx.clientUserId === undefined) return reply.code(403).send({ error: '需要客户端账号登录' })
+    const b = (req.body ?? {}) as { title?: string; body?: string; mediaId?: string }
+    if (!b.title?.trim() || !b.body?.trim()) {
+      return reply.code(400).send({ error: '标题与描述必填' })
+    }
+    if (b.title.length > 200 || b.body.length > 8000) {
+      return reply.code(400).send({ error: '内容过长' })
+    }
+    return {
+      ticket: supportRepo.create(ctx.tenant, ctx.clientUserId, b.title.trim(), b.body, b.mediaId)
+    }
+  })
+
+  app.get('/api/support/tickets/:id', async (req, reply) => {
+    const ctx = ctxOf(req)
+    const id = (req.params as { id: string }).id
+    const ticket = supportRepo.get(ctx.tenant, id)
+    if (!ticket) return reply.code(404).send({ error: 'not found' })
+    // 用户只能看自己的；管理员需 support:manage
+    if (ctx.clientUserId !== undefined) {
+      if (ticket.userId !== ctx.clientUserId) return reply.code(403).send({ error: 'forbidden' })
+    } else if (!ctx.principal?.permissions.includes('support:manage')) {
+      return reply.code(403).send({ error: 'forbidden' })
+    }
+    return { ticket, messages: supportRepo.messages(ctx.tenant, id) }
+  })
+
+  app.post('/api/support/tickets/:id/messages', async (req, reply) => {
+    const ctx = ctxOf(req)
+    const id = (req.params as { id: string }).id
+    const ticket = supportRepo.get(ctx.tenant, id)
+    if (!ticket) return reply.code(404).send({ error: 'not found' })
+    const b = (req.body ?? {}) as { body?: string; mediaId?: string }
+    if (!b.body?.trim() && !b.mediaId) return reply.code(400).send({ error: '内容不能为空' })
+    if ((b.body ?? '').length > 8000) return reply.code(400).send({ error: '内容过长' })
+
+    if (ctx.clientUserId !== undefined) {
+      if (ticket.userId !== ctx.clientUserId) return reply.code(403).send({ error: 'forbidden' })
+      supportRepo.addMessage(ctx.tenant, id, 'user', b.body ?? '', { mediaId: b.mediaId })
+    } else {
+      if (!ctx.principal?.permissions.includes('support:manage')) {
+        return reply.code(403).send({ error: 'forbidden' })
+      }
+      supportRepo.addMessage(ctx.tenant, id, 'admin', b.body ?? '', {
+        senderName: ctx.principal.username,
+        mediaId: b.mediaId
+      })
+    }
+    return { ticket: supportRepo.get(ctx.tenant, id), messages: supportRepo.messages(ctx.tenant, id) }
+  })
+
+  app.post('/api/support/tickets/:id/close', async (req, reply) => {
+    const ctx = ctxOf(req)
+    const id = (req.params as { id: string }).id
+    const ticket = supportRepo.get(ctx.tenant, id)
+    if (!ticket) return reply.code(404).send({ error: 'not found' })
+    const allowed =
+      (ctx.clientUserId !== undefined && ticket.userId === ctx.clientUserId) ||
+      ctx.principal?.permissions.includes('support:manage')
+    if (!allowed) return reply.code(403).send({ error: 'forbidden' })
+    supportRepo.close(ctx.tenant, id)
+    return { ok: true }
+  })
+
+  // 管理端：全部工单
+  app.get('/api/admin/support/tickets', async (req, reply) => {
+    if (!requirePerm(req, reply, 'support:manage')) return
+    return { tickets: supportRepo.listAll(ctxOf(req).tenant) }
   })
 
   // ── AI 分析（需 analyze:run）──
