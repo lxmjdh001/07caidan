@@ -149,6 +149,24 @@ export interface AiModelRow {
   createdAt: number
 }
 
+export interface AnnouncementRow {
+  id: string
+  title: string
+  body: string
+  audience: 'all' | 'plan' | 'new_users' | 'expiring'
+  audienceParam: string
+  enabled: boolean
+  createdAt: number
+}
+
+export interface ReminderSettingsRow {
+  enabled: boolean
+  daysBefore: number[]
+  emailEnabled: boolean
+  emailSubject: string
+  emailBody: string
+}
+
 export interface Me {
   username: string
   role: string
@@ -373,6 +391,34 @@ export class ApiClient {
     summary: Array<{ modelId: string; purpose: string; calls: number; credits: number }>
   }> {
     return this.req('/api/admin/usage-summary')
+  }
+
+  // ── 运营公告与到期提醒（需 announcements:manage）──
+  listAnnouncements(): Promise<{ announcements: AnnouncementRow[] }> {
+    return this.req('/api/admin/announcements')
+  }
+
+  createAnnouncement(body: Partial<AnnouncementRow>): Promise<{ announcement: AnnouncementRow }> {
+    return this.req('/api/admin/announcements', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  updateAnnouncement(id: string, body: Partial<AnnouncementRow>): Promise<{ ok: boolean }> {
+    return this.req(`/api/admin/announcements/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body)
+    })
+  }
+
+  deleteAnnouncement(id: string): Promise<{ ok: boolean }> {
+    return this.req(`/api/admin/announcements/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  reminderSettings(): Promise<{ settings: ReminderSettingsRow; vars: string[] }> {
+    return this.req('/api/admin/reminder-settings')
+  }
+
+  updateReminderSettings(body: Partial<ReminderSettingsRow>): Promise<{ settings: ReminderSettingsRow }> {
+    return this.req('/api/admin/reminder-settings', { method: 'PUT', body: JSON.stringify(body) })
   }
 
   // ── 用户管理（需 users:manage）──

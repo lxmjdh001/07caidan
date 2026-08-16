@@ -66,7 +66,9 @@ const BILLING_METHODS: Record<string, true> = {
   createOrder: true,
   subscribe: true,
   setAutoRenew: true,
-  exchangeCredits: true
+  exchangeCredits: true,
+  listNotices: true,
+  markNoticesRead: true
 }
 
 /** 渲染进程可调用的全部主进程能力，集中在此注册 */

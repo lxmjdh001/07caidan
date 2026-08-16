@@ -348,3 +348,9 @@ input { font-family: inherit; }
 .check-row { display: flex; gap: 10px; padding: 7px 0; }
 .check-row .check { display: flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--text); }
 .row-off { opacity: 0.5; }
+
+.block-label { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; font-size: 12px; color: var(--muted); }
+.block-label > input, .block-label > textarea {
+  border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px;
+  font-size: 13px; background: var(--panel-alt); color: var(--text); font-family: inherit;
+}

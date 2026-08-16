@@ -4,6 +4,7 @@ import type { AppSettings } from '@shared/settings'
 import type { ChannelPluginInfo, OutboundPreview, TranslatorInfo } from '@shared/ipc'
 import { AccountList, type AccountRow } from './components/AccountList'
 import { AccountModal } from './components/AccountModal'
+import { NoticeModal, useNotices } from './components/NoticeModal'
 import { BillingPage } from './pages/BillingPage'
 import { CampaignPage } from './pages/CampaignPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -31,6 +32,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   const [accountModalKey, setAccountModalKey] = useState<string | null>(null)
   const [plugins, setPlugins] = useState<ChannelPluginInfo[]>([])
   const [showPicker, setShowPicker] = useState(false)
+  const noticeState = useNotices()
   const activeIdRef = useRef<string | null>(null)
   activeIdRef.current = activeId
 
@@ -385,6 +387,11 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             </>
           )}
         </div>
+        <NoticeModal
+          announcements={noticeState.announcements}
+          notices={noticeState.notices}
+          onClose={noticeState.dismiss}
+        />
         {showPicker && (
           <ChannelPicker
             plugins={plugins}

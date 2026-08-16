@@ -361,5 +361,7 @@ export const en: Record<MessageKey, string> = {
   'settings.upd.downloading': 'Downloading',
   'settings.upd.ready': 'Version v{v} is ready and will install on next quit.',
   'settings.upd.restart': 'Restart to update now',
-  'settings.upd.error': 'Update check failed'
+  'settings.upd.error': 'Update check failed',
+  'notice.title': 'Notifications',
+  'notice.gotIt': 'Got it'
 }

@@ -5,6 +5,7 @@ import { ConversationList } from './components/ConversationList'
 import { ChatView } from './components/ChatView'
 import { AnalysisPanel } from './components/AnalysisPanel'
 import { UsersView } from './components/UsersView'
+import { AnnouncementsView } from './components/AnnouncementsView'
 import { BillingView } from './components/BillingView'
 import { CampaignsView } from './components/CampaignsView'
 import { brand } from './branding'
@@ -14,7 +15,7 @@ export function App(): React.JSX.Element {
   const { t, locale, setLocale } = useI18n()
   const [client, setClient] = useState<ApiClient | null>(null)
   const [me, setMe] = useState<Me | null>(null)
-  const [view, setView] = useState<'chats' | 'campaigns' | 'billing' | 'users'>('chats')
+  const [view, setView] = useState<'chats' | 'campaigns' | 'billing' | 'announcements' | 'users'>('chats')
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
 
@@ -55,6 +56,7 @@ export function App(): React.JSX.Element {
   const canUsers = me.permissions.includes('users:manage')
   const canCampaigns = me.permissions.includes('campaigns:manage')
   const canBilling = me.permissions.includes('billing:manage')
+  const canAnnounce = me.permissions.includes('announcements:manage')
 
   return (
     <div className="layout">
@@ -83,6 +85,15 @@ export function App(): React.JSX.Element {
             <button className={view === 'billing' ? 'on' : ''} onClick={() => setView('billing')}>
               <CardIcon />
               {t('nav.billing')}
+            </button>
+          )}
+          {canAnnounce && (
+            <button
+              className={view === 'announcements' ? 'on' : ''}
+              onClick={() => setView('announcements')}
+            >
+              <BellIcon />
+              {t('nav.announcements')}
             </button>
           )}
           {canUsers && (
@@ -121,6 +132,8 @@ export function App(): React.JSX.Element {
           <CampaignsView client={client} />
         ) : view === 'billing' && canBilling ? (
           <BillingView client={client} />
+        ) : view === 'announcements' && canAnnounce ? (
+          <AnnouncementsView client={client} />
         ) : (
           <div className="body">
             <ConversationList
@@ -156,6 +169,14 @@ function roleLabel(role: string, t: ReturnType<typeof useI18n>['t']): string {
   return known.includes(role) ? t(`role.${role}` as 'role.owner') : role
 }
 
+function BellIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+      <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+      <path d="M13.7 21a2 2 0 0 1-3.4 0" />
+    </svg>
+  )
+}
 function CardIcon(): React.JSX.Element {
   return (
     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>

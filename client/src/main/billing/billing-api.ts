@@ -57,6 +57,15 @@ export class BillingApi {
     return this.request('POST', '/api/billing/exchange-credits', { cents })
   }
 
+  /** 未读通知（公告 + 个人通知，如到期提醒） */
+  listNotices(): Promise<unknown> {
+    return this.request('GET', '/api/notices')
+  }
+
+  markNoticesRead(body: { announcementIds?: string[]; noticeIds?: number[] }): Promise<unknown> {
+    return this.request('POST', '/api/notices/read', body)
+  }
+
   /** 自动回复生成：主进程内部使用（AutoReplyService 调用） */
   reply(body: {
     messages: Array<{ role: 'user' | 'assistant'; content: string }>

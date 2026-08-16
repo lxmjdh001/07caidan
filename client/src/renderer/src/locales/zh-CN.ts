@@ -358,7 +358,9 @@ export const zhCN = {
   'settings.upd.downloading': '下载中',
   'settings.upd.ready': '新版本 v{v} 已就绪，将在下次退出时自动安装。',
   'settings.upd.restart': '立即重启更新',
-  'settings.upd.error': '检查更新失败'
+  'settings.upd.error': '检查更新失败',
+  'notice.title': '通知',
+  'notice.gotIt': '我知道了'
 }
 
 export type MessageKey = keyof typeof zhCN
