@@ -10,6 +10,7 @@ import { IntentAnalyzer } from './analyzer.ts'
 import { AiRepo } from './ai/ai-repo.ts'
 import { AuthRepo, type Principal } from './auth-repo.ts'
 import { BillingRepo } from './billing/billing-repo.ts'
+import { startBillingCron } from './billing/billing-cron.ts'
 import { registerBillingRoutes } from './billing/billing-routes.ts'
 import { ChannelRepo } from './billing/channel-repo.ts'
 import { OrderRepo } from './billing/order-repo.ts'
@@ -129,6 +130,15 @@ export function buildServer(config: ServerConfig): FastifyInstance {
   }
 
   app.get('/health', async () => ({ ok: true }))
+
+  // 到期订阅续费/过期 + 超时订单清理；随服务停止
+  const stopBillingCron = startBillingCron({
+    billing: billingRepo,
+    orders: orderRepo,
+    tenants: () => [config.clientTenant],
+    logger: app.log
+  })
+  app.addHook('onClose', async () => stopBillingCron())
 
   registerBillingRoutes(app, {
     billing: billingRepo,

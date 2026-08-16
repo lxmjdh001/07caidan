@@ -364,6 +364,29 @@ export class BillingRepo {
       .run()
   }
 
+  /** 到期的生效订阅（定时任务处理续费/过期用） */
+  listDueSubscriptions(tenant: string, now = Date.now()): Subscription[] {
+    return this.db
+      .select()
+      .from(subscriptions)
+      .where(
+        and(
+          eq(subscriptions.tenant, tenant),
+          eq(subscriptions.status, 'active'),
+          sql`${subscriptions.expiresAt} <= ${now}`
+        )
+      )
+      .all()
+      .map((r) => ({
+        userId: r.userId,
+        planId: r.planId,
+        startAt: r.startAt,
+        expiresAt: r.expiresAt,
+        autoRenew: r.autoRenew === 1,
+        status: r.status
+      }))
+  }
+
   setAutoRenew(tenant: string, userId: number, on: boolean): boolean {
     const res = this.db
       .update(subscriptions)
