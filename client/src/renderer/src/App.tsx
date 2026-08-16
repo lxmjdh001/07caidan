@@ -4,6 +4,7 @@ import type { AppSettings } from '@shared/settings'
 import type { ChannelPluginInfo, OutboundPreview, TranslatorInfo } from '@shared/ipc'
 import { AccountList, type AccountRow } from './components/AccountList'
 import { AccountModal } from './components/AccountModal'
+import { BillingPage } from './pages/BillingPage'
 import { CampaignPage } from './pages/CampaignPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { ChannelPicker } from './components/ChannelPicker'
@@ -24,7 +25,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [translators, setTranslators] = useState<TranslatorInfo[]>([])
   /** 主视图：聊天 / 工单 / 设置。工单与设置做成整页，弹窗里放不下 */
-  const [view, setView] = useState<'chat' | 'campaigns' | 'settings'>('chat')
+  const [view, setView] = useState<'chat' | 'campaigns' | 'billing' | 'settings'>('chat')
   /** 打开中的账号设置弹窗（channel key） */
   const [accountModalKey, setAccountModalKey] = useState<string | null>(null)
   const [plugins, setPlugins] = useState<ChannelPluginInfo[]>([])
@@ -331,11 +332,14 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             onAddAccount={() => setShowPicker(true)}
             onOpenSettings={() => setView(view === 'settings' ? 'chat' : 'settings')}
             onOpenCampaigns={() => setView(view === 'campaigns' ? 'chat' : 'campaigns')}
+            onOpenBilling={() => setView(view === 'billing' ? 'chat' : 'billing')}
             activeView={view}
           />
 
           {view === 'campaigns' ? (
             <CampaignPage accounts={accountOptions} />
+          ) : view === 'billing' ? (
+            <BillingPage />
           ) : view === 'settings' && settings ? (
             <SettingsPage
               settings={settings}

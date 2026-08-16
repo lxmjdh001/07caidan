@@ -41,8 +41,9 @@ interface Props {
   onAddAccount: () => void
   onOpenSettings: () => void
   onOpenCampaigns: () => void
+  onOpenBilling: () => void
   /** 当前主视图，用于底部导航高亮 */
-  activeView: 'chat' | 'campaigns' | 'settings'
+  activeView: 'chat' | 'campaigns' | 'billing' | 'settings'
 }
 
 export function AccountList({
@@ -54,6 +55,7 @@ export function AccountList({
   onAddAccount,
   onOpenSettings,
   onOpenCampaigns,
+  onOpenBilling,
   activeView
 }: Props): React.JSX.Element {
   const { t } = useI18n()
@@ -168,6 +170,17 @@ export function AccountList({
             <path d="M7 15l4-5 3 3 5-7" />
           </svg>
           <span>{t('campaign.title')}</span>
+        </button>
+        <button
+          type="button"
+          className={`rail-nav ${activeView === 'billing' ? 'active' : ''}`}
+          onClick={onOpenBilling}
+        >
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+            <rect x="2" y="5" width="20" height="14" rx="2" />
+            <path d="M2 10h20" />
+          </svg>
+          <span>{t('bill.title')}</span>
         </button>
         <button
           type="button"

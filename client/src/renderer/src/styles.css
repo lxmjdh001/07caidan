@@ -1997,3 +1997,37 @@ body {
   word-break: break-all;
   user-select: text;
 }
+
+/* ── 套餐卡片 ── */
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 14px;
+  margin: 14px 0;
+}
+.plan-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+.plan-card.current {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.plan-card h3 { font-size: 15px; }
+.plan-price { font-size: 26px; font-weight: 700; }
+.plan-unit { font-size: 12px; font-weight: 400; color: var(--text-secondary); margin-inline-start: 4px; }
+.pay-payload {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px dashed var(--border);
+  border-radius: 9px;
+  background: var(--panel-alt);
+}
+.pay-payload p { margin: 4px 0; font-size: 13px; }
+.pay-payload code { user-select: text; word-break: break-all; }
+.pp-key { color: var(--text-secondary); font-size: 12px; margin-inline-end: 6px; }

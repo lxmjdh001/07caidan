@@ -6,6 +6,7 @@ import { JsonContactStore } from './core/contact-store'
 import { MediaStore } from './core/media-store'
 import { SyncClient } from './sync/sync-client'
 import { ClientAuth } from './auth/client-auth'
+import { BillingApi } from './billing/billing-api'
 import { CampaignApi } from './campaigns/campaign-api'
 import { Notifier } from './core/notifier'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -172,6 +173,7 @@ async function bootstrap(): Promise<void> {
   const auth = new ClientAuth(settings, logger)
   // 工单数据落后台（看板要能被团队公开访问），复用同步配置里的地址与登录令牌
   const campaignApi = new CampaignApi(() => settings.get().sync, logger)
+  const billingApi = new BillingApi(() => settings.get().sync, logger)
 
   registerIpc({
     manager,
@@ -181,6 +183,7 @@ async function bootstrap(): Promise<void> {
     channels,
     translators: translatorRegistry,
     campaigns: campaignApi,
+    billingApi,
     notifier,
     broadcast,
     onSettingsChanged: (updated) => {

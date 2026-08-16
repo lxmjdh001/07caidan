@@ -1,0 +1,471 @@
+import { useCallback, useEffect, useState } from 'react'
+import { useI18n } from '../i18n'
+
+const api = window.omni
+
+/** 与 server/src/billing 对齐的展示子集 */
+interface Plan {
+  id: string
+  name: string
+  priceCents: number
+  periodUnit: string
+  periodCount: number
+  maxAccounts: number
+}
+
+interface PayChannel {
+  id: string
+  type: string
+  name: string
+  currency: string
+  feeRate: number
+  feeFixedCents: number
+  feePaidBy: 'merchant' | 'customer'
+}
+
+interface Me {
+  balance: { balanceCents: number; credits: number }
+  subscription: { planId: string; expiresAt: number; autoRenew: boolean; status: string } | null
+  plan: Plan | null
+  accountQuota: number
+  settings: { creditsPerUsd: number }
+}
+
+interface OrderRow {
+  id: string
+  kind: string
+  amountCents: number
+  payableCents: number
+  currency: string
+  payableLocal: number
+  status: string
+  createdAt: number
+}
+
+interface LedgerRow {
+  id: number
+  kind: string
+  amountCents: number
+  creditsDelta: number
+  balanceAfter: number
+  note?: string
+  createdAt: number
+}
+
+interface PaymentInfo {
+  payUrl?: string
+  payload?: Record<string, string>
+}
+
+function usd(cents: number): string {
+  const sign = cents < 0 ? '-' : ''
+  const abs = Math.abs(Math.round(cents))
+  return `${sign}$${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`
+}
+
+function fmt(ts?: number): string {
+  return ts ? new Date(ts).toLocaleString() : '—'
+}
+
+type Tab = 'overview' | 'plans' | 'topup' | 'history'
+
+/**
+ * 套餐与余额 —— 客户端侧的钱包页。
+ *
+ * 支付流程：选通道下单 → 拿到 payUrl（网页支付）或 payload（USDT 转账信息）→
+ * 用户完成支付 → 后台收到回调入账 → 本页刷新看到余额。
+ * 客户端自身从不接触任何支付密钥。
+ */
+export function BillingPage(): React.JSX.Element {
+  const { t } = useI18n()
+  const [tab, setTab] = useState<Tab>('overview')
+  const [me, setMe] = useState<Me | null>(null)
+  const [err, setErr] = useState('')
+
+  const load = useCallback(async () => {
+    setErr('')
+    try {
+      setMe(await api.billing<Me>('me'))
+    } catch (e) {
+      setErr((e as Error).message)
+    }
+  }, [])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const TABS: Array<{ id: Tab; label: string }> = [
+    { id: 'overview', label: t('bill.overview') },
+    { id: 'plans', label: t('bill.plans') },
+    { id: 'topup', label: t('bill.topup') },
+    { id: 'history', label: t('bill.history') }
+  ]
+
+  return (
+    <div className="page">
+      <header className="page-header">
+        <h1>{t('bill.title')}</h1>
+        <div className="page-tabs">
+          {TABS.map((x) => (
+            <button
+              key={x.id}
+              type="button"
+              className={tab === x.id ? 'on' : ''}
+              onClick={() => setTab(x.id)}
+            >
+              {x.label}
+            </button>
+          ))}
+        </div>
+      </header>
+      <div className="page-body">
+        {err && <p className="auth-err">{err}</p>}
+        {tab === 'overview' && <Overview me={me} onChanged={load} />}
+        {tab === 'plans' && <PlansTab me={me} onChanged={load} />}
+        {tab === 'topup' && <TopupTab onChanged={load} />}
+        {tab === 'history' && <HistoryTab />}
+      </div>
+    </div>
+  )
+}
+
+function Overview({ me, onChanged }: { me: Me | null; onChanged: () => Promise<void> }): React.JSX.Element {
+  const { t } = useI18n()
+  const [cents, setCents] = useState('1.00')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  if (!me) return <p className="field-hint">{t('campaign.loading')}</p>
+
+  return (
+    <div className="form-page">
+      <div className="stat-cards">
+        <div className="stat-card">
+          <span className="k">{t('bill.balance')}</span>
+          <span className="v">{usd(me.balance.balanceCents)}</span>
+        </div>
+        <div className="stat-card">
+          <span className="k">{t('bill.credits')}</span>
+          <span className="v">{me.balance.credits}</span>
+        </div>
+        <div className="stat-card">
+          <span className="k">{t('bill.accountQuota')}</span>
+          <span className="v">{me.accountQuota}</span>
+        </div>
+      </div>
+
+      <section className="form-card">
+        <h3>{t('bill.currentPlan')}</h3>
+        {me.subscription && me.plan ? (
+          <>
+            <p>
+              <strong>{me.plan.name}</strong> · {usd(me.plan.priceCents)} ·{' '}
+              {t('bill.maxAccounts')} {me.plan.maxAccounts} ·{' '}
+              {me.subscription.status === 'active'
+                ? `${fmt(me.subscription.expiresAt)} ${t('bill.expires')}`
+                : t('bill.expired')}
+            </p>
+            <label className="field checkbox">
+              <input
+                type="checkbox"
+                checked={me.subscription.autoRenew}
+                onChange={async (e) => {
+                  await api.billing('setAutoRenew', e.target.checked)
+                  await onChanged()
+                }}
+              />
+              <span>{t('bill.autoRenew')}</span>
+            </label>
+            <p className="field-hint">{t('bill.autoRenewHint')}</p>
+          </>
+        ) : (
+          <p className="field-hint">{t('bill.noPlan')}</p>
+        )}
+      </section>
+
+      <section className="form-card">
+        <h3>{t('bill.exchange')}</h3>
+        <p className="field-hint">
+          {t('bill.exchangeHint').replace('{n}', String(me.settings.creditsPerUsd))}
+        </p>
+        <div className="field-row">
+          <label className="field">
+            <span>{t('bill.amountUsd')}</span>
+            <input type="text" value={cents} onChange={(e) => setCents(e.target.value)} />
+          </label>
+          <button
+            type="button"
+            className="primary-btn"
+            disabled={busy}
+            onClick={async () => {
+              setMsg('')
+              const v = Math.round(Number(cents) * 100)
+              if (!Number.isFinite(v) || v < 1) return setMsg(t('bill.errAmount'))
+              setBusy(true)
+              try {
+                await api.billing('exchangeCredits', v)
+                setMsg(t('bill.exchanged'))
+                await onChanged()
+              } catch (e) {
+                setMsg((e as Error).message)
+              } finally {
+                setBusy(false)
+              }
+            }}
+          >
+            {t('bill.doExchange')}
+          </button>
+        </div>
+        {msg && <p className="field-hint ok">{msg}</p>}
+      </section>
+    </div>
+  )
+}
+
+function PlansTab({ me, onChanged }: { me: Me | null; onChanged: () => Promise<void> }): React.JSX.Element {
+  const { t } = useI18n()
+  const [plans, setPlans] = useState<Plan[]>([])
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState('')
+
+  useEffect(() => {
+    void api.billing<{ plans: Plan[] }>('listPlans').then((r) => setPlans(r.plans))
+  }, [])
+
+  const unitLabel = (p: Plan): string => {
+    const unit = t(`bill.unit.${p.periodUnit}` as 'bill.unit.month')
+    return p.periodCount > 1 ? `${p.periodCount} ${unit}` : unit
+  }
+
+  return (
+    <div className="form-page">
+      <p className="field-hint">{t('bill.plansHint')}</p>
+      {msg && <p className="auth-err">{msg}</p>}
+      <div className="plan-grid">
+        {plans.map((p) => {
+          const current = me?.subscription?.planId === p.id && me?.subscription?.status === 'active'
+          return (
+            <div key={p.id} className={`plan-card ${current ? 'current' : ''}`}>
+              <h3>{p.name}</h3>
+              <div className="plan-price">
+                {usd(p.priceCents)}
+                <span className="plan-unit">/ {unitLabel(p)}</span>
+              </div>
+              <p className="field-hint">
+                {t('bill.maxAccounts')} {p.maxAccounts}
+              </p>
+              <button
+                type="button"
+                className="primary-btn"
+                disabled={current || busy === p.id}
+                onClick={async () => {
+                  setMsg('')
+                  setBusy(p.id)
+                  try {
+                    await api.billing('subscribe', p.id)
+                    await onChanged()
+                  } catch (e) {
+                    setMsg((e as Error).message)
+                  } finally {
+                    setBusy('')
+                  }
+                }}
+              >
+                {current ? t('bill.currentPlanBadge') : t('bill.subscribe')}
+              </button>
+            </div>
+          )
+        })}
+      </div>
+      <p className="field-hint">{t('bill.prorationHint')}</p>
+    </div>
+  )
+}
+
+function TopupTab({ onChanged }: { onChanged: () => Promise<void> }): React.JSX.Element {
+  const { t } = useI18n()
+  const [channels, setChannels] = useState<PayChannel[]>([])
+  const [channelId, setChannelId] = useState('')
+  const [amount, setAmount] = useState('10.00')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [payment, setPayment] = useState<PaymentInfo | null>(null)
+
+  useEffect(() => {
+    void api.billing<{ channels: PayChannel[] }>('listChannels').then((r) => {
+      setChannels(r.channels)
+      if (r.channels[0]) setChannelId(r.channels[0].id)
+    })
+  }, [])
+
+  const channel = channels.find((c) => c.id === channelId)
+  const amountCents = Math.round(Number(amount) * 100)
+  // 客户承担手续费时预估应付（gross-up 口径与后端一致，仅作展示）
+  const estimate =
+    channel && channel.feePaidBy === 'customer' && Number.isFinite(amountCents) && amountCents > 0
+      ? Math.ceil((amountCents + channel.feeFixedCents) / (1 - channel.feeRate))
+      : amountCents
+
+  return (
+    <div className="form-page">
+      <section className="form-card">
+        <h3>{t('bill.topup')}</h3>
+        {channels.length === 0 ? (
+          <p className="field-hint">{t('bill.noChannels')}</p>
+        ) : (
+          <>
+            <div className="field-row">
+              <label className="field">
+                <span>{t('bill.channel')}</span>
+                <select value={channelId} onChange={(e) => setChannelId(e.target.value)}>
+                  {channels.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}（{c.currency}）
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>{t('bill.amountUsd')}</span>
+                <input type="text" value={amount} onChange={(e) => setAmount(e.target.value)} />
+              </label>
+            </div>
+            {channel && channel.feePaidBy === 'customer' && Number.isFinite(estimate) && (
+              <p className="field-hint">
+                {t('bill.feeEstimate')
+                  .replace('{fee}', usd(estimate - amountCents))
+                  .replace('{total}', usd(estimate))}
+              </p>
+            )}
+            {err && <p className="auth-err">{err}</p>}
+            <button
+              type="button"
+              className="primary-btn"
+              disabled={busy}
+              onClick={async () => {
+                setErr('')
+                setPayment(null)
+                if (!Number.isFinite(amountCents) || amountCents < 100) {
+                  return setErr(t('bill.errMin'))
+                }
+                setBusy(true)
+                try {
+                  const r = await api.billing<{ payment: PaymentInfo }>('createOrder', {
+                    kind: 'topup',
+                    amountCents,
+                    channelId
+                  })
+                  setPayment(r.payment)
+                  await onChanged()
+                } catch (e) {
+                  setErr((e as Error).message)
+                } finally {
+                  setBusy(false)
+                }
+              }}
+            >
+              {t('bill.createOrder')}
+            </button>
+          </>
+        )}
+
+        {payment?.payUrl && (
+          <div className="link-preview">
+            <code>{payment.payUrl}</code>
+            <button
+              type="button"
+              className="primary-btn"
+              onClick={() => void navigator.clipboard.writeText(payment.payUrl!)}
+            >
+              {t('campaign.copy')}
+            </button>
+          </div>
+        )}
+        {payment?.payload && (
+          <div className="pay-payload">
+            {Object.entries(payment.payload).map(([k, v]) => (
+              <p key={k}>
+                <span className="pp-key">{k}</span> <code>{v}</code>
+              </p>
+            ))}
+            <p className="field-hint">{t('bill.payloadHint')}</p>
+          </div>
+        )}
+      </section>
+    </div>
+  )
+}
+
+function HistoryTab(): React.JSX.Element {
+  const { t } = useI18n()
+  const [orders, setOrders] = useState<OrderRow[]>([])
+  const [ledger, setLedger] = useState<LedgerRow[]>([])
+
+  useEffect(() => {
+    void api.billing<{ orders: OrderRow[] }>('listOrders').then((r) => setOrders(r.orders))
+    void api.billing<{ ledger: LedgerRow[] }>('listLedger').then((r) => setLedger(r.ledger))
+  }, [])
+
+  return (
+    <div className="form-page">
+      <section className="form-card">
+        <h3>{t('bill.orders')}</h3>
+        {orders.length === 0 ? (
+          <p className="empty-hint">{t('form.noOptions')}</p>
+        ) : (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>{t('bill.time')}</th>
+                <th className="num">{t('bill.amount')}</th>
+                <th className="num">{t('bill.payable')}</th>
+                <th>{t('bill.status')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {orders.map((o) => (
+                <tr key={o.id}>
+                  <td>{fmt(o.createdAt)}</td>
+                  <td className="num">{usd(o.amountCents)}</td>
+                  <td className="num">{usd(o.payableCents)}</td>
+                  <td>{t(`bill.status.${o.status}` as 'bill.status.pending')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="form-card">
+        <h3>{t('bill.ledger')}</h3>
+        {ledger.length === 0 ? (
+          <p className="empty-hint">{t('form.noOptions')}</p>
+        ) : (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>{t('bill.time')}</th>
+                <th>{t('bill.kind')}</th>
+                <th className="num">{t('bill.amount')}</th>
+                <th className="num">{t('bill.credits')}</th>
+                <th className="num">{t('bill.balanceAfter')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ledger.map((l) => (
+                <tr key={l.id}>
+                  <td>{fmt(l.createdAt)}</td>
+                  <td>{t(`bill.kind.${l.kind}` as 'bill.kind.topup')}</td>
+                  <td className="num">{l.amountCents !== 0 ? usd(l.amountCents) : '—'}</td>
+                  <td className="num">{l.creditsDelta !== 0 ? l.creditsDelta : '—'}</td>
+                  <td className="num">{usd(l.balanceAfter)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </div>
+  )
+}

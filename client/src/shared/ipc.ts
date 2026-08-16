@@ -31,6 +31,7 @@ export const IPC_METHODS = {
   authLogin: 'omni:authLogin',
   authLogout: 'omni:authLogout',
   campaignCall: 'omni:campaignCall',
+  billingCall: 'omni:billingCall',
   setUnreadTotal: 'omni:setUnreadTotal'
 } as const
 
@@ -141,6 +142,8 @@ export interface OmniApi {
    * 逐个开通道只会让 preload 和 handler 长出十几段一模一样的样板代码。
    */
   campaign<T = unknown>(method: string, ...args: unknown[]): Promise<T>
+  /** 计费接口统一入口（同 campaign 的白名单转发模式） */
+  billing<T = unknown>(method: string, ...args: unknown[]): Promise<T>
   /** 上报总未读数，主进程据此更新程序坞/任务栏角标 */
   setUnreadTotal(total: number): Promise<void>
   /** 订阅主进程推送，返回取消订阅函数 */

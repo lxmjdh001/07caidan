@@ -3,6 +3,7 @@ import { IPC_METHODS, type OmniEvent, type OutboundPreview } from '@shared/ipc'
 import type { AppSettings } from '@shared/settings'
 import type { ClientAuth } from './auth/client-auth'
 import type { ChannelRegistry } from './channels/registry'
+import type { BillingApi } from './billing/billing-api'
 import type { CampaignApi } from './campaigns/campaign-api'
 import type { Notifier } from './core/notifier'
 import type { ChannelManager } from './core/channel-manager'
@@ -18,6 +19,7 @@ export interface IpcDeps {
   channels: ChannelRegistry
   translators: TranslatorRegistry
   campaigns: CampaignApi
+  billingApi: BillingApi
   notifier: Notifier
   /** 设置更新后的回调（重新装配翻译管道等） */
   onSettingsChanged: (settings: AppSettings) => void
@@ -48,6 +50,19 @@ const CAMPAIGN_METHODS: Record<string, true> = {
   deleteLibrary: true
 }
 
+/** 允许渲染进程调用的计费接口白名单 */
+const BILLING_METHODS: Record<string, true> = {
+  me: true,
+  listPlans: true,
+  listChannels: true,
+  listOrders: true,
+  listLedger: true,
+  createOrder: true,
+  subscribe: true,
+  setAutoRenew: true,
+  exchangeCredits: true
+}
+
 /** 渲染进程可调用的全部主进程能力，集中在此注册 */
 export function registerIpc(deps: IpcDeps): void {
   const { manager, store, settings, translators } = deps
@@ -75,6 +90,15 @@ export function registerIpc(deps: IpcDeps): void {
 
   // 工单 / 重粉库：方法名 + 参数数组转发到后台客户端。
   // 白名单校验，避免渲染进程随便点名调用对象上的任意属性。
+  ipcMain.handle(IPC_METHODS.billingCall, async (_e, method: string, args: unknown[] = []) => {
+    const api = deps.billingApi as unknown as Record<string, unknown>
+    const fn = Object.prototype.hasOwnProperty.call(BILLING_METHODS, method)
+      ? api[method]
+      : undefined
+    if (typeof fn !== 'function') throw new Error(`未知的计费接口：${method}`)
+    return (fn as (...a: unknown[]) => Promise<unknown>).apply(api, args)
+  })
+
   ipcMain.handle(IPC_METHODS.campaignCall, async (_e, method: string, args: unknown[] = []) => {
     const api = deps.campaigns as unknown as Record<string, unknown>
     const fn = Object.prototype.hasOwnProperty.call(CAMPAIGN_METHODS, method)
