@@ -61,6 +61,11 @@ export abstract class ChannelAdapter extends TypedEmitter<AdapterEvents> {
   fetchAvatar?(externalChatId: string): Promise<string | undefined>
   /** 主动解析会话显示名（群名/备注等），解析不到返回 undefined（可选能力） */
   fetchTitle?(externalChatId: string): Promise<string | undefined>
+  /**
+   * 解析该会话对应客户的规范唯一标识（跨己方账号稳定，如 wa:+17759276114）。
+   * 群聊/机器人等无自然人身份的会话返回 undefined（可选能力）。
+   */
+  resolveContactId?(externalChatId: string): Promise<string | undefined>
 
   protected makeState(partial: Omit<ChannelState, 'kind' | 'accountId'>): ChannelState {
     return { kind: this.kind, accountId: this.accountId, ...partial }

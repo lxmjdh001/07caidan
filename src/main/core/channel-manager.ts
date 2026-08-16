@@ -6,6 +6,7 @@ import { basename } from 'node:path'
 import type { TranslationPipeline } from '../translation/pipeline'
 import type { ChannelAdapter } from './channel-adapter'
 import { noopLogger, type Logger } from './logger'
+import type { JsonContactStore } from './contact-store'
 import type { MediaStore } from './media-store'
 import type { MessageStore } from './message-store'
 import { mediaTypeFromMime, mimeFromPath } from './mime'
@@ -21,13 +22,16 @@ export class ChannelManager {
   private readonly avatarAttempted = new Set<string>()
   /** 已尝试解析标题的会话 */
   private readonly titleAttempted = new Set<string>()
+  /** 已尝试解析客户标识的会话 */
+  private readonly contactAttempted = new Set<string>()
 
   constructor(
     private readonly store: MessageStore,
     private readonly translation: TranslationPipeline,
     private readonly broadcast: (evt: OmniEvent) => void,
     private readonly logger: Logger = noopLogger,
-    private readonly media?: MediaStore
+    private readonly media?: MediaStore,
+    private readonly contacts?: JsonContactStore
   ) {}
 
   register(adapter: ChannelAdapter): void {
@@ -51,6 +55,7 @@ export class ChannelManager {
             if (conv.channel === adapter.kind && conv.accountId === adapter.accountId) {
               this.ensureAvatar(conv)
               this.ensureTitle(conv)
+              this.ensureContactId(conv)
             }
           }
         })
@@ -172,6 +177,7 @@ export class ChannelManager {
     this.broadcast({ type: 'message:new', message: msg, conversation })
     this.ensureAvatar(conversation)
     this.ensureTitle(conversation)
+    this.ensureContactId(conversation)
     return msg
   }
 
@@ -185,6 +191,7 @@ export class ChannelManager {
       this.broadcast({ type: 'message:new', message: msg, conversation })
       this.ensureAvatar(conversation)
       this.ensureTitle(conversation)
+      this.ensureContactId(conversation)
     } catch (err) {
       this.logger.error('入站消息处理失败', err)
     }
@@ -224,6 +231,41 @@ export class ChannelManager {
         if (updated) this.broadcast({ type: 'conversation:updated', conversation: updated })
       } catch (err) {
         this.logger.debug(`解析会话标题失败 ${conv.id}`, err)
+      }
+    })()
+  }
+
+  /**
+   * 解析并登记客户的规范标识。已解析过的会话也会在每次运行首次触达时
+   * 重新登记一次（更新 lastSeenAt 与名称历史）。
+   */
+  private ensureContactId(conv: {
+    id: string
+    title: string
+    contactId?: string
+  }): void {
+    if (this.contactAttempted.has(conv.id)) return
+    this.contactAttempted.add(conv.id)
+    void (async () => {
+      try {
+        let contactId = conv.contactId
+        if (!contactId) {
+          const { channel, accountId, externalChatId } = parseConversationId(conv.id)
+          const adapter = this.adapters.get(`${channel}:${accountId}`)
+          if (!adapter?.resolveContactId) return
+          contactId = await adapter.resolveContactId(externalChatId)
+          if (!contactId) return
+          const updated = await this.store.patchConversation({ id: conv.id, contactId })
+          if (updated) this.broadcast({ type: 'conversation:updated', conversation: updated })
+        }
+        if (this.contacts) {
+          const { otherConversations } = await this.contacts.record(contactId, conv.id, conv.title)
+          if (otherConversations.length > 0) {
+            this.logger.info(`识别到老客户 ${contactId}，此前会话:`, otherConversations)
+          }
+        }
+      } catch (err) {
+        this.logger.debug(`解析客户标识失败 ${conv.id}`, err)
       }
     })()
   }

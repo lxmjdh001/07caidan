@@ -361,6 +361,24 @@ body {
   font-weight: 600;
 }
 
+.contact-id {
+  margin-left: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  user-select: text;
+}
+
+.known-chip {
+  margin-left: 8px;
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #fdf4e3;
+  color: #9a6b1a;
+  font-size: 11px;
+  font-weight: 600;
+}
+
 .chat-scroll {
   flex: 1;
   overflow-y: auto;

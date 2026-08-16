@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, net, protocol } from 'electron'
 import { OMNI_EVENT_CHANNEL, type OmniEvent } from '@shared/ipc'
+import { JsonContactStore } from './core/contact-store'
 import { MediaStore } from './core/media-store'
 import { whatsAppPlugin } from './channels/whatsapp'
 import { ChannelRegistry } from './channels/registry'
@@ -46,6 +47,9 @@ async function bootstrap(): Promise<void> {
   const media = new MediaStore(join(userData, 'media'))
   await media.init()
 
+  const contacts = new JsonContactStore(join(userData, 'data'))
+  await contacts.init()
+
   protocol.handle('omni-media', (request) => {
     const mediaId = decodeURIComponent(new URL(request.url).pathname.replace(/^\//, ''))
     const abs = media.resolvePath(mediaId)
@@ -63,7 +67,14 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  const manager = new ChannelManager(store, pipeline, broadcast, logger.child('manager'), media)
+  const manager = new ChannelManager(
+    store,
+    pipeline,
+    broadcast,
+    logger.child('manager'),
+    media,
+    contacts
+  )
 
   // ── 渠道插件装配。新增平台：注册插件 + 在此为账号创建适配器 ──
   const channels = new ChannelRegistry()

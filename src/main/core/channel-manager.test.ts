@@ -7,6 +7,7 @@ import type { OmniEvent } from '@shared/ipc'
 import { writeFile } from 'node:fs/promises'
 import { ChannelAdapter, type OutboundMedia, type OutboundResult } from './channel-adapter'
 import { ChannelManager } from './channel-manager'
+import { JsonContactStore } from './contact-store'
 import { JsonMessageStore } from './json-message-store'
 import { MediaStore } from './media-store'
 import { noopLogger } from './logger'
@@ -49,6 +50,7 @@ class FakeAdapter extends ChannelAdapter {
 let dir: string
 let store: JsonMessageStore
 let media: MediaStore
+let contacts: JsonContactStore
 let adapter: FakeAdapter
 let manager: ChannelManager
 let events: OmniEvent[]
@@ -59,13 +61,16 @@ beforeEach(async () => {
   await store.init()
   media = new MediaStore(join(dir, 'media'))
   await media.init()
+  contacts = new JsonContactStore(dir)
+  await contacts.init()
   events = []
   manager = new ChannelManager(
     store,
     new TranslationPipeline(new PassthroughTranslator()),
     (evt) => events.push(evt),
     noopLogger,
-    media
+    media,
+    contacts
   )
   adapter = new FakeAdapter()
   manager.register(adapter)
@@ -240,6 +245,18 @@ describe('ChannelManager', () => {
     adapter.fakeIncoming({ id: 'x2', authorName: undefined })
     await flushAsync()
     expect(adapter.fetchTitle).toHaveBeenCalledTimes(1)
+  })
+
+  it('解析并登记客户唯一标识（contactId），写入会话与联系人登记表', async () => {
+    adapter.resolveContactId = vi.fn(async () => 'wa:+17759276114')
+    adapter.fakeIncoming()
+    await flushAsync()
+
+    const convs = await store.listConversations()
+    expect(convs[0]?.contactId).toBe('wa:+17759276114')
+    expect(contacts.get('wa:+17759276114')?.conversationIds).toEqual([
+      'whatsapp:main:42@s.whatsapp.net'
+    ])
   })
 
   it('头像拉取失败不影响消息流程', async () => {

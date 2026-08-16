@@ -128,6 +128,17 @@ export function App(): React.JSX.Element {
     () => conversations.find((c) => c.id === activeId) ?? null,
     [conversations, activeId]
   )
+  // 同一客户（contactId 相同）是否在其他账号/渠道出现过
+  const knownFromOther = useMemo(() => {
+    const c = activeConversation
+    if (!c?.contactId) return false
+    return conversations.some(
+      (other) =>
+        other.id !== c.id &&
+        other.contactId === c.contactId &&
+        (other.accountId !== c.accountId || other.channel !== c.channel)
+    )
+  }, [conversations, activeConversation])
   const showQr = waState?.status === 'waiting_qr'
 
   return (
@@ -161,6 +172,7 @@ export function App(): React.JSX.Element {
                 conversation={activeConversation}
                 messages={activeId ? messages[activeId] ?? [] : []}
                 connected={waState?.status === 'connected'}
+                knownFromOther={knownFromOther}
                 onSend={sendText}
                 onSendMedia={sendMediaFile}
               />

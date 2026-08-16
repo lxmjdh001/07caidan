@@ -86,6 +86,7 @@ export class JsonMessageStore implements MessageStore {
     if (patch.title) conv.title = patch.title
     if (patch.isGroup !== undefined) conv.isGroup = patch.isGroup
     if (patch.avatarMediaId) conv.avatarMediaId = patch.avatarMediaId
+    if (patch.contactId) conv.contactId = patch.contactId
     this.scheduleFlush()
     return conv
   }

@@ -9,6 +9,8 @@ interface Props {
   conversation: Conversation | null
   messages: UnifiedMessage[]
   connected: boolean
+  /** 同一客户是否在其他账号/渠道有过会话 */
+  knownFromOther: boolean
   onSend: (text: string) => Promise<void>
   onSendMedia: () => Promise<void>
 }
@@ -47,6 +49,7 @@ export function ChatView({
   conversation,
   messages,
   connected,
+  knownFromOther,
   onSend,
   onSendMedia
 }: Props): React.JSX.Element {
@@ -93,6 +96,10 @@ export function ChatView({
           <div className="chat-title">{conversation.title}</div>
           <div className="chat-subtitle">
             <span className="channel-chip">{t('channel.whatsapp')}</span>
+            {conversation.contactId && (
+              <span className="contact-id">{conversation.contactId.replace(/^wa:/, '')}</span>
+            )}
+            {knownFromOther && <span className="known-chip">{t('chat.knownContact')}</span>}
             {conversation.isGroup ? ' · 群组' : ''}
           </div>
         </div>

@@ -162,6 +162,25 @@ export class WhatsAppAdapter extends ChannelAdapter {
     return undefined
   }
 
+  override async resolveContactId(externalChatId: string): Promise<string | undefined> {
+    // 群聊与机器人没有自然人身份
+    if (isGroupJid(externalChatId) || externalChatId.endsWith('@bot')) return undefined
+    // 普通号码 jid → 直接取号
+    if (externalChatId.endsWith('@s.whatsapp.net')) {
+      const number = externalChatId.split('@')[0]?.split(':')[0]
+      return number ? `wa:+${number}` : undefined
+    }
+    // LID → 映射回手机号（映射未就绪时返回 undefined，下次运行会重试）
+    if (externalChatId.endsWith('@lid')) {
+      const pn = await this.sock?.signalRepository?.lidMapping
+        ?.getPNForLID(externalChatId)
+        .catch(() => null)
+      const number = pn?.split('@')[0]?.split(':')[0]
+      return number ? `wa:+${number}` : undefined
+    }
+    return undefined
+  }
+
   override async fetchAvatar(externalChatId: string): Promise<string | undefined> {
     if (!this.sock || this.status !== 'connected' || !this.saveMedia) return undefined
     // 无头像/无权限查看时 profilePictureUrl 会抛错，视为无头像

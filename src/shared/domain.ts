@@ -76,6 +76,11 @@ export interface Conversation {
   /** 平台侧会话 ID（WhatsApp 为 jid，Telegram 为 chat id 等） */
   externalChatId: string
   title: string
+  /**
+   * 客户的规范唯一标识（如 wa:+17759276114），跨本产品内所有己方账号稳定。
+   * 群聊/机器人会话为空。用于识别"同一客户在不同账号找过我"。
+   */
+  contactId?: string
   /** 对方头像（MediaStore 内的文件 ID），未获取到则用首字母占位 */
   avatarMediaId?: string
   isGroup: boolean
