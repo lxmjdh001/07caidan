@@ -54,6 +54,15 @@ export interface SyncConfig {
   uploadMedia: boolean
 }
 
+/** AI 自动回复（全局开关 + 话术；按会话再开一层，两层都开才生效） */
+export interface AutoReplyConfig {
+  enabled: boolean
+  /** 业务话术/身份设定，作为 system 提示发给模型 */
+  systemPrompt: string
+  /** 同一会话两次自动回复的最小间隔（秒），防连发与机器人互怼 */
+  cooldownSec: number
+}
+
 /** 桌面通知与角标 */
 export interface NotificationConfig {
   enabled: boolean
@@ -79,6 +88,7 @@ export interface AppSettings {
   theme: ThemeMode
   translation: TranslationConfig
   notifications: NotificationConfig
+  autoReply: AutoReplyConfig
   sync: SyncConfig
   platform: PlatformDefaults
   /**
@@ -106,6 +116,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
     llm: { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: '' }
   },
   notifications: { enabled: true, showPreview: true, sound: true },
+  autoReply: {
+    enabled: false,
+    systemPrompt:
+      '你是一名专业客服。用客户使用的语言简短友好地回复，不要编造价格与承诺，拿不准时请客户稍等人工回复。',
+    cooldownSec: 20
+  },
   sync: { enabled: false, serverUrl: '', token: '', email: '', uploadMedia: true },
   platform: { telegramApiId: '', telegramApiHash: '' },
   accounts: { 'whatsapp:main': {} }

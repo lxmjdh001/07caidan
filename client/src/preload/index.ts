@@ -40,6 +40,8 @@ const api: OmniApi = {
     ipcRenderer.invoke(IPC_METHODS.transcribeVoice, conversationId, messageId),
   setConversationLang: (conversationId: string, lang: string | null) =>
     ipcRenderer.invoke(IPC_METHODS.setConversationLang, conversationId, lang),
+  setConversationAutoReply: (conversationId: string, on: boolean) =>
+    ipcRenderer.invoke(IPC_METHODS.setConversationAutoReply, conversationId, on),
   markRead: (conversationId: string) => ipcRenderer.invoke(IPC_METHODS.markRead, conversationId),
   getSettings: () => ipcRenderer.invoke(IPC_METHODS.getSettings),
   updateSettings: (patch: Partial<AppSettings>) =>

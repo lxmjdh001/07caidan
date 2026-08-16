@@ -159,6 +159,14 @@ export function registerIpc(deps: IpcDeps): void {
     }
   )
 
+  ipcMain.handle(
+    IPC_METHODS.setConversationAutoReply,
+    async (_e, conversationId: string, on: boolean) => {
+      const updated = await store.patchConversation({ id: conversationId, autoReply: on })
+      if (updated) deps.broadcast({ type: 'conversation:updated', conversation: updated })
+    }
+  )
+
   ipcMain.handle(IPC_METHODS.sendMedia, async (e, conversationId: string) => {
     const win = BrowserWindow.fromWebContents(e.sender) ?? undefined
     const picked = await dialog.showOpenDialog(win!, {

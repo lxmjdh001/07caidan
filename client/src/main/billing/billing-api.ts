@@ -57,6 +57,14 @@ export class BillingApi {
     return this.request('POST', '/api/billing/exchange-credits', { cents })
   }
 
+  /** 自动回复生成：主进程内部使用（AutoReplyService 调用） */
+  reply(body: {
+    messages: Array<{ role: 'user' | 'assistant'; content: string }>
+    system?: string
+  }): Promise<{ text: string; credits: number }> {
+    return this.request('POST', '/api/ai/reply', body) as Promise<{ text: string; credits: number }>
+  }
+
   /** 语音识别：主进程内部使用（音频文件在主进程），不暴露给渲染进程白名单 */
   transcribe(body: {
     audioBase64: string

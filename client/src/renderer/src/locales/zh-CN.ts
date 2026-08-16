@@ -333,7 +333,14 @@ export const zhCN = {
   'chat.recVoice': '按住说话 / 点击录音',
   'chat.recCancel': '取消',
   'chat.recSend': '发送',
-  'chat.recNoMic': '无法访问麦克风，请在系统设置中授权。'
+  'chat.recNoMic': '无法访问麦克风，请在系统设置中授权。',
+  'chat.autoReply': 'AI 自动回复本会话',
+  'chat.autoReplyHint': '还需在 设置 → 通用 里开启全局自动回复并配置话术。',
+  'settings.autoReply': 'AI 自动回复',
+  'settings.autoReplyEnabled': '启用自动回复（还需在具体会话里单独开启）',
+  'settings.autoReplyPrompt': '话术 / 身份设定（发给模型的系统提示）',
+  'settings.autoReplyCooldown': '同一会话最小间隔（秒）',
+  'settings.autoReplyHint': '按积分计费（用途：自动回复）。两层开关设计：全局开启后，只对单独打开开关的会话生效，避免误伤所有客户。'
 }
 
 export type MessageKey = keyof typeof zhCN

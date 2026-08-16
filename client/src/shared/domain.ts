@@ -127,6 +127,8 @@ export interface Conversation {
   langOverride?: string
   /** 投放归因：这个客户从哪个广告/链接来的（首条入站消息识别后固定不变） */
   leadSource?: LeadSourceInfo
+  /** 该会话是否开启 AI 自动回复（还需全局开关同时开启） */
+  autoReply?: boolean
   isGroup: boolean
   lastMessageAt: number
   lastMessagePreview: string

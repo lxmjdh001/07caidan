@@ -376,6 +376,21 @@ export function ChatView({
                 ))}
               </select>
             </label>
+            {!conversation.isGroup && (
+              <>
+                <label className="field checkbox">
+                  <input
+                    type="checkbox"
+                    checked={conversation.autoReply ?? false}
+                    onChange={(e) =>
+                      void window.omni.setConversationAutoReply(conversation.id, e.target.checked)
+                    }
+                  />
+                  <span>{t('chat.autoReply')}</span>
+                </label>
+                <p className="field-hint">{t('chat.autoReplyHint')}</p>
+              </>
+            )}
           </div>
         )}
       </header>

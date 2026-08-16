@@ -8,6 +8,7 @@ import { SyncClient } from './sync/sync-client'
 import { ClientAuth } from './auth/client-auth'
 import { BillingApi } from './billing/billing-api'
 import { CampaignApi } from './campaigns/campaign-api'
+import { AutoReplyService } from './core/auto-reply'
 import { Notifier } from './core/notifier'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { whatsAppPlugin } from './channels/whatsapp'
@@ -88,11 +89,27 @@ async function bootstrap(): Promise<void> {
     onActivate: (conversationId) => broadcast({ type: 'conversation:open', conversationId })
   })
 
+  const autoReply = new AutoReplyService({
+    getConfig: () => settings.get().autoReply,
+    getMessages: (id) => store.listMessages(id, 50),
+    generate: (body) => billingApi.reply(body),
+    // prepared 跳过出站翻译：模型已按客户语言作答，再翻一次只会翻坏
+    send: async (conversationId, text) => {
+      await manager.sendText(conversationId, text, {
+        send: text,
+        original: text,
+        targetLang: ''
+      })
+    },
+    log: logger.child('auto-reply')
+  })
+
   /** 收到入站消息时弹系统通知（窗口已聚焦则跳过，通知里带账号备注名） */
   const notifyOnInbound = (evt: OmniEvent): void => {
     if (evt.type !== 'message:new' || evt.message.direction !== 'in') return
     const key = `${evt.message.channel}:${evt.message.accountId}`
     notifier.notifyInbound(evt.message, evt.conversation, settings.accountConfig(key).label)
+    void autoReply.onInbound(evt.message, evt.conversation)
   }
 
   const manager = new ChannelManager(

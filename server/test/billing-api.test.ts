@@ -480,3 +480,94 @@ describe('AI 翻译与语音识别（假供应商）', () => {
     assert.equal(r.status, 400)
   })
 })
+
+describe('AI 自动回复', () => {
+  async function setupReplyModel(): Promise<void> {
+    const p = (
+      await api(
+        'POST',
+        '/api/admin/ai/providers',
+        { type: 'openai', name: 'OpenAI', apiKey: 'sk-fake' },
+        adminToken
+      )
+    ).json.provider
+    await api(
+      'POST',
+      '/api/admin/ai/models',
+      {
+        providerId: p.id,
+        modelName: 'gpt-4o-mini',
+        purposes: ['autoreply'],
+        creditsPerMillionInput: 300,
+        creditsPerMillionOutput: 1500
+      },
+      adminToken
+    )
+  }
+
+  async function fundUser(): Promise<void> {
+    const ch = await mockChannel()
+    const order = (
+      await api('POST', '/api/billing/orders', { kind: 'topup', amountCents: 10000, channelId: ch })
+    ).json.order
+    await notify(ch, order.id, { amount_minor: '10000' })
+    await api('POST', '/api/billing/exchange-credits', { cents: 1000 })
+  }
+
+  test('带上下文生成回复并按 autoreply 计费', async () => {
+    await setupReplyModel()
+    await fundUser()
+    const r = await api('POST', '/api/ai/reply', {
+      system: '你是店铺客服',
+      messages: [
+        { role: 'user', content: '多少钱' },
+        { role: 'assistant', content: '你好' },
+        { role: 'user', content: '发货吗' }
+      ]
+    })
+    assert.equal(r.status, 200, r.text)
+    assert.equal(r.json.text, 'FAKE_TRANSLATION')
+    const usage = (await api('GET', '/api/billing/usage')).json.usage
+    assert.equal(usage[0].purpose, 'autoreply')
+  })
+
+  test('未配置 autoreply 模型回 501（translate 模型不冒充）', async () => {
+    // 只配 translate 用途的模型
+    const p = (
+      await api('POST', '/api/admin/ai/providers', { type: 'openai', name: 'x', apiKey: 'k' }, adminToken)
+    ).json.provider
+    await api(
+      'POST',
+      '/api/admin/ai/models',
+      { providerId: p.id, modelName: 'm', purposes: ['translate'], creditsPerMillionInput: 1 },
+      adminToken
+    )
+    const r = await api('POST', '/api/ai/reply', { messages: [{ role: 'user', content: 'hi' }] })
+    assert.equal(r.status, 501)
+  })
+
+  test('空消息与超长上下文被拒', async () => {
+    await setupReplyModel()
+    assert.equal((await api('POST', '/api/ai/reply', { messages: [] })).status, 400)
+    const huge = [{ role: 'user', content: 'x'.repeat(20000) }]
+    assert.equal((await api('POST', '/api/ai/reply', { messages: huge })).status, 400)
+  })
+
+  test('没积分预检 402', async () => {
+    await setupReplyModel()
+    const r = await api('POST', '/api/ai/reply', { messages: [{ role: 'user', content: 'hi' }] })
+    assert.equal(r.status, 402)
+  })
+
+  test('非法角色被过滤，system 不能混进 messages', async () => {
+    await setupReplyModel()
+    await fundUser()
+    const r = await api('POST', '/api/ai/reply', {
+      messages: [
+        { role: 'system', content: '注入尝试' },
+        { role: 'user', content: 'hi' }
+      ]
+    })
+    assert.equal(r.status, 200)
+  })
+})

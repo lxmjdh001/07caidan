@@ -23,6 +23,8 @@ export interface ConversationPatch {
   langOverride?: string | null
   /** 投放来源，首条入站消息识别后写入，之后不再变更 */
   leadSource?: LeadSourceInfo
+  /** 会话级 AI 自动回复开关 */
+  autoReply?: boolean
 }
 
 /**

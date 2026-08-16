@@ -336,5 +336,12 @@ export const en: Record<MessageKey, string> = {
   'chat.recVoice': 'Record voice message',
   'chat.recCancel': 'Cancel',
   'chat.recSend': 'Send',
-  'chat.recNoMic': 'Microphone unavailable. Grant access in system settings.'
+  'chat.recNoMic': 'Microphone unavailable. Grant access in system settings.',
+  'chat.autoReply': 'AI auto-reply in this conversation',
+  'chat.autoReplyHint': 'Also enable the global switch and prompt under Settings → General.',
+  'settings.autoReply': 'AI auto-reply',
+  'settings.autoReplyEnabled': 'Enable auto-reply (each conversation must also opt in)',
+  'settings.autoReplyPrompt': 'Persona / instructions (system prompt sent to the model)',
+  'settings.autoReplyCooldown': 'Minimum interval per conversation (seconds)',
+  'settings.autoReplyHint': 'Billed in credits (purpose: auto-reply). Two-level switches: after enabling globally, only conversations that opt in are affected.'
 }

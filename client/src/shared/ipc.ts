@@ -23,6 +23,7 @@ export const IPC_METHODS = {
   sendVoice: 'omni:sendVoice',
   transcribeVoice: 'omni:transcribeVoice',
   setConversationLang: 'omni:setConversationLang',
+  setConversationAutoReply: 'omni:setConversationAutoReply',
   getSettings: 'omni:getSettings',
   updateSettings: 'omni:updateSettings',
   listTranslators: 'omni:listTranslators',
@@ -134,6 +135,8 @@ export interface OmniApi {
   ): Promise<{ ok: boolean; transcript?: string; error?: string }>
   /** 设置会话的客户语言（null = 清除，回到自动） */
   setConversationLang(conversationId: string, lang: string | null): Promise<void>
+  /** 会话级 AI 自动回复开关（还需设置里的全局开关同时开启） */
+  setConversationAutoReply(conversationId: string, on: boolean): Promise<void>
   markRead(conversationId: string): Promise<void>
   getSettings(): Promise<AppSettings>
   updateSettings(patch: Partial<AppSettings>): Promise<AppSettings>

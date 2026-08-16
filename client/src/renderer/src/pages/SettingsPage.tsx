@@ -49,6 +49,9 @@ export function SettingsPage({
   const [notifyOn, setNotifyOn] = useState(settings.notifications.enabled)
   const [notifyPreview, setNotifyPreview] = useState(settings.notifications.showPreview)
   const [notifySound, setNotifySound] = useState(settings.notifications.sound)
+  const [arOn, setArOn] = useState(settings.autoReply.enabled)
+  const [arPrompt, setArPrompt] = useState(settings.autoReply.systemPrompt)
+  const [arCooldown, setArCooldown] = useState(String(settings.autoReply.cooldownSec))
   const [engine, setEngine] = useState(tr.engine)
   const [inbound, setInbound] = useState(tr.inboundEnabled)
   const [outbound, setOutbound] = useState(tr.outboundEnabled)
@@ -75,6 +78,11 @@ export function SettingsPage({
         locale,
         theme,
         notifications: { enabled: notifyOn, showPreview: notifyPreview, sound: notifySound },
+        autoReply: {
+          enabled: arOn,
+          systemPrompt: arPrompt,
+          cooldownSec: Math.max(5, Number(arCooldown) || 20)
+        },
         translation: {
           engine,
           inboundEnabled: inbound,
@@ -185,6 +193,30 @@ export function SettingsPage({
                 <span>{t('settings.notifySound')}</span>
               </label>
               <p className="field-hint">{t('settings.notifyHint')}</p>
+
+              <h3 style={{ marginTop: 22 }}>{t('settings.autoReply')}</h3>
+              <label className="field checkbox">
+                <input type="checkbox" checked={arOn} onChange={(e) => setArOn(e.target.checked)} />
+                <span>{t('settings.autoReplyEnabled')}</span>
+              </label>
+              <label className="field">
+                <span>{t('settings.autoReplyPrompt')}</span>
+                <textarea
+                  rows={4}
+                  value={arPrompt}
+                  onChange={(e) => setArPrompt(e.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span>{t('settings.autoReplyCooldown')}</span>
+                <input
+                  type="text"
+                  value={arCooldown}
+                  onChange={(e) => setArCooldown(e.target.value)}
+                  style={{ maxWidth: 90 }}
+                />
+              </label>
+              <p className="field-hint">{t('settings.autoReplyHint')}</p>
             </section>
           )}
 

@@ -494,6 +494,67 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     return { text: outcome.text, credits: charge.credits, usage: outcome.usage, modelId: model.id }
   })
 
+  /**
+   * AI 自动回复：带上下文的对话补全，按 autoreply 用途计费。
+   * 系统提示由客户端传入（老板配置的业务话术），后台不改写 ——
+   * 回复内容的口径应该完全由使用者控制。
+   */
+  app.post('/api/ai/reply', async (req, reply) => {
+    const userId = requireClientUser(req, reply)
+    if (userId === null) return
+    const tenant = ctxOf(req).tenant
+    const b = (req.body ?? {}) as {
+      messages?: Array<{ role?: string; content?: string }>
+      system?: string
+      modelId?: string
+    }
+    const messages = (b.messages ?? [])
+      .filter(
+        (m): m is { role: 'user' | 'assistant'; content: string } =>
+          (m.role === 'user' || m.role === 'assistant') &&
+          typeof m.content === 'string' &&
+          m.content.length > 0
+      )
+      .slice(-16)
+    if (messages.length === 0) return reply.code(400).send({ error: 'messages 必填' })
+    const totalChars = messages.reduce((n, m) => n + m.content.length, 0)
+    if (totalChars > 16000) return reply.code(400).send({ error: '上下文过长' })
+
+    const model = b.modelId
+      ? ai.getModel(tenant, b.modelId)
+      : (ai.listModels(tenant, { purpose: 'autoreply' }).find((m) => m.enabled) ?? null)
+    if (!model || !model.enabled) return reply.code(501).send({ error: '未配置自动回复模型' })
+    const provider = ai.providerConfig(tenant, model.providerId)
+    if (!provider) return reply.code(501).send({ error: '模型所属供应商不可用' })
+
+    const roughTokens = Math.max(500, totalChars * 2)
+    const estimated = ai.estimate(tenant, model.id, {
+      inputTokens: roughTokens,
+      outputTokens: 1000
+    })
+    const bal = billing.getBalance(tenant, userId)
+    const settings = ai.getSettings(tenant)
+    const affordable =
+      bal.credits >= estimated ||
+      (settings.autoTopUpCredits &&
+        bal.balanceCents * (settings.creditsPerUsd / 100) + bal.credits >= estimated)
+    if (!affordable) {
+      return reply.code(402).send({ error: '积分不足', reason: 'insufficient_credits' })
+    }
+
+    const outcome = await aiClient.chat(provider, {
+      model: model.modelName,
+      system: b.system?.slice(0, 4000),
+      messages,
+      maxTokens: 1024
+    })
+    if (!outcome.ok) return reply.code(502).send({ error: outcome.error ?? '生成失败' })
+
+    const charge = ai.chargeUsage(tenant, userId, model.id, 'autoreply', outcome.usage)
+    if (!charge.ok) return reply.code(402).send({ error: '扣费失败', reason: charge.reason })
+    return { text: outcome.text, credits: charge.credits, modelId: model.id }
+  })
+
   /** 语音识别。计费按客户端上报的音频时长（花的是他自己的积分）。 */
   app.post('/api/ai/asr', async (req, reply) => {
     const userId = requireClientUser(req, reply)
