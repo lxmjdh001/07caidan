@@ -35,10 +35,22 @@ export interface AccountConfig {
   deviceLabel?: string
 }
 
+export interface SyncConfig {
+  /** 是否把聊天记录同步到后台 */
+  enabled: boolean
+  /** 后台服务地址，如 https://api.example.com */
+  serverUrl: string
+  /** 同步鉴权令牌（后台下发） */
+  token: string
+  /** 是否同时上传媒体文件 */
+  uploadMedia: boolean
+}
+
 export interface AppSettings {
   /** 界面语言 */
   locale: string
   translation: TranslationConfig
+  sync: SyncConfig
   /**
    * 按渠道账号 key（如 whatsapp:main）的独立配置。
    * 这里的 key 集合同时是"账号注册表"：启动时为每个 key 创建适配器。
@@ -61,5 +73,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     googleCloud: { apiKey: '' },
     llm: { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: '' }
   },
+  sync: { enabled: false, serverUrl: '', token: '', uploadMedia: true },
   accounts: { 'whatsapp:main': {} }
 }

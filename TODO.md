@@ -40,20 +40,26 @@
       （服务器只做 Webhook→WebSocket 转发，不存消息，发送仍从客户端直连 LINE API）
 - [ ] 中转服务的部署脚本与鉴权
 
-## M5 — 后端（用户/套餐管理，前后端分离）
-> 技术栈（2026 调研结论）：**Fastify**（轻量高性能 + JSON Schema 校验 + OpenAPI 生成）
-> + **Drizzle ORM + PostgreSQL** + **Better Auth**（TS 原生认证，自带组织/RBAC 插件）。
-> 管理后台独立 React + Vite 前端；同一套 REST API 供 Electron 客户端调用。
-- [ ] 独立仓库/工作区 `omnichat-server`：Fastify + Drizzle + PostgreSQL 骨架
-- [ ] 用户注册 / 登录（邮箱+密码，Better Auth；客户端登录后才可使用）
-- [ ] 套餐与授权：套餐定义（账号数/渠道数/翻译额度/有效期）、订阅状态、到期处理
+## M5 — 后端（聊天记录归档 + AI 分析，前后端分离）
+> 技术栈：**Fastify 5** + **Drizzle ORM**（开发期 SQLite，schema 可平滑迁 PostgreSQL）
+> + Anthropic SDK（意向分析，claude-opus-5 结构化输出）。代码在 `server/`。
+- [x] 后台服务骨架：Fastify + Drizzle(SQLite) + Bearer token 鉴权（租户隔离）
+- [x] 聊天记录归档：/api/sync 批量幂等入库（会话+消息+译文），媒体上传
+- [x] 查询接口：会话列表 / 会话消息 / 按客户跨账号聚合
+- [x] AI 意向分析：/api/analyze/conversation|contact（按需，结构化输出意向等级/摘要/信号/建议）
+- [x] 客户端批量定时同步引擎（SyncClient，秒级水位去重，含译文与媒体）
+- [x] 设置页：后台同步开关 / 地址 / 令牌 / 媒体上传
+- [x] 端到端验证：桌面 → 后台，会话+消息+译文+contactId 落库
+- [ ] 用户注册 / 登录（Better Auth；token 升级为用户/设备体系）
+- [ ] 迁移 PostgreSQL（drizzle-kit 迁移，dialect 切换）
+- [ ] 套餐与授权：账号数/渠道数/翻译额度/有效期、订阅状态、到期处理
 - [ ] 客户端配置云同步（翻译设置、账号配置跨设备漫游）
-- [ ] 设备管理（一个订阅限 N 台设备、远程下线）
-- [ ] 翻译额度计量与上报（免费引擎不计、自有引擎按字符计）
-- [ ] 支付对接（Stripe / 支付宝等，按目标市场定）
-- [ ] 管理后台（React）：客户列表、套餐管理、用量报表、公告推送
-- [ ] 客户端自动更新通道与灰度发布
-- [ ] 审计日志与基础风控（异常登录、共享账号检测）
+- [ ] 设备管理（一个订阅限 N 台、远程下线）
+- [ ] 翻译额度计量与上报；支付对接（Stripe/支付宝）
+- [ ] 管理后台（React）：客户列表、聊天记录查看、意向分析结果、套餐/用量报表
+- [ ] 实时/自动打标签（可选升级：新消息触发意向重算）
+- [ ] 媒体走对象存储（S3/MinIO）
+- [ ] 客户端自动更新（electron-updater）与审计/风控
 
 ## M6 — 产品化
 - [ ] WhatsApp 多账号支持（模型已预留 accountId，UI 与生命周期管理待做）

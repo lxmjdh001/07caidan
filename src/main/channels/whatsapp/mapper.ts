@@ -44,6 +44,7 @@ interface MediaNode {
   mimetype?: string
   fileName?: string
   fileLength?: number | string | { toNumber(): number }
+  seconds?: number
 }
 
 const MEDIA_NODE_KEYS = [
@@ -114,12 +115,20 @@ export function extractBody(message: Record<string, unknown> | null | undefined)
       type: 'media',
       mediaType: 'video',
       caption: video.caption || undefined,
-      mimeType: video.mimetype || undefined
+      mimeType: video.mimetype || undefined,
+      durationSec: typeof video.seconds === 'number' ? video.seconds : undefined
     }
   }
 
   const audio = message.audioMessage as MediaNode | undefined
-  if (audio) return { type: 'media', mediaType: 'audio', mimeType: audio.mimetype || undefined }
+  if (audio) {
+    return {
+      type: 'media',
+      mediaType: 'audio',
+      mimeType: audio.mimetype || undefined,
+      durationSec: typeof audio.seconds === 'number' ? audio.seconds : undefined
+    }
+  }
 
   const sticker = message.stickerMessage as MediaNode | undefined
   if (sticker) return { type: 'media', mediaType: 'sticker', mimeType: sticker.mimetype || undefined }

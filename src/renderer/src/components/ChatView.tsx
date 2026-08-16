@@ -26,6 +26,73 @@ interface Props {
 
 type MediaBody = Extract<MessageBody, { type: 'media' }>
 
+function formatDuration(sec: number): string {
+  const s = Math.max(0, Math.round(sec))
+  const m = Math.floor(s / 60)
+  return `${m}:${String(s % 60).padStart(2, '0')}`
+}
+
+/** 微信风格语音条：播放/暂停 + 声波条 + 时长（out 方向镜像布局） */
+function VoiceMessage({ url, durationSec }: { url: string; durationSec?: number }): React.JSX.Element {
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const [playing, setPlaying] = useState(false)
+  const [total, setTotal] = useState(durationSec ?? 0)
+  const [elapsed, setElapsed] = useState(0)
+
+  const toggle = (): void => {
+    const el = audioRef.current
+    if (!el) return
+    if (playing) {
+      el.pause()
+    } else {
+      void el.play()
+    }
+  }
+
+  // 气泡宽度按时长增长（微信手感），封顶 200px
+  const width = 88 + Math.min(112, (total || 0) * 4)
+  const shown = playing && elapsed > 0 ? total - elapsed : total
+
+  return (
+    <div className="voice-msg" style={{ width }} onClick={toggle} role="button" tabIndex={0}>
+      <span className={`voice-play ${playing ? 'playing' : ''}`}>
+        {playing ? (
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden>
+            <rect x="6" y="5" width="4" height="14" rx="1" />
+            <rect x="14" y="5" width="4" height="14" rx="1" />
+          </svg>
+        ) : (
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden>
+            <path d="M8 5v14l11-7z" />
+          </svg>
+        )}
+      </span>
+      <span className="voice-wave" aria-hidden>
+        {Array.from({ length: 14 }).map((_, i) => (
+          <span key={i} className={`voice-bar ${playing ? 'anim' : ''}`} style={{ animationDelay: `${i * 60}ms` }} />
+        ))}
+      </span>
+      <span className="voice-dur">{formatDuration(shown)}</span>
+      <audio
+        ref={audioRef}
+        src={url}
+        preload="metadata"
+        onLoadedMetadata={(e) => {
+          const d = e.currentTarget.duration
+          if (Number.isFinite(d) && d > 0) setTotal(d)
+        }}
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
+        onEnded={() => {
+          setPlaying(false)
+          setElapsed(0)
+        }}
+        onTimeUpdate={(e) => setElapsed(e.currentTarget.currentTime)}
+      />
+    </div>
+  )
+}
+
 function MediaContent({ body, downloading }: { body: MediaBody; downloading: string }): React.JSX.Element {
   if (!body.mediaId) {
     return (
@@ -43,7 +110,7 @@ function MediaContent({ body, downloading }: { body: MediaBody; downloading: str
     case 'video':
       return <video className="media-video" src={url} controls preload="metadata" />
     case 'audio':
-      return <audio className="media-audio" src={url} controls preload="metadata" />
+      return <VoiceMessage url={url} durationSec={body.durationSec} />
     case 'document':
       return (
         <div className="media-doc">

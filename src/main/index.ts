@@ -4,6 +4,8 @@ import { app, BrowserWindow, net, protocol } from 'electron'
 import { OMNI_EVENT_CHANNEL, type OmniEvent } from '@shared/ipc'
 import { JsonContactStore } from './core/contact-store'
 import { MediaStore } from './core/media-store'
+import { SyncClient } from './sync/sync-client'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { whatsAppPlugin } from './channels/whatsapp'
 import { ChannelRegistry } from './channels/registry'
 import { channelKey } from '@shared/domain'
@@ -108,6 +110,27 @@ async function bootstrap(): Promise<void> {
     if (kind === 'whatsapp' && accountId) registerWaAccount(accountId)
   }
 
+  // ── 聊天记录后台同步（批量定时） ──
+  const syncRecordPath = join(userData, 'data', 'sync-state.json')
+  let syncRecord = { lastSyncedAt: 0, boundaryIds: [] as string[] }
+  try {
+    syncRecord = JSON.parse(await readFile(syncRecordPath, 'utf8'))
+  } catch {
+    // 首次运行
+  }
+  const syncClient = new SyncClient({
+    store,
+    media,
+    getConfig: () => settings.get().sync,
+    initialRecord: syncRecord,
+    persistRecord: async (r) => {
+      await mkdir(join(userData, 'data'), { recursive: true })
+      await writeFile(syncRecordPath, JSON.stringify(r), 'utf8')
+    },
+    logger
+  })
+  syncClient.start()
+
   registerIpc({
     manager,
     store,
@@ -159,6 +182,7 @@ async function bootstrap(): Promise<void> {
   })
 
   app.on('before-quit', () => {
+    syncClient.stop()
     void manager.stopAll()
     void store.flush()
   })

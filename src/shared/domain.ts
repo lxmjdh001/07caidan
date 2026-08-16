@@ -41,6 +41,8 @@ export type MessageBody =
       mediaId?: string
       mimeType?: string
       fileName?: string
+      /** 语音/视频时长（秒），用于播放条展示 */
+      durationSec?: number
     }
   | { type: 'unsupported'; description: string }
 

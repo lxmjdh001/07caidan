@@ -46,6 +46,10 @@ export function SettingsModal({
   const [inbound, setInbound] = useState(tr.inboundEnabled)
   const [outbound, setOutbound] = useState(tr.outboundEnabled)
   const [confirmSend, setConfirmSend] = useState(tr.confirmBeforeSend)
+  const [syncEnabled, setSyncEnabled] = useState(settings.sync.enabled)
+  const [syncUrl, setSyncUrl] = useState(settings.sync.serverUrl)
+  const [syncToken, setSyncToken] = useState(settings.sync.token)
+  const [syncMedia, setSyncMedia] = useState(settings.sync.uploadMedia)
   const [displayLang, setDisplayLang] = useState(tr.displayLang)
   const [targetLangDefault, setTargetLangDefault] = useState(tr.targetLangDefault)
   const [customUrl, setCustomUrl] = useState(tr.custom.url)
@@ -73,6 +77,12 @@ export function SettingsModal({
           deepl: { apiKey: deeplKey.trim() },
           googleCloud: { apiKey: gcKey.trim() },
           llm: { baseUrl: llmBaseUrl.trim(), apiKey: llmKey.trim(), model: llmModel.trim() }
+        },
+        sync: {
+          enabled: syncEnabled,
+          serverUrl: syncUrl.trim(),
+          token: syncToken.trim(),
+          uploadMedia: syncMedia
         }
       })
     } finally {
@@ -202,6 +212,48 @@ export function SettingsModal({
             <span>{t('settings.targetLangDefault')}</span>
             <LangSelect value={targetLangDefault} onChange={setTargetLangDefault} />
           </label>
+        </section>
+
+        <section>
+          <h3>{t('settings.sync')}</h3>
+          <label className="field checkbox">
+            <input
+              type="checkbox"
+              checked={syncEnabled}
+              onChange={(e) => setSyncEnabled(e.target.checked)}
+            />
+            <span>{t('settings.syncEnabled')}</span>
+          </label>
+          {syncEnabled && (
+            <>
+              <label className="field">
+                <span>{t('settings.syncUrl')}</span>
+                <input
+                  type="text"
+                  value={syncUrl}
+                  placeholder="https://api.example.com"
+                  onChange={(e) => setSyncUrl(e.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span>{t('settings.syncToken')}</span>
+                <input
+                  type="password"
+                  value={syncToken}
+                  onChange={(e) => setSyncToken(e.target.value)}
+                />
+              </label>
+              <label className="field checkbox">
+                <input
+                  type="checkbox"
+                  checked={syncMedia}
+                  onChange={(e) => setSyncMedia(e.target.checked)}
+                />
+                <span>{t('settings.syncMedia')}</span>
+              </label>
+              <p className="field-hint">{t('settings.syncHint')}</p>
+            </>
+          )}
         </section>
 
         <footer className="modal-footer">
