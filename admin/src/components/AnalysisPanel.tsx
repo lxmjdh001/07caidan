@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ApiClient, Conversation, IntentAnalysis } from '../api'
 import { INTENT_LABEL } from '../util'
+import { useI18n } from '../i18n'
 
 interface Props {
   client: ApiClient
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export function AnalysisPanel({ client, conversation, canAnalyze }: Props): React.JSX.Element {
+  const { t } = useI18n()
   const [analysis, setAnalysis] = useState<IntentAnalysis | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -30,7 +32,7 @@ export function AnalysisPanel({ client, conversation, canAnalyze }: Props): Reac
       setAnalysis(analysis)
     } catch (e) {
       const msg = (e as Error).message
-      setErr(msg.includes('501') ? '后台未配置 AI（缺少 ANTHROPIC_API_KEY）' : msg)
+      setErr(msg.includes('501') ? t('analysis.noKey') : msg)
     } finally {
       setBusy(false)
     }
@@ -39,31 +41,32 @@ export function AnalysisPanel({ client, conversation, canAnalyze }: Props): Reac
   return (
     <aside className="analysis">
       <div className="analysis-head">
-        <h3>AI 意向分析</h3>
+        <h3>{t('analysis.title')}</h3>
         {canAnalyze && (
           <button className="btn btn-sm" disabled={busy} onClick={() => void run()}>
-            {busy ? '分析中…' : '分析意向'}
+            {busy ? t('analysis.running') : t('analysis.run')}
           </button>
         )}
       </div>
       <div className="analysis-body">
-        {!canAnalyze && <div className="analysis-empty">你没有「运行 AI 分析」权限。</div>}
-        {canAnalyze && err && <div className="analysis-empty">分析失败：{err}</div>}
+        {!canAnalyze && <div className="analysis-empty">{t('analysis.noPermission')}</div>}
+        {canAnalyze && err && <div className="analysis-empty">{t('analysis.failed')}：{err}</div>}
         {!analysis && !err && !busy && (
           <div className="analysis-empty">
-            点击「分析意向」，用 AI 分析该客户
-            {conversation.contactId ? '（跨账号聚合其全部对话）' : ''}的购买意向、关键信号与跟进建议。
+            {t('analysis.desc', {
+              scope: conversation.contactId ? t('analysis.scopeContact') : ''
+            })}
           </div>
         )}
-        {busy && <div className="spin">AI 分析中…（可能需要数秒）</div>}
+        {busy && <div className="spin">{t('analysis.working')}</div>}
         {analysis && (
           <>
             <span className={`level ${analysis.intentLevel}`}>
               {INTENT_LABEL[analysis.intentLevel] ?? analysis.intentLevel}
             </span>
-            <h4>意向摘要</h4>
+            <h4>{t('analysis.summary')}</h4>
             <p>{analysis.summary}</p>
-            <h4>关键信号</h4>
+            <h4>{t('analysis.signals')}</h4>
             {analysis.signals.length > 0 ? (
               <div>
                 {analysis.signals.map((s, i) => (
@@ -73,9 +76,9 @@ export function AnalysisPanel({ client, conversation, canAnalyze }: Props): Reac
                 ))}
               </div>
             ) : (
-              <p className="muted">无</p>
+              <p className="muted">{t('analysis.none')}</p>
             )}
-            <h4>建议跟进</h4>
+            <h4>{t('analysis.suggestion')}</h4>
             <p>{analysis.suggestedAction}</p>
           </>
         )}

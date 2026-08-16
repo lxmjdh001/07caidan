@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { ApiClient, Conversation, Message } from '../api'
 import { CHANNELS, avatarColor, formatTime } from '../util'
+import { useI18n } from '../i18n'
 
 interface Props {
   client: ApiClient
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export function ChatView({ client, conversation }: Props): React.JSX.Element {
+  const { t } = useI18n()
   const [messages, setMessages] = useState<Message[]>([])
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
@@ -27,7 +29,7 @@ export function ChatView({ client, conversation }: Props): React.JSX.Element {
   if (!conversation) {
     return (
       <div className="chat">
-        <div className="empty">选择左侧会话查看聊天记录</div>
+        <div className="empty">{t('chat.empty')}</div>
       </div>
     )
   }
@@ -49,9 +51,9 @@ export function ChatView({ client, conversation }: Props): React.JSX.Element {
         </div>
       </div>
       <div className="chat-scroll">
-        {loading && <div className="spin">加载中…</div>}
-        {err && <div className="empty">加载失败：{err}</div>}
-        {!loading && !err && messages.length === 0 && <div className="empty">暂无消息</div>}
+        {loading && <div className="spin">{t('chat.loading')}</div>}
+        {err && <div className="empty">{t('chat.loadFailed')}：{err}</div>}
+        {!loading && !err && messages.length === 0 && <div className="empty">{t('chat.noMessages')}</div>}
         {messages.map((m) => (
           <div key={m.externalId} className={`row ${m.direction === 'out' ? 'out' : 'in'}`}>
             <div className="bubble">

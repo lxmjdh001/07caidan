@@ -6,15 +6,10 @@ import { ChatView } from './components/ChatView'
 import { AnalysisPanel } from './components/AnalysisPanel'
 import { UsersView } from './components/UsersView'
 import { CampaignsView } from './components/CampaignsView'
-
-const ROLE_LABEL: Record<string, string> = {
-  owner: '所有者',
-  admin: '管理员',
-  agent: '客服',
-  viewer: '只读'
-}
+import { LOCALES, useI18n, type Locale } from './i18n'
 
 export function App(): React.JSX.Element {
+  const { t, locale, setLocale } = useI18n()
   const [client, setClient] = useState<ApiClient | null>(null)
   const [me, setMe] = useState<Me | null>(null)
   const [view, setView] = useState<'chats' | 'campaigns' | 'users'>('chats')
@@ -63,13 +58,13 @@ export function App(): React.JSX.Element {
       <aside className="sidebar">
         <div className="sidebar-logo">
           <span className="logo">OC</span>
-          <span className="sidebar-title">管理后台</span>
+          <span className="sidebar-title">{t('app.title')}</span>
         </div>
         <nav className="sidebar-nav">
           {canChats && (
             <button className={view === 'chats' ? 'on' : ''} onClick={() => setView('chats')}>
               <ChatIcon />
-              聊天记录
+              {t('nav.chats')}
             </button>
           )}
           {canCampaigns && (
@@ -78,22 +73,34 @@ export function App(): React.JSX.Element {
               onClick={() => setView('campaigns')}
             >
               <ChartIcon />
-              引流工单
+              {t('nav.campaigns')}
             </button>
           )}
           {canUsers && (
             <button className={view === 'users' ? 'on' : ''} onClick={() => setView('users')}>
               <UsersIcon />
-              用户管理
+              {t('nav.users')}
             </button>
           )}
         </nav>
         <div className="sidebar-spacer" />
         <div className="sidebar-user">
           <div className="su-name">{me.username}</div>
-          <div className="su-role">{ROLE_LABEL[me.role] ?? me.role}</div>
+          <div className="su-role">{roleLabel(me.role, t)}</div>
+          <select
+            className="su-locale"
+            value={locale}
+            onChange={(e) => setLocale(e.target.value as Locale)}
+            title={t('common.language')}
+          >
+            {LOCALES.map((l) => (
+              <option key={l.code} value={l.code}>
+                {l.nativeName}
+              </option>
+            ))}
+          </select>
           <button className="su-logout" onClick={logout}>
-            退出登录
+            {t('nav.logout')}
           </button>
         </div>
       </aside>
@@ -132,6 +139,12 @@ function ChatIcon(): React.JSX.Element {
     </svg>
   )
 }
+/** 角色名走字典；后端返回的是稳定 key，未知角色原样显示 */
+function roleLabel(role: string, t: ReturnType<typeof useI18n>['t']): string {
+  const known = ['owner', 'admin', 'agent', 'viewer']
+  return known.includes(role) ? t(`role.${role}` as 'role.owner') : role
+}
+
 function ChartIcon(): React.JSX.Element {
   return (
     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>

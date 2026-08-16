@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useI18n } from '../i18n'
 import type {
   ApiClient,
   Campaign,
@@ -18,9 +19,9 @@ function fmt(ts?: number): string {
 
 function fmtDuration(sec: number | null): string {
   if (sec === null) return '—'
-  if (sec < 60) return `${sec} 秒`
-  if (sec < 3600) return `${Math.round(sec / 60)} 分钟`
-  return `${(sec / 3600).toFixed(1)} 小时`
+  if (sec < 60) return `${sec}s`
+  if (sec < 3600) return `${Math.round(sec / 60)}m`
+  return `${(sec / 3600).toFixed(1)}h`
 }
 
 /**
@@ -31,6 +32,7 @@ function fmtDuration(sec: number | null): string {
  * 避免两边各建一份口径不一致的工单。
  */
 export function CampaignsView({ client }: Props): React.JSX.Element {
+  const { t } = useI18n()
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [libraries, setLibraries] = useState<FanLibrary[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -60,22 +62,22 @@ export function CampaignsView({ client }: Props): React.JSX.Element {
   return (
     <div className="view">
       <header className="view-header">
-        <h1>引流工单</h1>
+        <h1>{t('campaign.title')}</h1>
         <button className="ghost" onClick={() => void load()}>
-          刷新
+          {t('common.refresh')}
         </button>
       </header>
 
       {err && <p className="err">{err}</p>}
-      {loading && <p className="muted">加载中…</p>}
+      {loading && <p className="muted">{t('common.loading')}</p>}
 
       {!loading && (
         <div className="campaign-layout">
           <aside className="campaign-side">
-            <h3>工单</h3>
+            <h3>{t('campaign.list')}</h3>
             {campaigns.length === 0 ? (
               <p className="muted small">
-                还没有工单。工单在客户端创建（选账号、配判重规则），这里只看统计与管分享链接。
+                {t('campaign.emptyHint')}
               </p>
             ) : (
               <ul className="campaign-list">
@@ -87,8 +89,8 @@ export function CampaignsView({ client }: Props): React.JSX.Element {
                     >
                       <span className="cl-name">{c.name}</span>
                       <span className="cl-meta">
-                        {c.accountIds.length} 个账号 ·{' '}
-                        {c.endAt ? `至 ${fmt(c.endAt)}` : '持续进行中'}
+                        {c.accountIds.length} {t('campaign.accountsUnit')} ·{' '}
+                        {c.endAt ? `${t('campaign.until')} ${fmt(c.endAt)}` : t('campaign.ongoing')}
                       </span>
                     </button>
                   </li>
@@ -96,27 +98,27 @@ export function CampaignsView({ client }: Props): React.JSX.Element {
               </ul>
             )}
 
-            <h3 style={{ marginTop: 20 }}>重粉库</h3>
+            <h3 style={{ marginTop: 20 }}>{t('campaign.libraries')}</h3>
             {libraries.length === 0 ? (
-              <p className="muted small">暂无重粉库。</p>
+              <p className="muted small">{t('campaign.emptyLibs')}</p>
             ) : (
               <ul className="lib-list">
                 {libraries.map((l) => (
                   <li key={l.id}>
                     <span className="lib-name">{l.name}</span>
                     <span className="muted small">
-                      {l.channel} · {l.entryCount} 条 ·{' '}
-                      {l.source === 'export' ? '历史导出' : '名单导入'}
+                      {l.channel} · {l.entryCount} {t('campaign.entries')} ·{' '}
+                      {l.source === 'export' ? t('campaign.fromExport') : t('campaign.fromImport')}
                     </span>
                     <button
                       className="danger small"
                       onClick={async () => {
-                        if (!window.confirm('删除该重粉库？引用它的工单判重规则会失效。')) return
+                        if (!window.confirm(t('campaign.deleteLibConfirm'))) return
                         await client.deleteLibrary(l.id)
                         await load()
                       }}
                     >
-                      删除
+                      {t('common.delete')}
                     </button>
                   </li>
                 ))}
@@ -128,7 +130,7 @@ export function CampaignsView({ client }: Props): React.JSX.Element {
             {active ? (
               <CampaignDetail client={client} campaign={active} />
             ) : (
-              <p className="muted">选择左侧工单查看统计。</p>
+              <p className="muted">{t('campaign.pick')}</p>
             )}
           </section>
         </div>
@@ -144,6 +146,7 @@ function CampaignDetail({
   client: ApiClient
   campaign: Campaign
 }): React.JSX.Element {
+  const { t } = useI18n()
   const [stats, setStats] = useState<CampaignStats | null>(null)
   const [links, setLinks] = useState<CampaignLink[]>([])
   const [publicBase, setPublicBase] = useState('')
@@ -174,8 +177,8 @@ function CampaignDetail({
       <header className="view-header">
         <h2>{campaign.name}</h2>
         <span className="muted small">
-          {fmt(campaign.startAt)} 起 ·{' '}
-          {campaign.endAt ? `至 ${fmt(campaign.endAt)}` : '持续进行中'}
+          {fmt(campaign.startAt)} {t('campaign.since')} ·{' '}
+          {campaign.endAt ? `${t('campaign.until')} ${fmt(campaign.endAt)}` : t('campaign.ongoing')}
         </span>
       </header>
 
@@ -185,48 +188,50 @@ function CampaignDetail({
         <>
           <div className="stat-cards">
             <div className="stat-card">
-              <span className="k">进线总数</span>
+              <span className="k">{t('campaign.total')}</span>
               <span className="v">{stats.total}</span>
             </div>
             <div className="stat-card">
-              <span className="k">新粉</span>
+              <span className="k">{t('campaign.fresh')}</span>
               <span className="v fresh">{stats.fresh}</span>
             </div>
             <div className="stat-card">
-              <span className="k">重复</span>
+              <span className="k">{t('campaign.duplicate')}</span>
               <span className="v dup">{stats.duplicate}</span>
             </div>
             <div className="stat-card">
-              <span className="k">回复率</span>
+              <span className="k">{t('campaign.replyRate')}</span>
               <span className="v">{Math.round(stats.response.replyRate * 100)}%</span>
             </div>
             <div className="stat-card">
-              <span className="k">首响中位数</span>
+              <span className="k">{t('campaign.medianReply')}</span>
               <span className="v small">{fmtDuration(stats.response.medianFirstReplySec)}</span>
             </div>
           </div>
 
           <section className="card">
-            <h3>判重口径</h3>
+            <h3>{t('campaign.dedupTitle')}</h3>
             <p className="muted small">
-              重粉库命中 {stats.duplicateBy.library} 人 · 时间范围命中{' '}
-              {stats.duplicateBy.timeRange} 人（满足任一即算重复，故两者之和可能大于重复总数）
+              {t('campaign.dedupDetail', {
+                lib: stats.duplicateBy.library,
+                time: stats.duplicateBy.timeRange
+              })}
             </p>
           </section>
 
           <section className="card">
-            <h3>账号明细</h3>
+            <h3>{t('campaign.byAccount')}</h3>
             {stats.byAccount.length === 0 ? (
-              <p className="muted small">暂无数据</p>
+              <p className="muted small">{t('common.empty')}</p>
             ) : (
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>账号</th>
-                    <th>平台</th>
-                    <th className="num">进线</th>
-                    <th className="num">新粉</th>
-                    <th className="num">重复</th>
+                    <th>{t('campaign.account')}</th>
+                    <th>{t('campaign.platform')}</th>
+                    <th className="num">{t('campaign.inbound')}</th>
+                    <th className="num">{t('campaign.fresh')}</th>
+                    <th className="num">{t('campaign.duplicate')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -245,25 +250,25 @@ function CampaignDetail({
           </section>
 
           <section className="card">
-            <h3>投放来源</h3>
+            <h3>{t('campaign.bySource')}</h3>
             {stats.bySource.length === 0 ? (
-              <p className="muted small">暂无数据</p>
+              <p className="muted small">{t('common.empty')}</p>
             ) : (
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>来源</th>
-                    <th>归因方式</th>
-                    <th className="num">进线</th>
-                    <th className="num">新粉</th>
-                    <th className="num">重复</th>
+                    <th>{t('campaign.source')}</th>
+                    <th>{t('campaign.sourceVia')}</th>
+                    <th className="num">{t('campaign.inbound')}</th>
+                    <th className="num">{t('campaign.fresh')}</th>
+                    <th className="num">{t('campaign.duplicate')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {stats.bySource.map((r) => (
                     <tr key={r.code || '__none__'}>
-                      <td>{r.code || <span className="muted">未归因</span>}</td>
-                      <td>{r.via === 'ad' ? '广告点击' : r.via === 'code' ? '追踪码' : '—'}</td>
+                      <td>{r.code || <span className="muted">{t('campaign.noSource')}</span>}</td>
+                      <td>{r.via === 'ad' ? t('campaign.viaAd') : r.via === 'code' ? t('campaign.viaCode') : '—'}</td>
                       <td className="num">{r.total}</td>
                       <td className="num">{r.fresh}</td>
                       <td className="num">{r.duplicate}</td>
@@ -275,16 +280,16 @@ function CampaignDetail({
           </section>
 
           <section className="card">
-            <h3>每日趋势</h3>
+            <h3>{t('campaign.byDay')}</h3>
             <Trend days={stats.byDay} />
           </section>
         </>
       )}
 
       <section className="card">
-        <h3>分享链接</h3>
+        <h3>{t('campaign.links')}</h3>
         <p className="muted small">
-          看板只展示统计数字，不含聊天内容与客户信息，可以放心发给团队。
+          {t('campaign.linksHint')}
         </p>
         <button
           className="primary"
@@ -293,10 +298,10 @@ function CampaignDetail({
             await refresh()
           }}
         >
-          生成永久链接
+          {t('campaign.newLink')}
         </button>
         {links.length === 0 ? (
-          <p className="muted small">还没有分享链接。</p>
+          <p className="muted small">{t('campaign.noLinks')}</p>
         ) : (
           <ul className="link-list">
             {links.map((l) => {
@@ -304,17 +309,17 @@ function CampaignDetail({
               return (
                 <li key={l.token} className={l.active ? '' : 'off'}>
                   <div className="link-main">
-                    <span className="link-label">{l.label || '未命名'}</span>
+                    <span className="link-label">{l.label || t('campaign.unnamed')}</span>
                     <code>{url}</code>
                   </div>
                   <span className="muted small">
                     {l.revoked
-                      ? '已停用'
+                      ? t('campaign.revoked')
                       : l.expiresAt
                         ? l.active
-                          ? `${fmt(l.expiresAt)} 到期`
-                          : '已过期'
-                        : '永不过期'}
+                          ? `${fmt(l.expiresAt)} ${t('campaign.expiresAt')}`
+                          : t('campaign.expired')
+                        : t('campaign.never')}
                   </span>
                   <button
                     className="ghost small"
@@ -324,7 +329,7 @@ function CampaignDetail({
                       setTimeout(() => setCopied(''), 1500)
                     }}
                   >
-                    {copied === l.token ? '已复制' : '复制'}
+                    {copied === l.token ? t('common.copied') : t('common.copy')}
                   </button>
                   {l.active && (
                     <button
@@ -334,7 +339,7 @@ function CampaignDetail({
                         await refresh()
                       }}
                     >
-                      停用
+                      {t('campaign.revoke')}
                     </button>
                   )}
                 </li>
@@ -349,7 +354,8 @@ function CampaignDetail({
 
 /** 纯 CSS 柱状图，避免为一张小图引入图表库 */
 function Trend({ days }: { days: CampaignStats['byDay'] }): React.JSX.Element {
-  if (days.length === 0) return <p className="muted small">暂无数据</p>
+  const { t } = useI18n()
+  if (days.length === 0) return <p className="muted small">{t('common.empty')}</p>
   const max = Math.max(1, ...days.map((d) => d.total))
   return (
     <>
@@ -358,7 +364,7 @@ function Trend({ days }: { days: CampaignStats['byDay'] }): React.JSX.Element {
           <div
             key={d.date}
             className="bar-col"
-            title={`${d.date}：新粉 ${d.fresh} / 重复 ${d.duplicate}`}
+            title={`${d.date}：${t('campaign.fresh')} ${d.fresh} / ${t('campaign.duplicate')} ${d.duplicate}`}
           >
             <div className="bar dup" style={{ height: `${(d.duplicate / max) * 100}px` }} />
             <div className="bar fresh" style={{ height: `${(d.fresh / max) * 100}px` }} />
@@ -373,11 +379,11 @@ function Trend({ days }: { days: CampaignStats['byDay'] }): React.JSX.Element {
       <div className="legend">
         <span>
           <i className="dot fresh" />
-          新粉
+          {t('campaign.fresh')}
         </span>
         <span>
           <i className="dot dup" />
-          重复
+          {t('campaign.duplicate')}
         </span>
       </div>
     </>

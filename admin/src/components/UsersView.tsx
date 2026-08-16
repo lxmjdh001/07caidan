@@ -1,17 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AdminUser, ApiClient, PermMeta } from '../api'
+import { useI18n } from '../i18n'
 
-const ROLE_LABEL: Record<string, string> = {
-  owner: '所有者',
-  admin: '管理员',
-  agent: '客服',
-  viewer: '只读'
-}
-const PERM_LABEL: Record<string, string> = {
-  'conversations:read': '查看聊天记录',
-  'analyze:run': '运行 AI 分析',
-  'users:manage': '管理用户'
-}
 
 interface Props {
   client: ApiClient
@@ -19,6 +9,7 @@ interface Props {
 }
 
 export function UsersView({ client, currentUser }: Props): React.JSX.Element {
+  const { t } = useI18n()
   const [users, setUsers] = useState<AdminUser[]>([])
   const [meta, setMeta] = useState<PermMeta | null>(null)
   const [err, setErr] = useState('')
@@ -53,7 +44,7 @@ export function UsersView({ client, currentUser }: Props): React.JSX.Element {
     reload()
   }
   const remove = async (u: AdminUser): Promise<void> => {
-    if (!confirm(`删除用户 ${u.username}？`)) return
+    if (!confirm(t('users.deleteUserConfirm', { name: u.username }))) return
     try {
       await client.deleteUser(u.id)
       reload()
@@ -65,24 +56,24 @@ export function UsersView({ client, currentUser }: Props): React.JSX.Element {
   return (
     <div className="users">
       <div className="users-head">
-        <h2>用户管理（RBAC）</h2>
+        <h2>{t('users.titleRbac')}</h2>
         <button className="btn btn-sm" onClick={() => setCreating(true)}>
-          + 新增用户
+          + {t('users.add')}
         </button>
       </div>
       {err && <div className="err">{err}</div>}
       <div className="users-hint">
-        角色是权限预设；下方勾选可在预设之外<strong>直接分配</strong>具体权限（勾选=拥有该权限）。
+        {t('users.rbacHint')}
       </div>
       <table className="users-table">
         <thead>
           <tr>
-            <th>账号</th>
-            <th>角色</th>
+            <th>{t('users.username')}</th>
+            <th>{t('users.role')}</th>
             {meta?.permissions.map((p) => (
-              <th key={p}>{PERM_LABEL[p] ?? p}</th>
+              <th key={p}>{permLabel(t)[p] ?? p}</th>
             ))}
-            <th>状态</th>
+            <th>{t('users.status')}</th>
             <th></th>
           </tr>
         </thead>
@@ -93,13 +84,13 @@ export function UsersView({ client, currentUser }: Props): React.JSX.Element {
               <tr key={u.id} className={u.enabled ? '' : 'off'}>
                 <td>
                   {u.username}
-                  {u.username === currentUser && <span className="me-badge">当前</span>}
+                  {u.username === currentUser && <span className="me-badge">{t('users.me')}</span>}
                 </td>
                 <td>
                   <select value={u.role} onChange={(e) => void changeRole(u, e.target.value)}>
                     {meta?.roles.map((r) => (
                       <option key={r} value={r}>
-                        {ROLE_LABEL[r] ?? r}
+                        {roleLabel(t)[r] ?? r}
                       </option>
                     ))}
                   </select>
@@ -113,7 +104,7 @@ export function UsersView({ client, currentUser }: Props): React.JSX.Element {
                         type="checkbox"
                         checked={has}
                         disabled={fromRole}
-                        title={fromRole ? '来自角色预设' : '直接分配'}
+                        title={fromRole ? t('users.fromRole') : t('users.direct')}
                         onChange={() => void togglePerm(u, p)}
                       />
                     </td>
@@ -124,13 +115,13 @@ export function UsersView({ client, currentUser }: Props): React.JSX.Element {
                     className={`pill ${u.enabled ? 'on' : 'offp'}`}
                     onClick={() => void toggleEnabled(u)}
                   >
-                    {u.enabled ? '启用' : '停用'}
+                    {u.enabled ? t('users.enabled') : t('users.disable')}
                   </button>
                 </td>
                 <td>
                   {u.username !== currentUser && (
                     <button className="link-danger" onClick={() => void remove(u)}>
-                      删除
+                      {t('common.delete')}
                     </button>
                   )}
                 </td>
@@ -173,6 +164,7 @@ function CreateUser({
     permissions: string[]
   }) => Promise<void>
 }): React.JSX.Element {
+  const { t } = useI18n()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState(meta.roles[meta.roles.length - 1] ?? 'viewer')
@@ -183,27 +175,27 @@ function CreateUser({
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h3>新增用户</h3>
+        <h3>{t('users.add')}</h3>
         <label className="field">
-          <span>账号</span>
+          <span>{t('users.username')}</span>
           <input value={username} onChange={(e) => setUsername(e.target.value)} />
         </label>
         <label className="field">
-          <span>密码</span>
+          <span>{t('users.password')}</span>
           <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
         </label>
         <label className="field">
-          <span>角色</span>
+          <span>{t('users.role')}</span>
           <select value={role} onChange={(e) => setRole(e.target.value)}>
             {meta.roles.map((r) => (
               <option key={r} value={r}>
-                {ROLE_LABEL[r] ?? r}
+                {roleLabel(t)[r] ?? r}
               </option>
             ))}
           </select>
         </label>
         <div className="field">
-          <span>额外权限（角色预设之外）</span>
+          <span>{t('users.extraOnly')}</span>
           <div className="perm-checks">
             {meta.permissions.map((p) => {
               const fromRole = preset.has(p)
@@ -219,8 +211,8 @@ function CreateUser({
                       )
                     }
                   />
-                  {PERM_LABEL[p] ?? p}
-                  {fromRole && <span className="from-role">预设</span>}
+                  {permLabel(t)[p] ?? p}
+                  {fromRole && <span className="from-role">{t('users.preset')}</span>}
                 </label>
               )
             })}
@@ -228,17 +220,36 @@ function CreateUser({
         </div>
         <div className="modal-actions">
           <button className="btn btn-ghost btn-sm" onClick={onClose}>
-            取消
+            {t('common.cancel')}
           </button>
           <button
             className="btn btn-sm"
             disabled={!username || !password}
             onClick={() => void onCreate({ username, password, role, permissions: extra })}
           >
-            创建
+            {t('users.create2')}
           </button>
         </div>
       </div>
     </div>
   )
+}
+
+/** 角色/权限的展示名走字典，后端返回的是稳定 key */
+function roleLabel(t: ReturnType<typeof useI18n>['t']): Record<string, string> {
+  return {
+    owner: t('role.owner'),
+    admin: t('role.admin'),
+    agent: t('role.agent'),
+    viewer: t('role.viewer')
+  }
+}
+
+function permLabel(t: ReturnType<typeof useI18n>['t']): Record<string, string> {
+  return {
+    'conversations:read': t('perm.conversations:read'),
+    'analyze:run': t('perm.analyze:run'),
+    'campaigns:manage': t('perm.campaigns:manage'),
+    'users:manage': t('perm.users:manage')
+  }
 }

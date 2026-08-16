@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useI18n } from '../i18n'
 import type { Conversation } from '../api'
 import { CHANNELS, avatarColor } from '../util'
 
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export function ConversationList({ conversations, activeId, onSelect }: Props): React.JSX.Element {
+  const { t } = useI18n()
   const [query, setQuery] = useState('')
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -22,7 +24,7 @@ export function ConversationList({ conversations, activeId, onSelect }: Props): 
     <aside className="list">
       <div className="list-head">
         <input
-          placeholder="搜索客户 / 会话…"
+          placeholder={t('conv.search')}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />

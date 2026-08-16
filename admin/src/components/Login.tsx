@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
 import { ApiClient, login, type Me } from '../api'
 import { API_BASE } from '../config'
+import { useI18n } from '../i18n'
 
 interface Props {
   onLogin: (client: ApiClient, base: string, me: Me) => void
 }
 
 export function Login({ onLogin }: Props): React.JSX.Element {
+  const { t } = useI18n()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [err, setErr] = useState('')
@@ -20,7 +22,7 @@ export function Login({ onLogin }: Props): React.JSX.Element {
       localStorage.setItem('omni_token', token)
       onLogin(new ApiClient(API_BASE, token), API_BASE, user)
     } catch (e) {
-      setErr('登录失败：' + (e as Error).message)
+      setErr(`${t('login.failed')}：${(e as Error).message}`)
     } finally {
       setBusy(false)
     }
@@ -28,9 +30,10 @@ export function Login({ onLogin }: Props): React.JSX.Element {
 
   // 记住上次会话令牌，自动恢复
   useEffect(() => {
-    const t = localStorage.getItem('omni_token')
-    if (t) {
-      const client = new ApiClient(API_BASE, t)
+    // 变量名避开 i18n 的 t，否则在同一文件里读起来很容易混
+    const saved = localStorage.getItem('omni_token')
+    if (saved) {
+      const client = new ApiClient(API_BASE, saved)
       client
         .me()
         .then((me) => onLogin(client, API_BASE, me))
@@ -41,14 +44,14 @@ export function Login({ onLogin }: Props): React.JSX.Element {
   return (
     <div className="login">
       <div className="login-card">
-        <h1>OmniChat 管理后台</h1>
-        <p>使用账号密码登录</p>
+        <h1>{t('login.title')}</h1>
+        <p>{t('login.sub')}</p>
         <label className="field">
-          <span>账号</span>
+          <span>{t('login.username')}</span>
           <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="admin" />
         </label>
         <label className="field">
-          <span>密码</span>
+          <span>{t('login.password')}</span>
           <input
             type="password"
             value={password}
@@ -56,11 +59,11 @@ export function Login({ onLogin }: Props): React.JSX.Element {
             onKeyDown={(e) => {
               if (e.key === 'Enter') void submit()
             }}
-            placeholder="密码"
+            placeholder={t('login.password')}
           />
         </label>
         <button className="btn" disabled={busy} onClick={() => void submit()}>
-          {busy ? '登录中…' : '登录'}
+          {busy ? `${t('login.submit')}…` : t('login.submit')}
         </button>
         <div className="err">{err}</div>
       </div>

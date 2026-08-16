@@ -1,0 +1,350 @@
+import { createContext, useContext, useState, type ReactNode } from 'react'
+
+/**
+ * 管理后台的轻量 i18n。
+ *
+ * 与客户端相互独立：后台面向系统运营方（可能是贴牌客户的管理员），
+ * 语言需求和面向海外客服的客户端不一样，共用一份字典只会互相牵制。
+ * 结构保持一致（字典 + Context + 系统语言自动匹配），便于后续复制新增语言。
+ */
+const zhCN = {
+  'app.title': '管理后台',
+  'nav.chats': '聊天记录',
+  'nav.campaigns': '引流工单',
+  'nav.users': '用户管理',
+  'nav.logout': '退出登录',
+  'common.refresh': '刷新',
+  'common.loading': '加载中…',
+  'common.empty': '暂无数据',
+  'common.delete': '删除',
+  'common.copy': '复制',
+  'common.copied': '已复制',
+  'common.cancel': '取消',
+  'common.save': '保存',
+  'common.close': '关闭',
+  'common.language': '语言',
+  'role.owner': '所有者',
+  'role.admin': '管理员',
+  'role.agent': '客服',
+  'role.viewer': '只读',
+
+  'login.title': '管理后台',
+  'login.sub': '使用管理员账号登录',
+  'login.username': '用户名',
+  'login.password': '密码',
+  'login.submit': '登录',
+  'login.failed': '登录失败',
+  'login.fillAll': '请填写用户名和密码',
+
+  'conv.title': '客户会话',
+  'conv.search': '搜索客户…',
+  'conv.empty': '暂无会话',
+  'conv.group': '群组',
+  'chat.empty': '选择左侧会话查看聊天记录',
+  'chat.loading': '加载中…',
+  'chat.noMessages': '该会话暂无消息',
+  'chat.translated': '译文',
+  'chat.media': '媒体消息',
+
+  'analysis.title': 'AI 意向分析',
+  'analysis.run': '分析该会话',
+  'analysis.runContact': '分析该客户全部会话',
+  'analysis.running': '分析中…',
+  'analysis.noPermission': '没有分析权限',
+  'analysis.level': '意向等级',
+  'analysis.summary': '摘要',
+  'analysis.signals': '关键信号',
+  'analysis.suggestion': '跟进建议',
+  'analysis.failed': '分析失败',
+  'chat.loadFailed': '加载失败',
+  'analysis.noKey': '后台未配置 AI（缺少 ANTHROPIC_API_KEY）',
+  'analysis.desc': '分析该客户{scope}的购买意向、关键信号与跟进建议。',
+  'analysis.scopeContact': '（跨账号聚合其全部对话）',
+  'analysis.working': 'AI 分析中…（可能需要数秒）',
+  'analysis.none': '无',
+  'analysis.high': '高',
+  'analysis.medium': '中',
+  'analysis.low': '低',
+
+  'campaign.title': '引流工单',
+  'campaign.list': '工单',
+  'campaign.libraries': '重粉库',
+  'campaign.emptyHint': '还没有工单。工单在客户端创建（选账号、配判重规则），这里只看统计与管分享链接。',
+  'campaign.emptyLibs': '暂无重粉库。',
+  'campaign.pick': '选择左侧工单查看统计。',
+  'campaign.accountsUnit': '个账号',
+  'campaign.until': '至',
+  'campaign.ongoing': '持续进行中',
+  'campaign.since': '起',
+  'campaign.total': '进线总数',
+  'campaign.inbound': '进线',
+  'campaign.fresh': '新粉',
+  'campaign.duplicate': '重复',
+  'campaign.replyRate': '回复率',
+  'campaign.medianReply': '首响中位数',
+  'campaign.dedupTitle': '判重口径',
+  'campaign.dedupDetail':
+    '重粉库命中 {lib} 人 · 时间范围命中 {time} 人（满足任一即算重复，故两者之和可能大于重复总数）',
+  'campaign.byAccount': '账号明细',
+  'campaign.account': '账号',
+  'campaign.platform': '平台',
+  'campaign.bySource': '投放来源',
+  'campaign.source': '来源',
+  'campaign.sourceVia': '归因方式',
+  'campaign.noSource': '未归因',
+  'campaign.viaAd': '广告点击',
+  'campaign.viaCode': '追踪码',
+  'campaign.byDay': '每日趋势',
+  'campaign.links': '分享链接',
+  'campaign.linksHint': '看板只展示统计数字，不含聊天内容与客户信息，可以放心发给团队。',
+  'campaign.newLink': '生成永久链接',
+  'campaign.noLinks': '还没有分享链接。',
+  'campaign.unnamed': '未命名',
+  'campaign.revoke': '停用',
+  'campaign.revoked': '已停用',
+  'campaign.expired': '已过期',
+  'campaign.expiresAt': '到期',
+  'campaign.never': '永不过期',
+  'campaign.entries': '条',
+  'campaign.fromExport': '历史导出',
+  'campaign.fromImport': '名单导入',
+  'campaign.deleteLibConfirm': '删除该重粉库？引用它的工单判重规则会失效。',
+
+  'users.title': '用户管理',
+  'users.create': '新建用户',
+  'users.username': '用户名',
+  'users.password': '密码',
+  'users.role': '角色',
+  'users.permissions': '权限',
+  'users.enabled': '启用',
+  'users.disabled': '已停用',
+  'users.actions': '操作',
+  'users.edit': '编辑',
+  'users.resetPassword': '重置密码',
+  'users.deleteConfirm': '删除该用户？',
+  'users.selfDelete': '不能删除当前登录用户',
+  'users.rolePreset': '角色预设权限',
+  'users.extraPerms': '额外授予的权限',
+  'users.newPassword': '新密码（留空则不修改）',
+  'users.createdAt': '创建时间',
+  'users.titleRbac': '用户管理（RBAC）',
+  'users.add': '新增用户',
+  'users.rbacHint': '角色是权限预设；下方勾选可在预设之外直接分配具体权限（勾选=拥有该权限）。',
+  'users.status': '状态',
+  'users.me': '当前',
+  'users.fromRole': '来自角色预设',
+  'users.direct': '直接分配',
+  'users.preset': '预设',
+  'users.disable': '停用',
+  'users.extraOnly': '额外权限（角色预设之外）',
+  'users.create2': '创建',
+  'users.deleteUserConfirm': '删除用户 {name}？',
+  'perm.conversations:read': '查看聊天记录',
+  'perm.analyze:run': '运行 AI 分析',
+  'perm.campaigns:manage': '管理引流工单',
+  'perm.users:manage': '管理用户'
+} as const
+
+export type MessageKey = keyof typeof zhCN
+
+const en: Partial<Record<MessageKey, string>> = {
+  'app.title': 'Admin',
+  'nav.chats': 'Conversations',
+  'nav.campaigns': 'Campaigns',
+  'nav.users': 'Users',
+  'nav.logout': 'Sign out',
+  'common.refresh': 'Refresh',
+  'common.loading': 'Loading…',
+  'common.empty': 'No data',
+  'common.delete': 'Delete',
+  'common.copy': 'Copy',
+  'common.copied': 'Copied',
+  'common.cancel': 'Cancel',
+  'common.save': 'Save',
+  'common.close': 'Close',
+  'common.language': 'Language',
+  'role.owner': 'Owner',
+  'role.admin': 'Admin',
+  'role.agent': 'Agent',
+  'role.viewer': 'Viewer',
+
+  'login.title': 'Admin',
+  'login.sub': 'Sign in with an administrator account',
+  'login.username': 'Username',
+  'login.password': 'Password',
+  'login.submit': 'Sign in',
+  'login.failed': 'Sign-in failed',
+  'login.fillAll': 'Enter both username and password',
+
+  'conv.title': 'Conversations',
+  'conv.search': 'Search customers…',
+  'conv.empty': 'No conversations',
+  'conv.group': 'Group',
+  'chat.empty': 'Select a conversation on the left',
+  'chat.loading': 'Loading…',
+  'chat.noMessages': 'No messages in this conversation',
+  'chat.translated': 'Translation',
+  'chat.media': 'Media message',
+
+  'analysis.title': 'AI intent analysis',
+  'analysis.run': 'Analyze this conversation',
+  'analysis.runContact': 'Analyze all conversations of this customer',
+  'analysis.running': 'Analyzing…',
+  'analysis.noPermission': 'No analysis permission',
+  'analysis.level': 'Intent level',
+  'analysis.summary': 'Summary',
+  'analysis.signals': 'Key signals',
+  'analysis.suggestion': 'Suggested follow-up',
+  'analysis.failed': 'Analysis failed',
+  'chat.loadFailed': 'Failed to load',
+  'analysis.noKey': 'AI is not configured on the server (ANTHROPIC_API_KEY missing)',
+  'analysis.desc': 'Analyze this customer{scope} — purchase intent, key signals and follow-up advice.',
+  'analysis.scopeContact': ' (all conversations across accounts)',
+  'analysis.working': 'Analyzing… (may take a few seconds)',
+  'analysis.none': 'None',
+  'analysis.high': 'High',
+  'analysis.medium': 'Medium',
+  'analysis.low': 'Low',
+
+  'campaign.title': 'Campaigns',
+  'campaign.list': 'Campaigns',
+  'campaign.libraries': 'Fan libraries',
+  'campaign.emptyHint':
+    'No campaigns yet. Campaigns are created in the desktop app (pick accounts, set dedup rules); here you only view stats and manage share links.',
+  'campaign.emptyLibs': 'No fan libraries yet.',
+  'campaign.pick': 'Select a campaign on the left to see its stats.',
+  'campaign.accountsUnit': 'accounts',
+  'campaign.until': 'until',
+  'campaign.ongoing': 'Ongoing',
+  'campaign.since': 'from',
+  'campaign.total': 'Leads',
+  'campaign.inbound': 'Leads',
+  'campaign.fresh': 'New',
+  'campaign.duplicate': 'Duplicate',
+  'campaign.replyRate': 'Reply rate',
+  'campaign.medianReply': 'Median first reply',
+  'campaign.dedupTitle': 'Duplicate criteria',
+  'campaign.dedupDetail':
+    '{lib} matched a fan library · {time} matched the time range (either rule counts, so the two may add up to more than the duplicate total)',
+  'campaign.byAccount': 'By account',
+  'campaign.account': 'Account',
+  'campaign.platform': 'Platform',
+  'campaign.bySource': 'By source',
+  'campaign.source': 'Source',
+  'campaign.sourceVia': 'Attribution',
+  'campaign.noSource': 'Unattributed',
+  'campaign.viaAd': 'Ad click',
+  'campaign.viaCode': 'Tracking code',
+  'campaign.byDay': 'Daily trend',
+  'campaign.links': 'Share links',
+  'campaign.linksHint':
+    'The dashboard shows aggregate numbers only — no chat content or customer details — so it is safe to send to your team.',
+  'campaign.newLink': 'Create permanent link',
+  'campaign.noLinks': 'No share links yet.',
+  'campaign.unnamed': 'Unnamed',
+  'campaign.revoke': 'Revoke',
+  'campaign.revoked': 'Revoked',
+  'campaign.expired': 'Expired',
+  'campaign.expiresAt': 'expires',
+  'campaign.never': 'Never expires',
+  'campaign.entries': 'entries',
+  'campaign.fromExport': 'From history',
+  'campaign.fromImport': 'Imported list',
+  'campaign.deleteLibConfirm': 'Delete this library? Campaigns using it lose that dedup rule.',
+
+  'users.title': 'Users',
+  'users.create': 'New user',
+  'users.username': 'Username',
+  'users.password': 'Password',
+  'users.role': 'Role',
+  'users.permissions': 'Permissions',
+  'users.enabled': 'Enabled',
+  'users.disabled': 'Disabled',
+  'users.actions': 'Actions',
+  'users.edit': 'Edit',
+  'users.resetPassword': 'Reset password',
+  'users.deleteConfirm': 'Delete this user?',
+  'users.selfDelete': 'You cannot delete the account you are signed in with',
+  'users.rolePreset': 'Role preset permissions',
+  'users.extraPerms': 'Additionally granted permissions',
+  'users.newPassword': 'New password (leave empty to keep)',
+  'users.createdAt': 'Created',
+  'users.titleRbac': 'Users (RBAC)',
+  'users.add': 'Add user',
+  'users.rbacHint': 'The role is a permission preset; the checkboxes below grant permissions directly on top of it (checked = granted).',
+  'users.status': 'Status',
+  'users.me': 'You',
+  'users.fromRole': 'From role preset',
+  'users.direct': 'Granted directly',
+  'users.preset': 'Preset',
+  'users.disable': 'Disable',
+  'users.extraOnly': 'Extra permissions (beyond the role preset)',
+  'users.create2': 'Create',
+  'users.deleteUserConfirm': 'Delete user {name}?',
+  'perm.conversations:read': 'View chat history',
+  'perm.analyze:run': 'Run AI analysis',
+  'perm.campaigns:manage': 'Manage campaigns',
+  'perm.users:manage': 'Manage users'
+}
+
+export const dictionaries = { 'zh-CN': zhCN, en } as const
+export type Locale = keyof typeof dictionaries
+
+export const LOCALES: Array<{ code: Locale; nativeName: string }> = [
+  { code: 'zh-CN', nativeName: '简体中文' },
+  { code: 'en', nativeName: 'English' }
+]
+
+const STORAGE_KEY = 'omni_admin_locale'
+
+export function isLocale(v: string): v is Locale {
+  return v in dictionaries
+}
+
+/** 已保存的选择 > 系统语言 > 中文 */
+export function initialLocale(): Locale {
+  const saved = localStorage.getItem(STORAGE_KEY)
+  if (saved && isLocale(saved)) return saved
+  return navigator.language.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en'
+}
+
+export function persistLocale(locale: Locale): void {
+  localStorage.setItem(STORAGE_KEY, locale)
+}
+
+interface I18n {
+  locale: Locale
+  setLocale: (l: Locale) => void
+  /** vars 用于 {name} 占位符替换 */
+  t: (key: MessageKey, vars?: Record<string, string | number>) => string
+}
+
+const I18nContext = createContext<I18n>({
+  locale: 'zh-CN',
+  setLocale: () => {},
+  t: (k) => zhCN[k]
+})
+
+export function I18nProvider({ children }: { children: ReactNode }): React.JSX.Element {
+  const [locale, setLocaleState] = useState<Locale>(initialLocale)
+
+  const setLocale = (l: Locale): void => {
+    setLocaleState(l)
+    persistLocale(l)
+  }
+
+  const dict = dictionaries[locale] as Partial<Record<MessageKey, string>>
+  const t = (key: MessageKey, vars?: Record<string, string | number>): string => {
+    let text = dict[key] ?? zhCN[key]
+    if (vars) {
+      for (const [k, v] of Object.entries(vars)) text = text.replaceAll(`{${k}}`, String(v))
+    }
+    return text
+  }
+
+  return <I18nContext.Provider value={{ locale, setLocale, t }}>{children}</I18nContext.Provider>
+}
+
+export function useI18n(): I18n {
+  return useContext(I18nContext)
+}
