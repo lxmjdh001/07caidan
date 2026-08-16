@@ -40,6 +40,19 @@ export function isLineGroup(src: LineSource): boolean {
   return src.type === 'group' || src.type === 'room'
 }
 
+/**
+ * LINE 客户唯一标识。
+ *
+ * 注意：LINE 的 userId 只在同一个 Provider 内稳定 —— 同一个人在不同 Provider 下拿到的
+ * userId 完全不同，所以标识必须带上 Provider 作用域，否则跨 Provider 会误判成不同的人，
+ * 更糟的是不同人可能撞号。用户没填 Provider ID 时退化为按账号隔离（宁可漏判不可错判）。
+ * 群聊（C/R 开头）不代表自然人，不产生标识。
+ */
+export function lineContactId(externalChatId: string, scope: string): string | undefined {
+  if (!externalChatId.startsWith('U')) return undefined
+  return `line:${scope}:${externalChatId}`
+}
+
 export function extractLineBody(msg: LineMessageContent): { body: MessageBody; needFetch: boolean } {
   switch (msg.type) {
     case 'text':

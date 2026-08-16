@@ -256,7 +256,9 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   }, [conversations, activeConversation])
   // 选中具体账号且它在等扫码 → 聊天区显示二维码
   const qrState = activeAccountKey ? channels[activeAccountKey] : undefined
-  const showQr = qrState?.status === 'waiting_qr'
+  // 扫码等待、或已生成手机号配对码，都展示登录面板
+  const showQr =
+    qrState?.status === 'waiting_qr' || qrState?.status === 'waiting_pairing_code'
 
   return (
     <I18nProvider locale={locale}>
@@ -295,7 +297,11 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
           />
           <main className="content">
             {showQr ? (
-              <QrPanel qrDataUrl={qrState?.qrDataUrl} />
+              <QrPanel
+                accountKey={activeAccountKey ?? undefined}
+                qrDataUrl={qrState?.qrDataUrl}
+                pairingCode={qrState?.pairingCode}
+              />
             ) : (
               <ChatView
                 conversation={activeConversation}

@@ -16,6 +16,10 @@ export interface ChannelPluginContext {
   saveMedia: (data: Buffer, ext: string) => Promise<string>
   /** 后台服务地址与令牌（LINE 等需公网 Webhook 中转的平台用） */
   getBackend: () => { url?: string; token?: string }
+  /** 回写该账号的凭证（如 Telegram 登录后的会话串），适配器自持久化用 */
+  saveCredentials: (credentials: Record<string, string>) => Promise<void>
+  /** 全局默认值（如应用级 Telegram API 凭证），账号未单独配置时回退到此 */
+  getDefaults?: () => { telegramApiId?: string; telegramApiHash?: string }
 }
 
 /** 凭证字段描述（非扫码类平台，UI 据此渲染输入表单） */
@@ -33,8 +37,13 @@ export interface CredentialField {
 export interface ChannelPlugin {
   kind: ChannelKind
   displayName: string
-  /** 登录方式：扫码（WhatsApp）或填凭证（Telegram/LINE） */
-  authType: 'qr' | 'credentials'
+  /**
+   * 登录方式：
+   * - qr: 扫码（WhatsApp）
+   * - credentials: 填静态凭证（Telegram Bot Token / LINE 密钥）
+   * - phone_code: 手机号 → 验证码 →（可选）两步密码（Telegram 普通账号）
+   */
+  authType: 'qr' | 'credentials' | 'phone_code'
   /** authType 为 credentials 时需要的字段 */
   credentialFields?: CredentialField[]
   createAdapter(accountId: string, ctx: ChannelPluginContext): ChannelAdapter

@@ -67,6 +67,13 @@ export abstract class ChannelAdapter extends TypedEmitter<AdapterEvents> {
    */
   resolveContactId?(externalChatId: string): Promise<string | undefined>
 
+  /**
+   * 提交交互式登录的输入（手机号 / 验证码 / 两步密码）。
+   * 适配器通过 waiting_phone / waiting_code / waiting_password 状态索取，
+   * UI 收集后调用此方法继续登录流程（可选能力，仅 phone_code 类平台实现）。
+   */
+  submitAuthInput?(value: string): Promise<void>
+
   protected makeState(partial: Omit<ChannelState, 'kind' | 'accountId'>): ChannelState {
     return { kind: this.kind, accountId: this.accountId, ...partial }
   }

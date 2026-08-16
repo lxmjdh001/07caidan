@@ -49,6 +49,8 @@ export function SettingsModal({
   const [outbound, setOutbound] = useState(tr.outboundEnabled)
   const [confirmSend, setConfirmSend] = useState(tr.confirmBeforeSend)
   const [syncMedia, setSyncMedia] = useState(settings.sync.uploadMedia)
+  const [tgApiId, setTgApiId] = useState(settings.platform.telegramApiId)
+  const [tgApiHash, setTgApiHash] = useState(settings.platform.telegramApiHash)
   const [displayLang, setDisplayLang] = useState(tr.displayLang)
   const [targetLangDefault, setTargetLangDefault] = useState(tr.targetLangDefault)
   const [customUrl, setCustomUrl] = useState(tr.custom.url)
@@ -77,7 +79,8 @@ export function SettingsModal({
           googleCloud: { apiKey: gcKey.trim() },
           llm: { baseUrl: llmBaseUrl.trim(), apiKey: llmKey.trim(), model: llmModel.trim() }
         },
-        sync: { ...settings.sync, uploadMedia: syncMedia }
+        sync: { ...settings.sync, uploadMedia: syncMedia },
+        platform: { telegramApiId: tgApiId.trim(), telegramApiHash: tgApiHash.trim() }
       })
     } finally {
       setSaving(false)
@@ -206,6 +209,23 @@ export function SettingsModal({
             <span>{t('settings.targetLangDefault')}</span>
             <LangSelect value={targetLangDefault} onChange={setTargetLangDefault} />
           </label>
+        </section>
+
+        <section>
+          <h3>{t('settings.platform')}</h3>
+          <label className="field">
+            <span>{t('settings.tgApiId')}</span>
+            <input type="text" value={tgApiId} onChange={(e) => setTgApiId(e.target.value)} />
+          </label>
+          <label className="field">
+            <span>{t('settings.tgApiHash')}</span>
+            <input
+              type="password"
+              value={tgApiHash}
+              onChange={(e) => setTgApiHash(e.target.value)}
+            />
+          </label>
+          <p className="field-hint">{t('settings.tgApiHint')}</p>
         </section>
 
         <section>

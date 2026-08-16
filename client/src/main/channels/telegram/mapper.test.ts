@@ -51,9 +51,9 @@ describe('mapTgMessage', () => {
   it('别人发的 → 入站，带发信人名', () => {
     const r = mapTgMessage(msg({ text: 'hi', from: { id: 555, first_name: 'A' } }), 'bot1', 999)
     expect(r?.message).toMatchObject({
-      channel: 'telegram',
+      channel: 'telegram_bot',
       accountId: 'bot1',
-      conversationId: 'telegram:bot1:111',
+      conversationId: 'telegram_bot:bot1:111',
       direction: 'in',
       authorName: 'A',
       externalId: '1'

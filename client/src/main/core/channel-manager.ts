@@ -117,6 +117,13 @@ export class ChannelManager {
     await this.requireAdapter(key).logout()
   }
 
+  /** 提交交互式登录输入（手机号/验证码/两步密码），仅 phone_code 类平台支持 */
+  async submitAuthInput(key: string, value: string): Promise<void> {
+    const adapter = this.requireAdapter(key)
+    if (!adapter.submitAuthInput) throw new Error(`渠道 ${key} 不支持交互式登录`)
+    await adapter.submitAuthInput(value)
+  }
+
   /**
    * 出站目标语言解析，优先级：
    * 会话手动设置 > 自动检测 > 账号默认 > 全局默认

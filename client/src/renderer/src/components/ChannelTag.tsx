@@ -27,6 +27,7 @@ const LINE_ICON = (
 const META: Record<ChannelKind, Meta> = {
   whatsapp: { label: 'WhatsApp', color: '#22a06b', icon: WA_ICON },
   telegram: { label: 'Telegram', color: '#2aabee', icon: TG_ICON },
+  telegram_bot: { label: 'TG Bot', color: '#1f8dc0', icon: TG_ICON },
   line: { label: 'LINE', color: '#06c755', icon: LINE_ICON }
 }
 

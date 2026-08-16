@@ -134,9 +134,9 @@ export function mapTgMessage(
     message: {
       id: randomUUID(),
       externalId: String(m.message_id),
-      channel: 'telegram',
+      channel: 'telegram_bot',
       accountId,
-      conversationId: conversationId('telegram', accountId, String(m.chat.id)),
+      conversationId: conversationId('telegram_bot', accountId, String(m.chat.id)),
       direction,
       authorName,
       body,

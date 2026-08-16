@@ -8,7 +8,8 @@ import { SyncClient } from './sync/sync-client'
 import { ClientAuth } from './auth/client-auth'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { whatsAppPlugin } from './channels/whatsapp'
-import { telegramPlugin } from './channels/telegram'
+import { telegramBotPlugin } from './channels/telegram'
+import { telegramUserPlugin } from './channels/telegram-user'
 import { linePlugin } from './channels/line'
 import { ChannelRegistry } from './channels/registry'
 import { channelKey } from '@shared/domain'
@@ -89,7 +90,8 @@ async function bootstrap(): Promise<void> {
   // ── 渠道插件装配。新增平台：注册插件即可（下面按 kind 通用创建适配器）──
   const channels = new ChannelRegistry()
   channels.register(whatsAppPlugin)
-  channels.register(telegramPlugin)
+  channels.register(telegramUserPlugin)
+  channels.register(telegramBotPlugin)
   channels.register(linePlugin)
 
   const registerAccount = (kind: string, accountId: string): void => {
@@ -107,6 +109,14 @@ async function bootstrap(): Promise<void> {
         getBackend: () => {
           const s = settings.get().sync
           return { url: s.serverUrl, token: s.token }
+        },
+        saveCredentials: async (credentials) => {
+          const cfg = settings.accountConfig(key)
+          await settings.update({ accounts: { [key]: { ...cfg, credentials } } })
+        },
+        getDefaults: () => {
+          const p = settings.get().platform
+          return { telegramApiId: p.telegramApiId, telegramApiHash: p.telegramApiHash }
         }
       })
     )

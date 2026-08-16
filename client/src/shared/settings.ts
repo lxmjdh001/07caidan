@@ -54,11 +54,19 @@ export interface SyncConfig {
   uploadMedia: boolean
 }
 
+/** 平台级默认凭证（账号未单独配置时回退到此） */
+export interface PlatformDefaults {
+  /** Telegram 应用级 API 凭证（my.telegram.org 申请），普通账号登录必需 */
+  telegramApiId: string
+  telegramApiHash: string
+}
+
 export interface AppSettings {
   /** 界面语言 */
   locale: string
   translation: TranslationConfig
   sync: SyncConfig
+  platform: PlatformDefaults
   /**
    * 按渠道账号 key（如 whatsapp:main）的独立配置。
    * 这里的 key 集合同时是"账号注册表"：启动时为每个 key 创建适配器。
@@ -82,5 +90,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     llm: { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: '' }
   },
   sync: { enabled: false, serverUrl: '', token: '', email: '', uploadMedia: true },
+  platform: { telegramApiId: '', telegramApiHash: '' },
   accounts: { 'whatsapp:main': {} }
 }

@@ -3,13 +3,23 @@
  * 都会被各自的适配器转换成这里定义的结构。核心层与 UI 只认识这些类型。
  */
 
-export type ChannelKind = 'whatsapp' | 'telegram' | 'line'
+/** telegram = 普通账号（MTProto）；telegram_bot = Bot API */
+export type ChannelKind = 'whatsapp' | 'telegram' | 'telegram_bot' | 'line'
 
 export type ChannelStatus =
   | 'stopped'
   | 'connecting'
   | 'waiting_qr'
+  /** 等待用户填写凭证（Bot Token / LINE 密钥等） */
   | 'need_credentials'
+  /** 等待输入手机号（Telegram 普通账号登录第一步） */
+  | 'waiting_phone'
+  /** 等待输入短信/应用内验证码 */
+  | 'waiting_code'
+  /** 等待输入两步验证密码 */
+  | 'waiting_password'
+  /** 已生成配对码，等待用户在手机 App 内输入（WhatsApp 手机号登录） */
+  | 'waiting_pairing_code'
   | 'connected'
   | 'logged_out'
   | 'error'
@@ -22,6 +32,8 @@ export interface ChannelState {
   detail?: string
   /** 等待扫码时的二维码图片（data URL） */
   qrDataUrl?: string
+  /** 手机号登录时生成的配对码，用户需在手机 App 内输入 */
+  pairingCode?: string
   /** 登录后的账号显示名 */
   selfName?: string
 }

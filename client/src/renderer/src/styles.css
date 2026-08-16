@@ -1191,6 +1191,94 @@ body {
   width: 400px;
 }
 
+/* 登录方式切换（扫码 / 手机号） */
+.login-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--panel-alt);
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 18px;
+}
+.login-tabs button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 10px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.login-tabs button.on {
+  background: #fff;
+  color: var(--accent);
+  box-shadow: 0 1px 2px rgb(16 24 40 / 0.08);
+}
+
+.phone-login {
+  text-align: left;
+}
+.phone-login .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.phone-login .field > span {
+  font-size: 13px;
+  font-weight: 500;
+}
+.phone-login input {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 12px;
+  font-size: 14px;
+  outline: none;
+  background: var(--panel-alt);
+}
+.phone-login input:focus {
+  border-color: var(--accent);
+  background: #fff;
+}
+.phone-login .primary-btn {
+  width: 100%;
+  margin-top: 8px;
+}
+
+/* 配对码展示 */
+.pairing-code {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 12px;
+  padding: 18px 12px;
+  margin: 4px 0 18px;
+  font-variant-numeric: tabular-nums;
+  user-select: all;
+}
+
+/* Telegram 交互式登录步骤 */
+.auth-step {
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.auth-step .field {
+  margin-bottom: 6px;
+}
+.auth-step .field-hint {
+  margin: 0 0 10px;
+}
+.auth-step .primary-btn {
+  width: 100%;
+}
+
 /* 平台选择器 */
 .modal.picker {
   width: 380px;

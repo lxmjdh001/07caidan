@@ -7,6 +7,9 @@ const STATUS_COLOR: Record<string, string> = {
   connecting: 'var(--warn)',
   waiting_qr: 'var(--warn)',
   need_credentials: 'var(--warn)',
+  waiting_phone: 'var(--warn)',
+  waiting_code: 'var(--warn)',
+  waiting_password: 'var(--warn)',
   error: 'var(--danger)',
   logged_out: 'var(--muted)',
   stopped: 'var(--muted)'

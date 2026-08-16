@@ -395,9 +395,39 @@ export class WhatsAppAdapter extends ChannelAdapter {
     this.reconnectDelay = RECONNECT_BASE_MS
   }
 
+  /**
+   * 手机号登录（配对码方式，替代扫码）：传入手机号，向 WhatsApp 申请一个 8 位配对码，
+   * 用户在手机 App「已关联的设备 → 用手机号码关联」里输入该码即可完成登录。
+   * 适用于不方便扫码的场景（远程管理、批量开号）。
+   */
+  override async submitAuthInput(value: string): Promise<void> {
+    const sock = this.sock
+    if (!sock) throw new Error('WhatsApp 尚未启动，无法申请配对码')
+    if (sock.authState.creds.registered) throw new Error('该账号已登录，无需配对码')
+
+    // 只保留数字（Baileys 要求纯数字国际号码，不带 + 和空格）
+    const phone = value.replace(/[^\d]/g, '')
+    if (phone.length < 8) throw new Error('手机号格式不正确，请填含国家码的完整号码')
+
+    try {
+      const code = await sock.requestPairingCode(phone)
+      this.log.info('已生成配对码', { phone: `***${phone.slice(-4)}` })
+      this.setState('waiting_pairing_code', { pairingCode: code })
+    } catch (err) {
+      this.log.error('申请配对码失败', err)
+      this.setState('error', { detail: err instanceof Error ? err.message : String(err) })
+      throw err
+    }
+  }
+
   private setState(
     status: ChannelStatus,
-    extra: { detail?: string; qrDataUrl?: string; selfName?: string } = {}
+    extra: {
+      detail?: string
+      qrDataUrl?: string
+      selfName?: string
+      pairingCode?: string
+    } = {}
   ): void {
     this.status = status
     this.emit('state', this.makeState({ status, ...extra }))

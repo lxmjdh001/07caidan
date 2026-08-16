@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { extractLineBody, isLineGroup, lineChatId, mapLineEvent, type LineEvent } from './mapper'
+import {
+  extractLineBody,
+  isLineGroup,
+  lineChatId,
+  lineContactId,
+  mapLineEvent,
+  type LineEvent
+} from './mapper'
 
 describe('lineChatId / isLineGroup', () => {
   it('群 > 房间 > 用户 优先级', () => {
@@ -11,6 +18,19 @@ describe('lineChatId / isLineGroup', () => {
     expect(isLineGroup({ type: 'group' })).toBe(true)
     expect(isLineGroup({ type: 'room' })).toBe(true)
     expect(isLineGroup({ type: 'user' })).toBe(false)
+  })
+})
+
+describe('lineContactId', () => {
+  it('私聊标识带 Provider 作用域', () => {
+    expect(lineContactId('U123', 'p1')).toBe('line:p1:U123')
+  })
+  it('同一 userId 在不同 Provider 下是不同的人', () => {
+    expect(lineContactId('U123', 'p1')).not.toBe(lineContactId('U123', 'p2'))
+  })
+  it('群聊不产生客户标识', () => {
+    expect(lineContactId('G1', 'p1')).toBeUndefined()
+    expect(lineContactId('R1', 'p1')).toBeUndefined()
   })
 })
 

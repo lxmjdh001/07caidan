@@ -14,6 +14,8 @@ const api: OmniApi = {
   listChannels: () => ipcRenderer.invoke(IPC_METHODS.listChannels),
   listChannelPlugins: () => ipcRenderer.invoke(IPC_METHODS.listChannelPlugins),
   startChannel: (key: string) => ipcRenderer.invoke(IPC_METHODS.startChannel, key),
+  submitAuthInput: (key: string, value: string) =>
+    ipcRenderer.invoke(IPC_METHODS.submitAuthInput, key, value),
   logoutChannel: (key: string) => ipcRenderer.invoke(IPC_METHODS.logoutChannel, key),
   addAccount: (channel: string) => ipcRenderer.invoke(IPC_METHODS.addAccount, channel),
   removeAccount: (key: string) => ipcRenderer.invoke(IPC_METHODS.removeAccount, key),

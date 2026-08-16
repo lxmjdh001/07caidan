@@ -39,6 +39,9 @@ export function registerIpc(deps: IpcDeps): void {
     }))
   )
   ipcMain.handle(IPC_METHODS.startChannel, (_e, key: string) => manager.start(key))
+  ipcMain.handle(IPC_METHODS.submitAuthInput, (_e, key: string, value: string) =>
+    manager.submitAuthInput(key, value)
+  )
   ipcMain.handle(IPC_METHODS.logoutChannel, (_e, key: string) => manager.logout(key))
   ipcMain.handle(IPC_METHODS.addAccount, (_e, channel: string) => deps.onAddAccount(channel))
   ipcMain.handle(IPC_METHODS.removeAccount, (_e, key: string) => deps.onRemoveAccount(key))

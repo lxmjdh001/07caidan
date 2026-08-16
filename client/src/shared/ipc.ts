@@ -9,6 +9,7 @@ export const IPC_METHODS = {
   listChannels: 'omni:listChannels',
   listChannelPlugins: 'omni:listChannelPlugins',
   startChannel: 'omni:startChannel',
+  submitAuthInput: 'omni:submitAuthInput',
   logoutChannel: 'omni:logoutChannel',
   addAccount: 'omni:addAccount',
   removeAccount: 'omni:removeAccount',
@@ -83,6 +84,8 @@ export interface OmniApi {
   /** 可用渠道插件（平台类型 + 凭证字段） */
   listChannelPlugins(): Promise<ChannelPluginInfo[]>
   startChannel(key: string): Promise<void>
+  /** 提交交互式登录输入（Telegram 普通账号的手机号/验证码/两步密码） */
+  submitAuthInput(key: string, value: string): Promise<void>
   logoutChannel(key: string): Promise<void>
   /** 新增一个账号（当前支持 whatsapp），返回其 channel key（如 whatsapp:wa1abc） */
   addAccount(channel: string): Promise<string>

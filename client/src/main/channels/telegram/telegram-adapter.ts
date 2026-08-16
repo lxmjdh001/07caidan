@@ -28,7 +28,7 @@ const MAX_MEDIA_BYTES = 50 * 1024 * 1024 // Telegram Bot API 下载上限 20MB�
  * 凭证是 Bot Token（不是扫码）。收发消息、下载媒体全部走 HTTPS。
  */
 export class TelegramAdapter extends ChannelAdapter {
-  readonly kind = 'telegram' as const
+  readonly kind = 'telegram_bot' as const
   readonly accountId: string
 
   private readonly log: Logger

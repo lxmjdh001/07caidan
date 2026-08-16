@@ -5,6 +5,7 @@ import { extFromMime } from '../../core/mime'
 import {
   isLineGroup,
   lineChatId,
+  lineContactId,
   mapLineEvent,
   type LineEvent
 } from './mapper'
@@ -12,6 +13,8 @@ import {
 export interface LineCreds {
   channelAccessToken?: string
   channelSecret?: string
+  /** LINE Developers 的 Provider ID；决定 userId 的作用域，跨账号判重要靠它 */
+  providerId?: string
 }
 
 export interface LineAdapterOptions {
@@ -94,6 +97,11 @@ export class LineAdapter extends ChannelAdapter {
   async logout(): Promise<void> {
     await this.stop()
     this.setState('logged_out')
+  }
+
+  override async resolveContactId(externalChatId: string): Promise<string | undefined> {
+    const scope = this.getCreds().providerId?.trim() || `acct-${this.accountId}`
+    return lineContactId(externalChatId, scope)
   }
 
   async sendText(externalChatId: string, text: string): Promise<OutboundResult> {

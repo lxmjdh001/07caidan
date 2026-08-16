@@ -36,9 +36,19 @@ export function AccountModal({
   const [deviceLabel, setDeviceLabel] = useState(config.deviceLabel ?? '')
   const [creds, setCreds] = useState<Record<string, string>>(config.credentials ?? {})
   const [saving, setSaving] = useState(false)
+  const [authInput, setAuthInput] = useState('')
+  const [authBusy, setAuthBusy] = useState(false)
 
   const isWhatsApp = plugin?.kind === 'whatsapp' || accountKey.startsWith('whatsapp:')
   const credFields = plugin?.credentialFields ?? []
+
+  // Telegram 普通账号：多步交互登录（手机号 → 验证码 → 两步密码）
+  const AUTH_STEP: Partial<Record<string, { labelKey: string; hintKey: string }>> = {
+    waiting_phone: { labelKey: 'auth.tgPhone', hintKey: 'auth.tgPhoneHint' },
+    waiting_code: { labelKey: 'auth.tgCode', hintKey: 'auth.tgCodeHint' },
+    waiting_password: { labelKey: 'auth.tgPassword', hintKey: 'auth.tgPasswordHint' }
+  }
+  const authStep = state?.status ? AUTH_STEP[state.status] : undefined
 
   const buildConfig = (): AccountConfig => ({
     label: label.trim() || undefined,
@@ -55,6 +65,19 @@ export function AccountModal({
       onClose()
     } finally {
       setSaving(false)
+    }
+  }
+
+  /** 提交交互式登录输入；弹窗保持打开，状态会推进到下一步 */
+  const submitAuth = async (): Promise<void> => {
+    const value = authInput.trim()
+    if (!value) return
+    setAuthBusy(true)
+    try {
+      await api.submitAuthInput(accountKey, value)
+      setAuthInput('')
+    } finally {
+      setAuthBusy(false)
     }
   }
 
@@ -83,6 +106,32 @@ export function AccountModal({
             {t(`status.${state?.status ?? 'stopped'}` as 'status.stopped')}
           </span>
         </div>
+
+        {authStep && (
+          <div className="auth-step">
+            <label className="field">
+              <span>{t(authStep.labelKey as 'auth.tgPhone')}</span>
+              <input
+                type={state?.status === 'waiting_password' ? 'password' : 'text'}
+                value={authInput}
+                autoFocus
+                onChange={(e) => setAuthInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void submitAuth()
+                }}
+              />
+            </label>
+            <p className="field-hint">{state?.detail || t(authStep.hintKey as 'auth.tgPhoneHint')}</p>
+            <button
+              type="button"
+              className="primary-btn"
+              disabled={authBusy || !authInput.trim()}
+              onClick={() => void submitAuth()}
+            >
+              {t('auth.tgSubmit')}
+            </button>
+          </div>
+        )}
 
         {credFields.length > 0 && (
           <>
