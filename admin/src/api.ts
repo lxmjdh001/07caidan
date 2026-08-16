@@ -32,6 +32,63 @@ export interface IntentAnalysis {
   suggestedAction: string
 }
 
+/**
+ * 工单与统计类型，与 server/src/campaign-* 保持一致。
+ * 统计结构里刻意没有任何客户标识 —— 看板可公开分享，只允许聚合数字。
+ */
+export interface Campaign {
+  id: string
+  name: string
+  accountIds: string[]
+  accountLabels: Record<string, string>
+  startAt: number
+  endAt?: number
+  dedupLibraryIds: string[]
+  dedupBeforeAt?: number
+  dedupAccountIds: string[]
+  tzOffsetMinutes: number
+  createdBy?: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface Bucket {
+  total: number
+  duplicate: number
+  fresh: number
+}
+
+export interface CampaignStats {
+  total: number
+  duplicate: number
+  fresh: number
+  effective: number
+  duplicateBy: { library: number; timeRange: number }
+  byAccount: Array<{ accountId: string; channel: string; label?: string } & Bucket>
+  byDay: Array<{ date: string } & Bucket>
+  response: { replied: number; replyRate: number; medianFirstReplySec: number | null }
+  computedAt: number
+}
+
+export interface CampaignLink {
+  token: string
+  campaignId: string
+  label?: string
+  expiresAt?: number
+  revoked: boolean
+  createdAt: number
+  active: boolean
+}
+
+export interface FanLibrary {
+  id: string
+  name: string
+  channel: string
+  source: string
+  entryCount: number
+  createdAt: number
+}
+
 export interface Me {
   username: string
   role: string
@@ -111,6 +168,43 @@ export class ApiClient {
 
   logout(): Promise<{ ok: boolean }> {
     return this.req('/api/logout', { method: 'POST' })
+  }
+
+  // ── 引流工单 / 重粉库（需 campaigns:manage）──
+  // 工单本身由老板在客户端创建，后台这边只读统计并管分享链接，
+  // 所以不提供创建接口 —— 避免两边各建一份、口径对不上。
+  listCampaigns(): Promise<{ campaigns: Campaign[] }> {
+    return this.req('/api/campaigns')
+  }
+
+  campaignStats(id: string): Promise<{ campaign: Campaign; stats: CampaignStats }> {
+    return this.req(`/api/campaigns/${encodeURIComponent(id)}/stats`)
+  }
+
+  listLinks(id: string): Promise<{ links: CampaignLink[]; publicBase: string }> {
+    return this.req(`/api/campaigns/${encodeURIComponent(id)}/links`)
+  }
+
+  createLink(
+    id: string,
+    body: { label?: string; expiresAt?: number }
+  ): Promise<{ link: CampaignLink; url: string }> {
+    return this.req(`/api/campaigns/${encodeURIComponent(id)}/links`, {
+      method: 'POST',
+      body: JSON.stringify(body)
+    })
+  }
+
+  revokeLink(token: string): Promise<{ ok: boolean }> {
+    return this.req(`/api/campaigns/links/${encodeURIComponent(token)}/revoke`, { method: 'POST' })
+  }
+
+  listLibraries(): Promise<{ libraries: FanLibrary[] }> {
+    return this.req('/api/fan-libraries')
+  }
+
+  deleteLibrary(id: string): Promise<{ ok: boolean }> {
+    return this.req(`/api/fan-libraries/${encodeURIComponent(id)}`, { method: 'DELETE' })
   }
 
   // ── 用户管理（需 users:manage）──

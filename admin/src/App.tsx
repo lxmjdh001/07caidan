@@ -5,6 +5,7 @@ import { ConversationList } from './components/ConversationList'
 import { ChatView } from './components/ChatView'
 import { AnalysisPanel } from './components/AnalysisPanel'
 import { UsersView } from './components/UsersView'
+import { CampaignsView } from './components/CampaignsView'
 
 const ROLE_LABEL: Record<string, string> = {
   owner: '所有者',
@@ -16,7 +17,7 @@ const ROLE_LABEL: Record<string, string> = {
 export function App(): React.JSX.Element {
   const [client, setClient] = useState<ApiClient | null>(null)
   const [me, setMe] = useState<Me | null>(null)
-  const [view, setView] = useState<'chats' | 'users'>('chats')
+  const [view, setView] = useState<'chats' | 'campaigns' | 'users'>('chats')
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
 
@@ -31,7 +32,8 @@ export function App(): React.JSX.Element {
         /* 忽略 */
       }
     } else {
-      setView('users')
+      // 没有会话权限就落到第一个有权限的页面，否则登录后是一片空白
+      setView(user.permissions.includes('campaigns:manage') ? 'campaigns' : 'users')
     }
   }, [])
 
@@ -54,6 +56,7 @@ export function App(): React.JSX.Element {
 
   const canChats = me.permissions.includes('conversations:read')
   const canUsers = me.permissions.includes('users:manage')
+  const canCampaigns = me.permissions.includes('campaigns:manage')
 
   return (
     <div className="layout">
@@ -67,6 +70,15 @@ export function App(): React.JSX.Element {
             <button className={view === 'chats' ? 'on' : ''} onClick={() => setView('chats')}>
               <ChatIcon />
               聊天记录
+            </button>
+          )}
+          {canCampaigns && (
+            <button
+              className={view === 'campaigns' ? 'on' : ''}
+              onClick={() => setView('campaigns')}
+            >
+              <ChartIcon />
+              引流工单
             </button>
           )}
           {canUsers && (
@@ -89,6 +101,8 @@ export function App(): React.JSX.Element {
       <main className="main">
         {view === 'users' && canUsers ? (
           <UsersView client={client} currentUser={me.username} />
+        ) : view === 'campaigns' && canCampaigns ? (
+          <CampaignsView client={client} />
         ) : (
           <div className="body">
             <ConversationList
@@ -115,6 +129,14 @@ function ChatIcon(): React.JSX.Element {
   return (
     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
       <path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.8-.8L3 20l1.1-5A8 8 0 0 1 3.5 11.5 8.4 8.4 0 0 1 12 3.2a8.4 8.4 0 0 1 9 8.3Z" />
+    </svg>
+  )
+}
+function ChartIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+      <path d="M3 3v18h18" />
+      <path d="M7 15l4-5 3 3 5-7" />
     </svg>
   )
 }
