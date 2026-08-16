@@ -31,6 +31,15 @@ const api: OmniApi = {
   updateSettings: (patch: Partial<AppSettings>) =>
     ipcRenderer.invoke(IPC_METHODS.updateSettings, patch),
   listTranslators: () => ipcRenderer.invoke(IPC_METHODS.listTranslators),
+  authState: () => ipcRenderer.invoke(IPC_METHODS.authState),
+  authConfig: (serverUrl: string) => ipcRenderer.invoke(IPC_METHODS.authConfig, serverUrl),
+  authSendCode: (serverUrl: string, email: string) =>
+    ipcRenderer.invoke(IPC_METHODS.authSendCode, serverUrl, email),
+  authRegister: (serverUrl: string, email: string, password: string, code?: string) =>
+    ipcRenderer.invoke(IPC_METHODS.authRegister, serverUrl, email, password, code),
+  authLogin: (serverUrl: string, email: string, password: string) =>
+    ipcRenderer.invoke(IPC_METHODS.authLogin, serverUrl, email, password),
+  authLogout: () => ipcRenderer.invoke(IPC_METHODS.authLogout),
   onEvent: (cb: (evt: OmniEvent) => void) => {
     const listener = (_e: IpcRendererEvent, evt: OmniEvent): void => cb(evt)
     ipcRenderer.on(OMNI_EVENT_CHANNEL, listener)

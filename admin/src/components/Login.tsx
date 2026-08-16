@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { ApiClient, login, type Me } from '../api'
+import { API_BASE } from '../config'
 
 interface Props {
   onLogin: (client: ApiClient, base: string, me: Me) => void
 }
 
 export function Login({ onLogin }: Props): React.JSX.Element {
-  const [url, setUrl] = useState('http://localhost:8787')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [err, setErr] = useState('')
@@ -16,11 +16,9 @@ export function Login({ onLogin }: Props): React.JSX.Element {
     setErr('')
     setBusy(true)
     try {
-      const base = url.trim().replace(/\/$/, '')
-      const { token, user } = await login(base, username.trim(), password)
-      localStorage.setItem('omni_base', base)
+      const { token, user } = await login(API_BASE, username.trim(), password)
       localStorage.setItem('omni_token', token)
-      onLogin(new ApiClient(base, token), base, user)
+      onLogin(new ApiClient(API_BASE, token), API_BASE, user)
     } catch (e) {
       setErr('登录失败：' + (e as Error).message)
     } finally {
@@ -31,13 +29,11 @@ export function Login({ onLogin }: Props): React.JSX.Element {
   // 记住上次会话令牌，自动恢复
   useEffect(() => {
     const t = localStorage.getItem('omni_token')
-    const b = localStorage.getItem('omni_base')
-    if (t && b) {
-      setUrl(b)
-      const client = new ApiClient(b, t)
+    if (t) {
+      const client = new ApiClient(API_BASE, t)
       client
         .me()
-        .then((me) => onLogin(client, b, me))
+        .then((me) => onLogin(client, API_BASE, me))
         .catch(() => localStorage.removeItem('omni_token'))
     }
   }, [onLogin])
@@ -47,10 +43,6 @@ export function Login({ onLogin }: Props): React.JSX.Element {
       <div className="login-card">
         <h1>OmniChat 管理后台</h1>
         <p>使用账号密码登录</p>
-        <label className="field">
-          <span>后台地址</span>
-          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://localhost:8787" />
-        </label>
         <label className="field">
           <span>账号</span>
           <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="admin" />

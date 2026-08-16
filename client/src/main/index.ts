@@ -5,6 +5,7 @@ import { OMNI_EVENT_CHANNEL, type OmniEvent } from '@shared/ipc'
 import { JsonContactStore } from './core/contact-store'
 import { MediaStore } from './core/media-store'
 import { SyncClient } from './sync/sync-client'
+import { ClientAuth } from './auth/client-auth'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { whatsAppPlugin } from './channels/whatsapp'
 import { ChannelRegistry } from './channels/registry'
@@ -131,10 +132,13 @@ async function bootstrap(): Promise<void> {
   })
   syncClient.start()
 
+  const auth = new ClientAuth(settings, logger)
+
   registerIpc({
     manager,
     store,
     settings,
+    auth,
     translators: translatorRegistry,
     broadcast,
     onSettingsChanged: (updated) => {

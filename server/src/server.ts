@@ -7,8 +7,10 @@ import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest }
 import { IntentAnalyzer } from './analyzer.ts'
 import { AuthRepo, type Principal } from './auth-repo.ts'
 import { PERMISSIONS, ROLE_PRESETS, ROLES, type Permission } from './auth.ts'
+import { ClientAuthRepo } from './client-auth.ts'
 import type { ServerConfig } from './config.ts'
 import { openDb } from './db.ts'
+import { createEmailSender } from './email.ts'
 import { Repo } from './repo.ts'
 import type { SyncPayload } from './types.ts'
 
@@ -25,6 +27,8 @@ export function buildServer(config: ServerConfig): FastifyInstance {
   const db = openDb(config.dbPath)
   const repo = new Repo(db)
   const auth = new AuthRepo(db)
+  const clientAuth = new ClientAuthRepo(db)
+  const mailer = createEmailSender(config)
   auth.bootstrap(config.adminTenant, config.adminUser, config.adminPassword)
   mkdirSync(config.mediaDir, { recursive: true })
   const analyzer = config.anthropicApiKey
@@ -40,15 +44,24 @@ export function buildServer(config: ServerConfig): FastifyInstance {
     return a?.startsWith('Bearer ') ? a.slice(7).trim() : null
   }
 
-  // 鉴权：/api 路由（登录除外）需带有效令牌。
-  // 令牌可为「管理员会话 token」或「同步客户端 token」，映射到不同上下文。
+  // 公开路由前缀（无需鉴权）：管理员登录、客户端注册/登录/发码/配置
+  const PUBLIC = ['/api/login', '/api/client/config', '/api/client/register', '/api/client/login', '/api/client/send-code']
+
+  // 鉴权：/api 路由（公开的除外）需带有效令牌。
+  // 令牌可为「管理员会话」「客户端用户会话」「静态同步令牌」，映射到不同上下文。
   app.addHook('onRequest', async (req, reply) => {
-    if (!req.url.startsWith('/api') || req.url.startsWith('/api/login')) return
+    if (!req.url.startsWith('/api')) return
+    if (PUBLIC.some((p) => req.url.startsWith(p))) return
     const token = bearer(req)
     if (token) {
       const principal = auth.resolve(token)
       if (principal) {
         ;(req as unknown as { ctx?: ReqCtx }).ctx = { tenant: principal.tenant, principal }
+        return
+      }
+      const clientUser = clientAuth.resolve(token)
+      if (clientUser) {
+        ;(req as unknown as { ctx?: ReqCtx }).ctx = { tenant: clientUser.tenant, isSyncClient: true }
         return
       }
       if (config.tokens.includes(token)) {
@@ -73,7 +86,55 @@ export function buildServer(config: ServerConfig): FastifyInstance {
 
   app.get('/health', async () => ({ ok: true }))
 
-  // ── 认证 ──
+  // ── 客户端用户（桌面端账号）──
+  // 客户端启动时拉取：是否需要邮箱验证（决定注册界面是否显示发送验证码）
+  app.get('/api/client/config', async () => ({ requireEmailVerify: config.requireEmailVerify }))
+
+  app.post('/api/client/send-code', async (req, reply) => {
+    if (!config.requireEmailVerify) return reply.code(400).send({ error: '后台未开启邮箱验证' })
+    const { email } = (req.body ?? {}) as { email?: string }
+    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      return reply.code(400).send({ error: '邮箱格式不正确' })
+    }
+    const code = clientAuth.issueCode(email)
+    try {
+      await mailer.send(email, 'OmniChat 验证码', `你的验证码是 ${code}，10 分钟内有效。`)
+    } catch (err) {
+      req.log.error(err, '验证码邮件发送失败')
+      return reply.code(502).send({ error: '验证码发送失败，请稍后重试' })
+    }
+    return { ok: true }
+  })
+
+  app.post('/api/client/register', async (req, reply) => {
+    const b = (req.body ?? {}) as { email?: string; password?: string; code?: string }
+    if (!b.email || !b.password) return reply.code(400).send({ error: '邮箱和密码必填' })
+    const r = clientAuth.register(
+      config.clientTenant,
+      b.email,
+      b.password,
+      b.code,
+      config.requireEmailVerify
+    )
+    if (!r.ok) return reply.code(400).send({ error: r.error })
+    return { token: r.token, user: { email: r.user.email, verified: r.user.verified } }
+  })
+
+  app.post('/api/client/login', async (req, reply) => {
+    const b = (req.body ?? {}) as { email?: string; password?: string }
+    if (!b.email || !b.password) return reply.code(400).send({ error: '邮箱和密码必填' })
+    const r = clientAuth.login(b.email, b.password)
+    if (!r) return reply.code(401).send({ error: '邮箱或密码错误' })
+    return { token: r.token, user: { email: r.user.email, verified: r.user.verified } }
+  })
+
+  app.post('/api/client/logout', async (req) => {
+    const token = bearer(req)
+    if (token) clientAuth.logout(token)
+    return { ok: true }
+  })
+
+  // ── 管理员认证 ──
   app.post('/api/login', async (req, reply) => {
     const { username, password } = (req.body ?? {}) as { username?: string; password?: string }
     if (!username || !password) return reply.code(400).send({ error: 'missing credentials' })

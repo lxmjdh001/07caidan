@@ -40,8 +40,10 @@ export interface SyncConfig {
   enabled: boolean
   /** 后台服务地址，如 https://api.example.com */
   serverUrl: string
-  /** 同步鉴权令牌（后台下发） */
+  /** 同步鉴权令牌（客户端账号登录后下发） */
   token: string
+  /** 登录账号邮箱 */
+  email: string
   /** 是否同时上传媒体文件 */
   uploadMedia: boolean
 }
@@ -73,6 +75,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
     googleCloud: { apiKey: '' },
     llm: { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: '' }
   },
-  sync: { enabled: false, serverUrl: '', token: '', uploadMedia: true },
+  sync: { enabled: false, serverUrl: '', token: '', email: '', uploadMedia: true },
   accounts: { 'whatsapp:main': {} }
 }

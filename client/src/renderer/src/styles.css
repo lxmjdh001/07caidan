@@ -44,6 +44,108 @@ body {
   height: 100%;
 }
 
+/* ── 账号登录门禁 ── */
+.auth-gate {
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+  -webkit-app-region: drag;
+}
+.auth-card {
+  width: 360px;
+  background: var(--panel);
+  border-radius: 18px;
+  box-shadow: 0 10px 40px rgb(16 24 40 / 0.1);
+  padding: 34px 36px;
+  -webkit-app-region: no-drag;
+}
+.auth-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #22a06b, #1c8ad9);
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 14px;
+}
+.auth-card h1 {
+  font-size: 19px;
+  text-align: center;
+  margin-bottom: 4px;
+}
+.auth-sub {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-bottom: 20px;
+}
+.auth-card .field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 13px;
+}
+.auth-card .field > span {
+  font-size: 13px;
+  font-weight: 500;
+}
+.auth-card input {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 12px;
+  font-size: 14px;
+  outline: none;
+  background: var(--panel-alt);
+  color: var(--text);
+}
+.auth-card input:focus {
+  border-color: var(--accent);
+  background: #fff;
+}
+.code-row {
+  display: flex;
+  gap: 8px;
+}
+.code-row input {
+  flex: 1;
+}
+.code-row .ghost-btn {
+  flex: none;
+  white-space: nowrap;
+}
+.auth-err {
+  color: var(--danger);
+  font-size: 12.5px;
+  margin: 4px 0 8px;
+}
+.auth-info {
+  color: var(--accent);
+  font-size: 12.5px;
+  margin: 4px 0 8px;
+}
+.auth-submit {
+  width: 100%;
+  margin-top: 6px;
+}
+.auth-switch {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  margin-top: 16px;
+}
+.auth-switch button {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 12.5px;
+}
+
 /* ── 自绘标题栏（拖拽区；两侧按平台为系统窗口按钮留白） ── */
 .titlebar {
   flex: none;

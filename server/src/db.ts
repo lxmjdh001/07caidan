@@ -50,6 +50,18 @@ export function openDb(dbPath: string): Db {
     CREATE TABLE IF NOT EXISTS admin_sessions (
       token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS client_users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, tenant TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
+      verified INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS client_sessions (
+      token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS email_codes (
+      email TEXT PRIMARY KEY, code TEXT NOT NULL, expires_at INTEGER NOT NULL
+    );
   `)
 
   return drizzle(sqlite, { schema })

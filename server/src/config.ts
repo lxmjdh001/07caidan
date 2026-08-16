@@ -22,6 +22,12 @@ export interface ServerConfig {
   adminPassword: string
   /** 管理员登录后可见的租户（默认第一个同步令牌所属租户） */
   adminTenant: string
+  /** 客户端注册是否需要邮箱验证码 */
+  requireEmailVerify: boolean
+  /** 客户端用户所属租户（其同步数据落到这里；默认与 adminTenant 同，供管理后台统一查看） */
+  clientTenant: string
+  /** SMTP 配置；未配置则开发模式（验证码打日志） */
+  smtp: { host: string; port: number; user: string; pass: string; from: string } | undefined
 }
 
 export function loadConfig(): ServerConfig {
@@ -40,6 +46,18 @@ export function loadConfig(): ServerConfig {
     analysisModel: process.env.OMNI_ANALYSIS_MODEL || 'claude-opus-5',
     adminUser: process.env.OMNI_ADMIN_USER || 'admin',
     adminPassword: process.env.OMNI_ADMIN_PASSWORD || 'admin',
-    adminTenant: process.env.OMNI_ADMIN_TENANT || tokens[0] || 'dev-token'
+    adminTenant: process.env.OMNI_ADMIN_TENANT || tokens[0] || 'dev-token',
+    requireEmailVerify: process.env.OMNI_REQUIRE_EMAIL_VERIFY === 'true',
+    clientTenant:
+      process.env.OMNI_CLIENT_TENANT || process.env.OMNI_ADMIN_TENANT || tokens[0] || 'dev-token',
+    smtp: process.env.SMTP_HOST
+      ? {
+          host: process.env.SMTP_HOST,
+          port: Number(process.env.SMTP_PORT || 587),
+          user: process.env.SMTP_USER || '',
+          pass: process.env.SMTP_PASS || '',
+          from: process.env.SMTP_FROM || process.env.SMTP_USER || 'no-reply@omnichat'
+        }
+      : undefined
   }
 }

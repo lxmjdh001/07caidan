@@ -1,6 +1,7 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { IPC_METHODS, type OmniEvent, type OutboundPreview } from '@shared/ipc'
 import type { AppSettings } from '@shared/settings'
+import type { ClientAuth } from './auth/client-auth'
 import type { ChannelManager } from './core/channel-manager'
 import type { MessageStore } from './core/message-store'
 import type { SettingsStore } from './core/settings-store'
@@ -10,6 +11,7 @@ export interface IpcDeps {
   manager: ChannelManager
   store: MessageStore
   settings: SettingsStore
+  auth: ClientAuth
   translators: TranslatorRegistry
   /** 设置更新后的回调（重新装配翻译管道等） */
   onSettingsChanged: (settings: AppSettings) => void
@@ -76,4 +78,20 @@ export function registerIpc(deps: IpcDeps): void {
     return updated
   })
   ipcMain.handle(IPC_METHODS.listTranslators, () => translators.list())
+
+  const { auth } = deps
+  ipcMain.handle(IPC_METHODS.authState, () => auth.state())
+  ipcMain.handle(IPC_METHODS.authConfig, (_e, url: string) => auth.config(url))
+  ipcMain.handle(IPC_METHODS.authSendCode, (_e, url: string, email: string) =>
+    auth.sendCode(url, email)
+  )
+  ipcMain.handle(
+    IPC_METHODS.authRegister,
+    (_e, url: string, email: string, pw: string, code?: string) =>
+      auth.register(url, email, pw, code)
+  )
+  ipcMain.handle(IPC_METHODS.authLogin, (_e, url: string, email: string, pw: string) =>
+    auth.login(url, email, pw)
+  )
+  ipcMain.handle(IPC_METHODS.authLogout, () => auth.logout())
 }

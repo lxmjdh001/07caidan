@@ -12,7 +12,7 @@ import { I18nProvider, isLocale, type Locale } from './i18n'
 
 const api = window.omni
 
-export function App(): React.JSX.Element {
+export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element {
   const [channels, setChannels] = useState<Record<string, ChannelState>>({})
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [messages, setMessages] = useState<Record<string, UnifiedMessage[]>>({})
@@ -309,6 +309,10 @@ export function App(): React.JSX.Element {
             onSave={async (patch) => {
               await saveSettings(patch)
               setShowSettings(false)
+            }}
+            onAccountLogout={async () => {
+              await api.authLogout()
+              onLogout?.()
             }}
             onClose={() => setShowSettings(false)}
           />

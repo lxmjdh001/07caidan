@@ -20,7 +20,13 @@ export const IPC_METHODS = {
   setConversationLang: 'omni:setConversationLang',
   getSettings: 'omni:getSettings',
   updateSettings: 'omni:updateSettings',
-  listTranslators: 'omni:listTranslators'
+  listTranslators: 'omni:listTranslators',
+  authState: 'omni:authState',
+  authConfig: 'omni:authConfig',
+  authSendCode: 'omni:authSendCode',
+  authRegister: 'omni:authRegister',
+  authLogin: 'omni:authLogin',
+  authLogout: 'omni:authLogout'
 } as const
 
 export type OmniEvent =
@@ -33,6 +39,19 @@ export type OmniEvent =
 export interface TranslatorInfo {
   id: string
   displayName: string
+}
+
+/** 客户端账号登录状态 */
+export interface AuthState {
+  authenticated: boolean
+  email?: string
+  /** 后台地址（可编辑，记住上次） */
+  serverUrl: string
+}
+
+export interface AuthResult {
+  ok: boolean
+  error?: string
 }
 
 /** 出站翻译预览：已完成翻译但尚未发送 */
@@ -76,6 +95,18 @@ export interface OmniApi {
   getSettings(): Promise<AppSettings>
   updateSettings(patch: Partial<AppSettings>): Promise<AppSettings>
   listTranslators(): Promise<TranslatorInfo[]>
+  /** 当前登录状态（token 存在即已登录） */
+  authState(): Promise<AuthState>
+  /** 拉取后台配置（是否需要邮箱验证），决定注册界面是否显示发送验证码 */
+  authConfig(serverUrl: string): Promise<{ requireEmailVerify: boolean } | { error: string }>
+  /** 发送邮箱验证码 */
+  authSendCode(serverUrl: string, email: string): Promise<AuthResult>
+  /** 注册（可带验证码），成功即登录 */
+  authRegister(serverUrl: string, email: string, password: string, code?: string): Promise<AuthResult>
+  /** 邮箱密码登录 */
+  authLogin(serverUrl: string, email: string, password: string): Promise<AuthResult>
+  /** 退出登录 */
+  authLogout(): Promise<void>
   /** 订阅主进程推送，返回取消订阅函数 */
   onEvent(cb: (evt: OmniEvent) => void): () => void
 }

@@ -14,6 +14,7 @@ const CFG: SyncConfig = {
   enabled: true,
   serverUrl: 'https://api.test',
   token: 'tok',
+  email: 'a@b.com',
   uploadMedia: false
 }
 

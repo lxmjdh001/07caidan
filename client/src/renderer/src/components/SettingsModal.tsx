@@ -8,6 +8,7 @@ interface Props {
   settings: AppSettings
   translators: TranslatorInfo[]
   onSave: (patch: Partial<AppSettings>) => Promise<void>
+  onAccountLogout: () => Promise<void>
   onClose: () => void
 }
 
@@ -37,6 +38,7 @@ export function SettingsModal({
   settings,
   translators,
   onSave,
+  onAccountLogout,
   onClose
 }: Props): React.JSX.Element {
   const { t } = useI18n()
@@ -46,9 +48,6 @@ export function SettingsModal({
   const [inbound, setInbound] = useState(tr.inboundEnabled)
   const [outbound, setOutbound] = useState(tr.outboundEnabled)
   const [confirmSend, setConfirmSend] = useState(tr.confirmBeforeSend)
-  const [syncEnabled, setSyncEnabled] = useState(settings.sync.enabled)
-  const [syncUrl, setSyncUrl] = useState(settings.sync.serverUrl)
-  const [syncToken, setSyncToken] = useState(settings.sync.token)
   const [syncMedia, setSyncMedia] = useState(settings.sync.uploadMedia)
   const [displayLang, setDisplayLang] = useState(tr.displayLang)
   const [targetLangDefault, setTargetLangDefault] = useState(tr.targetLangDefault)
@@ -78,12 +77,7 @@ export function SettingsModal({
           googleCloud: { apiKey: gcKey.trim() },
           llm: { baseUrl: llmBaseUrl.trim(), apiKey: llmKey.trim(), model: llmModel.trim() }
         },
-        sync: {
-          enabled: syncEnabled,
-          serverUrl: syncUrl.trim(),
-          token: syncToken.trim(),
-          uploadMedia: syncMedia
-        }
+        sync: { ...settings.sync, uploadMedia: syncMedia }
       })
     } finally {
       setSaving(false)
@@ -215,45 +209,29 @@ export function SettingsModal({
         </section>
 
         <section>
-          <h3>{t('settings.sync')}</h3>
+          <h3>{t('settings.account')}</h3>
+          <div className="account-block-head">
+            <span className="account-name">{settings.sync.email || t('account.notLoggedIn')}</span>
+            <span className="account-key">{settings.sync.serverUrl}</span>
+          </div>
           <label className="field checkbox">
             <input
               type="checkbox"
-              checked={syncEnabled}
-              onChange={(e) => setSyncEnabled(e.target.checked)}
+              checked={syncMedia}
+              onChange={(e) => setSyncMedia(e.target.checked)}
             />
-            <span>{t('settings.syncEnabled')}</span>
+            <span>{t('settings.syncMedia')}</span>
           </label>
-          {syncEnabled && (
-            <>
-              <label className="field">
-                <span>{t('settings.syncUrl')}</span>
-                <input
-                  type="text"
-                  value={syncUrl}
-                  placeholder="https://api.example.com"
-                  onChange={(e) => setSyncUrl(e.target.value)}
-                />
-              </label>
-              <label className="field">
-                <span>{t('settings.syncToken')}</span>
-                <input
-                  type="password"
-                  value={syncToken}
-                  onChange={(e) => setSyncToken(e.target.value)}
-                />
-              </label>
-              <label className="field checkbox">
-                <input
-                  type="checkbox"
-                  checked={syncMedia}
-                  onChange={(e) => setSyncMedia(e.target.checked)}
-                />
-                <span>{t('settings.syncMedia')}</span>
-              </label>
-              <p className="field-hint">{t('settings.syncHint')}</p>
-            </>
-          )}
+          <p className="field-hint">{t('settings.syncHint')}</p>
+          <button
+            type="button"
+            className="danger-btn"
+            onClick={() => {
+              if (window.confirm(t('auth.logoutConfirm'))) void onAccountLogout()
+            }}
+          >
+            {t('auth.logout')}
+          </button>
         </section>
 
         <footer className="modal-footer">

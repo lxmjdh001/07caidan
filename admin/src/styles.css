@@ -40,30 +40,38 @@ input { font-family: inherit; }
 .btn-sm { width: auto; padding: 7px 14px; font-size: 13px; }
 .err { color: var(--danger); font-size: 12.5px; margin-top: 8px; min-height: 16px; }
 
-/* 主布局 */
-.app { display: flex; flex-direction: column; height: 100vh; }
-.topbar {
-  height: 52px; background: #1f2430; color: #fff; display: flex; align-items: center;
-  padding: 0 20px; gap: 12px; flex: none;
+/* 主布局：左侧菜单栏 + 内容区 */
+.layout { display: flex; height: 100vh; }
+.sidebar {
+  width: 200px; flex: none; background: #1f2430; color: #c6ccd6;
+  display: flex; flex-direction: column; padding: 16px 12px;
 }
-.topbar .logo {
-  width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center;
-  background: linear-gradient(135deg, #22a06b, #1c8ad9); font-weight: 700; font-size: 12px;
+.sidebar-logo { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; }
+.sidebar .logo {
+  width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center;
+  background: linear-gradient(135deg, #22a06b, #1c8ad9); color: #fff; font-weight: 700; font-size: 13px;
 }
-.topbar h1 { font-size: 15px; font-weight: 600; }
-.topbar .nav { display: flex; gap: 4px; margin-left: 8px; }
-.topbar .nav button {
-  background: transparent; color: #9aa3b2; border: none; border-radius: 8px;
-  padding: 6px 12px; font-size: 13px;
+.sidebar-title { font-size: 15px; font-weight: 600; color: #fff; }
+.sidebar-nav { display: flex; flex-direction: column; gap: 4px; }
+.sidebar-nav button {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: transparent; color: #9aa3b2; border: none; border-radius: 10px;
+  padding: 10px 12px; font-size: 14px; text-align: left;
 }
-.topbar .nav button:hover { background: rgb(255 255 255 / 0.08); color: #fff; }
-.topbar .nav button.on { background: rgb(255 255 255 / 0.14); color: #fff; }
-.topbar .spacer { flex: 1; }
-.topbar .who { font-size: 12px; color: #9aa3b2; }
-.topbar button {
-  background: rgb(255 255 255 / 0.1); color: #fff; border: none; border-radius: 8px;
-  padding: 6px 12px; font-size: 12.5px;
+.sidebar-nav button:hover { background: rgb(255 255 255 / 0.07); color: #fff; }
+.sidebar-nav button.on { background: rgb(255 255 255 / 0.14); color: #fff; }
+.sidebar-spacer { flex: 1; }
+.sidebar-user {
+  border-top: 1px solid rgb(255 255 255 / 0.1); padding: 14px 8px 4px; display: flex; flex-direction: column; gap: 3px;
 }
+.su-name { font-size: 13.5px; font-weight: 600; color: #fff; }
+.su-role { font-size: 11.5px; color: #7d8798; }
+.su-logout {
+  margin-top: 8px; background: rgb(255 255 255 / 0.08); color: #c6ccd6; border: none;
+  border-radius: 8px; padding: 7px 10px; font-size: 12.5px; text-align: center;
+}
+.su-logout:hover { background: rgb(255 255 255 / 0.14); color: #fff; }
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .body { flex: 1; display: flex; min-height: 0; }
 
 /* 会话列表 */

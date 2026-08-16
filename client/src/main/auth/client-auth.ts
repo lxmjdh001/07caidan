@@ -1,0 +1,116 @@
+import type { AuthResult, AuthState } from '@shared/ipc'
+import type { Logger } from '../core/logger'
+import { noopLogger } from '../core/logger'
+import type { SettingsStore } from '../core/settings-store'
+
+/**
+ * 客户端账号登录（在主进程完成，令牌存入设置的 sync 段并自动启用同步）。
+ * 登录成功后，其 token 同时作为同步凭证，聊天记录自动归档到该账号所属租户。
+ */
+export class ClientAuth {
+  private readonly settings: SettingsStore
+  private readonly log: Logger
+  private email: string | undefined
+
+  constructor(settings: SettingsStore, logger?: Logger) {
+    this.settings = settings
+    this.log = (logger ?? noopLogger).child('auth')
+    this.email = settings.get().sync.email || undefined
+  }
+
+  state(): AuthState {
+    const sync = this.settings.get().sync
+    return {
+      authenticated: !!sync.token && !!sync.serverUrl,
+      email: this.email,
+      serverUrl: sync.serverUrl
+    }
+  }
+
+  async config(serverUrl: string): Promise<{ requireEmailVerify: boolean } | { error: string }> {
+    try {
+      const res = await fetch(`${clean(serverUrl)}/api/client/config`, {
+        signal: AbortSignal.timeout(10_000)
+      })
+      if (!res.ok) return { error: `HTTP ${res.status}` }
+      return (await res.json()) as { requireEmailVerify: boolean }
+    } catch (err) {
+      return { error: `无法连接后台：${String(err)}` }
+    }
+  }
+
+  async sendCode(serverUrl: string, email: string): Promise<AuthResult> {
+    return this.post(serverUrl, '/api/client/send-code', { email })
+  }
+
+  async register(
+    serverUrl: string,
+    email: string,
+    password: string,
+    code?: string
+  ): Promise<AuthResult> {
+    return this.authFlow(serverUrl, '/api/client/register', { email, password, code }, email)
+  }
+
+  async login(serverUrl: string, email: string, password: string): Promise<AuthResult> {
+    return this.authFlow(serverUrl, '/api/client/login', { email, password }, email)
+  }
+
+  async logout(): Promise<void> {
+    const sync = this.settings.get().sync
+    if (sync.token && sync.serverUrl) {
+      await fetch(`${clean(sync.serverUrl)}/api/client/logout`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${sync.token}` }
+      }).catch(() => undefined)
+    }
+    this.email = undefined
+    await this.settings.update({
+      sync: { ...sync, token: '', email: '', enabled: false }
+    })
+  }
+
+  /** 登录/注册成功：存 token+serverUrl 并自动开启同步 */
+  private async authFlow(
+    serverUrl: string,
+    path: string,
+    body: Record<string, unknown>,
+    email: string
+  ): Promise<AuthResult> {
+    const r = await this.post(serverUrl, path, body)
+    if (!r.ok) return r
+    const token = (r as { token?: string }).token
+    if (!token) return { ok: false, error: '后台未返回令牌' }
+    this.email = email
+    const sync = this.settings.get().sync
+    await this.settings.update({
+      sync: { ...sync, serverUrl: clean(serverUrl), token, email, enabled: true }
+    })
+    this.log.info('客户端账号登录成功', { email })
+    return { ok: true }
+  }
+
+  private async post(
+    serverUrl: string,
+    path: string,
+    body: Record<string, unknown>
+  ): Promise<AuthResult & { token?: string }> {
+    try {
+      const res = await fetch(`${clean(serverUrl)}${path}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(15_000)
+      })
+      const data = (await res.json().catch(() => ({}))) as { error?: string; token?: string }
+      if (!res.ok) return { ok: false, error: data.error || `HTTP ${res.status}` }
+      return { ok: true, token: data.token }
+    } catch (err) {
+      return { ok: false, error: `无法连接后台：${String(err)}` }
+    }
+  }
+}
+
+function clean(url: string): string {
+  return url.trim().replace(/\/$/, '')
+}
