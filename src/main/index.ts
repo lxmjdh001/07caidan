@@ -21,6 +21,8 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 async function bootstrap(): Promise<void> {
+  // 未打包时 Electron 默认把 userData 指到共享的 "Electron" 目录，显式固定到应用专属目录
+  app.setPath('userData', join(app.getPath('appData'), 'OmniChat'))
   await app.whenReady()
 
   const userData = app.getPath('userData')

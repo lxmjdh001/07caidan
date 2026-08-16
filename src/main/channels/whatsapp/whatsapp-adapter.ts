@@ -143,6 +143,7 @@ export class WhatsAppAdapter extends ChannelAdapter {
       const { connection, lastDisconnect, qr } = update
 
       if (qr) {
+        this.log.info('收到登录二维码，等待扫码')
         void QRCode.toDataURL(qr, { margin: 1, width: 320 }).then(
           (dataUrl) => this.setState('waiting_qr', { qrDataUrl: dataUrl }),
           (err) => this.log.error('二维码生成失败', err)
