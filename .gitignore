@@ -1,0 +1,11 @@
+node_modules/
+out/
+dist/
+release/
+*.log
+.DS_Store
+coverage/
+.env
+.env.*
+# 本地运行时数据（登录凭证等永远不进仓库）
+.local-data/

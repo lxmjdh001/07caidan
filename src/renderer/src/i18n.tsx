@@ -1,0 +1,132 @@
+import { createContext, useContext, type ReactNode } from 'react'
+
+/**
+ * 轻量 i18n：字典 + Context。新增语言 = 在 dictionaries 加一个对象。
+ */
+const zhCN = {
+  'app.name': 'OmniChat',
+  'sidebar.title': '消息',
+  'sidebar.search': '搜索会话…',
+  'sidebar.empty': '暂无会话\n连接渠道后，新消息会出现在这里',
+  'chat.empty': '选择左侧会话开始聊天',
+  'chat.composer.placeholder': '输入消息，Enter 发送，Shift+Enter 换行',
+  'chat.send': '发送',
+  'chat.sendFailed': '发送失败',
+  'chat.original': '原文',
+  'channel.whatsapp': 'WhatsApp',
+  'channel.telegram': 'Telegram（即将支持）',
+  'channel.line': 'LINE（即将支持）',
+  'status.stopped': '未启动，点击图标连接',
+  'status.connecting': '连接中…',
+  'status.waiting_qr': '等待扫码',
+  'status.connected': '已连接',
+  'status.logged_out': '已退出登录，点击图标重新连接',
+  'status.error': '连接出错',
+  'qr.title': '连接 WhatsApp',
+  'qr.step1': '1. 打开手机 WhatsApp',
+  'qr.step2': '2. 进入 设置 → 已关联的设备 → 关联设备',
+  'qr.step3': '3. 扫描下方二维码',
+  'qr.waiting': '正在生成二维码…',
+  'qr.hint': '登录后消息将同步到此设备。连接完全在本机进行，凭证仅保存在本地。',
+  'connected.empty': '已连接。等待新消息，或在手机上打开一个会话即可在此同步。',
+  'settings.title': '设置',
+  'settings.general': '通用',
+  'settings.locale': '界面语言',
+  'settings.translation': '聊天翻译',
+  'settings.engine': '翻译引擎',
+  'settings.engine.hint': '默认使用免费引擎；也可配置自己的翻译接口',
+  'settings.inbound': '自动翻译收到的消息',
+  'settings.displayLang': '翻译成',
+  'settings.customUrl': '自定义接口地址',
+  'settings.customKey': 'API Key（可选）',
+  'settings.customHint': '协议：POST JSON {"text","target_lang"} → {"text","source_lang"?}',
+  'settings.account': '账号',
+  'settings.proxy': 'WhatsApp 代理（socks5:// 或 http://，留空走默认网络）',
+  'settings.proxyHint': '修改后下次重连生效',
+  'settings.logout': '退出 WhatsApp 登录',
+  'settings.logoutConfirm': '确定退出登录？本地凭证将被清除，需要重新扫码。',
+  'settings.save': '保存',
+  'settings.cancel': '取消',
+  'time.yesterday': '昨天'
+}
+
+const en: typeof zhCN = {
+  'app.name': 'OmniChat',
+  'sidebar.title': 'Chats',
+  'sidebar.search': 'Search chats…',
+  'sidebar.empty': 'No conversations yet\nNew messages will appear here once connected',
+  'chat.empty': 'Select a conversation to start',
+  'chat.composer.placeholder': 'Type a message. Enter to send, Shift+Enter for newline',
+  'chat.send': 'Send',
+  'chat.sendFailed': 'Failed to send',
+  'chat.original': 'Original',
+  'channel.whatsapp': 'WhatsApp',
+  'channel.telegram': 'Telegram (coming soon)',
+  'channel.line': 'LINE (coming soon)',
+  'status.stopped': 'Stopped. Click the icon to connect',
+  'status.connecting': 'Connecting…',
+  'status.waiting_qr': 'Waiting for QR scan',
+  'status.connected': 'Connected',
+  'status.logged_out': 'Logged out. Click the icon to reconnect',
+  'status.error': 'Connection error',
+  'qr.title': 'Link WhatsApp',
+  'qr.step1': '1. Open WhatsApp on your phone',
+  'qr.step2': '2. Go to Settings → Linked Devices → Link a Device',
+  'qr.step3': '3. Scan the QR code below',
+  'qr.waiting': 'Generating QR code…',
+  'qr.hint': 'The connection runs entirely on this machine; credentials stay local.',
+  'connected.empty': 'Connected. Waiting for new messages.',
+  'settings.title': 'Settings',
+  'settings.general': 'General',
+  'settings.locale': 'Language',
+  'settings.translation': 'Chat translation',
+  'settings.engine': 'Engine',
+  'settings.engine.hint': 'Free engine by default; you can plug in your own API',
+  'settings.inbound': 'Auto-translate incoming messages',
+  'settings.displayLang': 'Translate into',
+  'settings.customUrl': 'Custom endpoint URL',
+  'settings.customKey': 'API Key (optional)',
+  'settings.customHint': 'Contract: POST JSON {"text","target_lang"} → {"text","source_lang"?}',
+  'settings.account': 'Accounts',
+  'settings.proxy': 'WhatsApp proxy (socks5:// or http://, empty = direct)',
+  'settings.proxyHint': 'Applies on next reconnect',
+  'settings.logout': 'Log out of WhatsApp',
+  'settings.logoutConfirm': 'Log out? Local credentials will be removed.',
+  'settings.save': 'Save',
+  'settings.cancel': 'Cancel',
+  'time.yesterday': 'Yesterday'
+}
+
+export const dictionaries = { 'zh-CN': zhCN, en } as const
+export type Locale = keyof typeof dictionaries
+export type MessageKey = keyof typeof zhCN
+
+export function isLocale(v: string): v is Locale {
+  return v in dictionaries
+}
+
+interface I18n {
+  locale: Locale
+  t: (key: MessageKey) => string
+}
+
+const I18nContext = createContext<I18n>({ locale: 'zh-CN', t: (k) => zhCN[k] })
+
+export function I18nProvider({
+  locale,
+  children
+}: {
+  locale: Locale
+  children: ReactNode
+}): React.JSX.Element {
+  const dict = dictionaries[locale]
+  return (
+    <I18nContext.Provider value={{ locale, t: (key) => dict[key] ?? zhCN[key] }}>
+      {children}
+    </I18nContext.Provider>
+  )
+}
+
+export function useI18n(): I18n {
+  return useContext(I18nContext)
+}
