@@ -329,5 +329,12 @@ export const en: Record<MessageKey, string> = {
   'bill.kind.credit_exchange': 'Credit exchange',
   'bill.kind.model_usage': 'Model usage',
   'bill.kind.adjust': 'Adjustment',
-  'bill.balanceAfter': 'Balance'
+  'bill.balanceAfter': 'Balance',
+  'chat.asr': 'Transcribe',
+  'chat.asrBusy': 'Transcribing…',
+  'chat.asrFailed': 'Transcription failed',
+  'chat.recVoice': 'Record voice message',
+  'chat.recCancel': 'Cancel',
+  'chat.recSend': 'Send',
+  'chat.recNoMic': 'Microphone unavailable. Grant access in system settings.'
 }

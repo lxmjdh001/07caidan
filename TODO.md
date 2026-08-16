@@ -17,7 +17,12 @@
 - [x] **界面多语言 i18n**（zh-CN / en，设置页可切换）
 - [x] 核心模块单元测试（59 用例：mapper / store / manager / translation / settings / proxy）
 - [x] 媒体消息：接收自动下载展示（图片/视频/语音/贴纸/文件，>100MB 跳过）+ 发送本地文件
-- [ ] 语音条录制发送（麦克风录音 → ogg/opus ptt 格式）
+- [x] 语音条录制发送（MediaRecorder webm/opus，WA 侧带 ptt 标记；
+      ⚠️ iOS 端 WhatsApp 对 webm 兼容性存疑，标准 ogg 转封装需 ffmpeg，见下）
+- [ ] 语音发送格式升级：接入 ffmpeg（或 wasm 版）把 webm 转 ogg/opus，
+      确保 iOS WhatsApp / Telegram 语音条完全兼容
+- [x] 收到的语音消息一键「转文字」（走后台 ASR 按积分计费，结果缓存在消息上，
+      同一条语音只计费一次）
 - [x] 交付用户测试：扫码登录 → 收发消息（文本 + 媒体）
 
 ## M2 — 翻译完善

@@ -190,6 +190,7 @@ async function bootstrap(): Promise<void> {
     translators: translatorRegistry,
     campaigns: campaignApi,
     billingApi,
+    media,
     notifier,
     broadcast,
     onSettingsChanged: (updated) => {

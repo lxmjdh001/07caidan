@@ -200,6 +200,65 @@ export class ChannelManager {
     return msg
   }
 
+  /**
+   * 发送录制的语音条。
+   * 数据来自渲染进程的 MediaRecorder（webm/opus），先落进 MediaStore 再发。
+   */
+  async sendVoice(
+    convId: string,
+    data: Uint8Array,
+    mimeType: string,
+    durationSec: number
+  ): Promise<UnifiedMessage> {
+    if (!this.media) throw new Error('MediaStore 未配置')
+    const { channel, accountId, externalChatId } = parseConversationId(convId)
+    const adapter = this.requireAdapter(`${channel}:${accountId}`)
+    if (!adapter.sendMedia) throw new Error(`渠道 ${adapter.key} 暂不支持发送媒体`)
+
+    const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'm4a' : 'webm'
+    const mediaId = await this.media.save(Buffer.from(data), ext)
+    const localPath = this.media.resolvePath(mediaId)!
+    const seconds = Math.max(1, Math.round(durationSec))
+
+    const msg: UnifiedMessage = {
+      id: randomUUID(),
+      channel,
+      accountId,
+      conversationId: convId,
+      direction: 'out',
+      body: {
+        type: 'media',
+        mediaType: 'audio',
+        mediaId,
+        mimeType,
+        fileName: `voice.${ext}`,
+        durationSec: seconds
+      },
+      timestamp: Date.now(),
+      status: 'pending'
+    }
+
+    try {
+      const result = await adapter.sendMedia(externalChatId, {
+        filePath: localPath,
+        mediaType: 'audio',
+        mimeType,
+        fileName: `voice.${ext}`,
+        ptt: true,
+        durationSec: seconds
+      })
+      msg.status = 'sent'
+      msg.externalId = result.externalId
+    } catch (err) {
+      msg.status = 'failed'
+      this.logger.error(`[${adapter.key}] 语音发送失败`, err)
+    }
+
+    const { conversation } = await this.store.recordMessage(msg)
+    this.broadcast({ type: 'message:new', message: msg, conversation })
+    return msg
+  }
+
   /** UI 发送本地文件：复制进 MediaStore → 适配器发出 → 入库 → 回推 UI */
   async sendMediaFile(convId: string, filePath: string): Promise<UnifiedMessage> {
     if (!this.media) throw new Error('MediaStore 未配置')

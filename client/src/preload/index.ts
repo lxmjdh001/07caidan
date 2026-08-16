@@ -34,6 +34,10 @@ const api: OmniApi = {
   previewOutbound: (conversationId: string, text: string) =>
     ipcRenderer.invoke(IPC_METHODS.previewOutbound, conversationId, text),
   sendMedia: (conversationId: string) => ipcRenderer.invoke(IPC_METHODS.sendMedia, conversationId),
+  sendVoice: (conversationId: string, data: ArrayBuffer, mimeType: string, durationSec: number) =>
+    ipcRenderer.invoke(IPC_METHODS.sendVoice, conversationId, new Uint8Array(data), mimeType, durationSec),
+  transcribeVoice: (conversationId: string, messageId: string) =>
+    ipcRenderer.invoke(IPC_METHODS.transcribeVoice, conversationId, messageId),
   setConversationLang: (conversationId: string, lang: string | null) =>
     ipcRenderer.invoke(IPC_METHODS.setConversationLang, conversationId, lang),
   markRead: (conversationId: string) => ipcRenderer.invoke(IPC_METHODS.markRead, conversationId),

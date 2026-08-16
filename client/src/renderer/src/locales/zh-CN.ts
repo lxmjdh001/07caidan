@@ -326,7 +326,14 @@ export const zhCN = {
   'bill.kind.credit_exchange': '兑换积分',
   'bill.kind.model_usage': '模型消耗',
   'bill.kind.adjust': '调整',
-  'bill.balanceAfter': '余额'
+  'bill.balanceAfter': '余额',
+  'chat.asr': '转文字',
+  'chat.asrBusy': '识别中…',
+  'chat.asrFailed': '识别失败',
+  'chat.recVoice': '按住说话 / 点击录音',
+  'chat.recCancel': '取消',
+  'chat.recSend': '发送',
+  'chat.recNoMic': '无法访问麦克风，请在系统设置中授权。'
 }
 
 export type MessageKey = keyof typeof zhCN

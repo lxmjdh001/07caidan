@@ -21,6 +21,10 @@ export interface OutboundMedia {
   mimeType: string
   fileName: string
   caption?: string
+  /** 语音条（press-to-talk）；仅音频有效 */
+  ptt?: boolean
+  /** 音频时长（秒），语音条展示用 */
+  durationSec?: number
 }
 
 export interface AdapterEvents extends Record<string, unknown[]> {

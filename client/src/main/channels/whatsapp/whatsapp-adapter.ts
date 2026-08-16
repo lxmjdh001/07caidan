@@ -447,7 +447,13 @@ function toWaMediaContent(media: OutboundMedia): AnyMessageContent {
     case 'video':
       return { video: source, caption: media.caption }
     case 'audio':
-      return { audio: source, mimetype: media.mimeType }
+      return {
+        audio: source,
+        mimetype: media.mimeType,
+        // 语音条：WhatsApp 用 ptt 标记区分「语音消息」与「音频文件」
+        ptt: media.ptt ?? false,
+        seconds: media.durationSec
+      }
     case 'document':
       return { document: source, mimetype: media.mimeType, fileName: media.fileName }
   }

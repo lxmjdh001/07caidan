@@ -20,6 +20,8 @@ export const IPC_METHODS = {
   previewOutbound: 'omni:previewOutbound',
   markRead: 'omni:markRead',
   sendMedia: 'omni:sendMedia',
+  sendVoice: 'omni:sendVoice',
+  transcribeVoice: 'omni:transcribeVoice',
   setConversationLang: 'omni:setConversationLang',
   getSettings: 'omni:getSettings',
   updateSettings: 'omni:updateSettings',
@@ -118,6 +120,18 @@ export interface OmniApi {
   previewOutbound(conversationId: string, text: string): Promise<OutboundPreview>
   /** 弹出文件选择框并发送所选媒体；用户取消返回 null */
   sendMedia(conversationId: string): Promise<UnifiedMessage | null>
+  /** 发送录制的语音条（MediaRecorder 产物） */
+  sendVoice(
+    conversationId: string,
+    data: ArrayBuffer,
+    mimeType: string,
+    durationSec: number
+  ): Promise<UnifiedMessage>
+  /** 语音消息转文字（结果缓存在消息上，同一条只计费一次） */
+  transcribeVoice(
+    conversationId: string,
+    messageId: string
+  ): Promise<{ ok: boolean; transcript?: string; error?: string }>
   /** 设置会话的客户语言（null = 清除，回到自动） */
   setConversationLang(conversationId: string, lang: string | null): Promise<void>
   markRead(conversationId: string): Promise<void>

@@ -93,7 +93,53 @@ function VoiceMessage({ url, durationSec }: { url: string; durationSec?: number 
   )
 }
 
-function MediaContent({ body, downloading }: { body: MediaBody; downloading: string }): React.JSX.Element {
+/** 语音气泡下方的「转文字」；结果缓存在消息上，重复点击不再计费 */
+function TranscriptBlock({
+  conversationId,
+  messageId,
+  transcript
+}: {
+  conversationId: string
+  messageId: string
+  transcript?: string
+}): React.JSX.Element {
+  const { t } = useI18n()
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  // 消息更新事件会带来新的 transcript，本地态只管请求过程
+  if (transcript) return <div className="voice-transcript">{transcript}</div>
+  return (
+    <div className="voice-transcript-row">
+      <button
+        type="button"
+        className="link-btn"
+        disabled={busy}
+        onClick={async () => {
+          setBusy(true)
+          setErr('')
+          const r = await window.omni.transcribeVoice(conversationId, messageId)
+          if (!r.ok) setErr(r.error ?? t('chat.asrFailed'))
+          setBusy(false)
+        }}
+      >
+        {busy ? t('chat.asrBusy') : t('chat.asr')}
+      </button>
+      {err && <span className="auth-err">{err}</span>}
+    </div>
+  )
+}
+
+function MediaContent({
+  body,
+  downloading,
+  conversationId,
+  messageId
+}: {
+  body: MediaBody
+  downloading: string
+  conversationId: string
+  messageId: string
+}): React.JSX.Element {
   if (!body.mediaId) {
     return (
       <div className="media-pending">
@@ -110,7 +156,16 @@ function MediaContent({ body, downloading }: { body: MediaBody; downloading: str
     case 'video':
       return <video className="media-video" src={url} controls preload="metadata" />
     case 'audio':
-      return <VoiceMessage url={url} durationSec={body.durationSec} />
+      return (
+        <>
+          <VoiceMessage url={url} durationSec={body.durationSec} />
+          <TranscriptBlock
+            conversationId={conversationId}
+            messageId={messageId}
+            transcript={body.transcript}
+          />
+        </>
+      )
     case 'document':
       return (
         <div className="media-doc">
@@ -135,6 +190,64 @@ export function ChatView({
   const { t, locale } = useI18n()
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
+  /** 录音中：MediaRecorder + 已录秒数 */
+  const [recState, setRecState] = useState<{
+    recorder: MediaRecorder
+    chunks: Blob[]
+    startedAt: number
+  } | null>(null)
+  const [recSeconds, setRecSeconds] = useState(0)
+
+  // 录音计时（1s 粒度足够；同时兜底 10 分钟自动停）
+  useEffect(() => {
+    if (!recState) return
+    const timer = setInterval(() => {
+      const sec = Math.floor((Date.now() - recState.startedAt) / 1000)
+      setRecSeconds(sec)
+      if (sec >= 600) stopRecording(true)
+    }, 1000)
+    return () => clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recState])
+
+  const startRecording = async (): Promise<void> => {
+    if (!conversation) return
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Chromium 只支持 webm/opus；ogg 转封装需 ffmpeg，暂以 webm 发送
+      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' })
+      const chunks: Blob[] = []
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data)
+      }
+      recorder.start(250)
+      setRecSeconds(0)
+      setRecState({ recorder, chunks, startedAt: Date.now() })
+    } catch {
+      // 无麦克风权限等；静默失败会让用户困惑，用 alert 直说
+      window.alert(t('chat.recNoMic'))
+    }
+  }
+
+  const stopRecording = (send: boolean): void => {
+    const st = recState
+    if (!st) return
+    setRecState(null)
+    const durationSec = Math.max(1, Math.round((Date.now() - st.startedAt) / 1000))
+    st.recorder.onstop = () => {
+      // 关麦克风指示灯
+      st.recorder.stream.getTracks().forEach((tr) => tr.stop())
+      if (!send || !conversation) return
+      // 过短的误触不发出去
+      if (durationSec < 1 || st.chunks.length === 0) return
+      void (async () => {
+        const blob = new Blob(st.chunks, { type: 'audio/webm' })
+        const buf = await blob.arrayBuffer()
+        await window.omni.sendVoice(conversation.id, buf, 'audio/webm', durationSec)
+      })()
+    }
+    st.recorder.stop()
+  }
   const [preview, setPreview] = useState<OutboundPreview | null>(null)
   const [showConvSettings, setShowConvSettings] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -275,7 +388,12 @@ export function ChatView({
               )}
               {m.body.type === 'media' ? (
                 <>
-                  <MediaContent body={m.body} downloading={t('chat.mediaDownloading')} />
+                  <MediaContent
+                    body={m.body}
+                    downloading={t('chat.mediaDownloading')}
+                    conversationId={conversation.id}
+                    messageId={m.id}
+                  />
                   {m.body.caption && <div className="bubble-text">{m.body.caption}</div>}
                 </>
               ) : (
@@ -327,6 +445,29 @@ export function ChatView({
         </div>
       )}
       <footer className="composer">
+        {recState && (
+          <div className="rec-bar">
+            <span className="rec-dot" />
+            <span className="rec-time">{recSeconds}s</span>
+            <button type="button" className="ghost-btn" onClick={() => stopRecording(false)}>
+              {t('chat.recCancel')}
+            </button>
+            <button type="button" className="primary-btn" onClick={() => stopRecording(true)}>
+              {t('chat.recSend')}
+            </button>
+          </div>
+        )}
+        <button
+          type="button"
+          className={`attach-btn ${recState ? 'recording' : ''}`}
+          title={t('chat.recVoice')}
+          onClick={() => (recState ? stopRecording(true) : void startRecording())}
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+            <rect x="9" y="2" width="6" height="12" rx="3" />
+            <path d="M5 10a7 7 0 0 0 14 0M12 17v4M8 21h8" />
+          </svg>
+        </button>
         <button
           type="button"
           className="attach-btn"

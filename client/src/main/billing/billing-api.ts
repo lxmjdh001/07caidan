@@ -57,6 +57,16 @@ export class BillingApi {
     return this.request('POST', '/api/billing/exchange-credits', { cents })
   }
 
+  /** 语音识别：主进程内部使用（音频文件在主进程），不暴露给渲染进程白名单 */
+  transcribe(body: {
+    audioBase64: string
+    mimeType: string
+    durationSec: number
+    language?: string
+  }): Promise<{ text: string; credits: number }> {
+    return this.request('POST', '/api/ai/asr', body) as Promise<{ text: string; credits: number }>
+  }
+
   private async request(method: string, path: string, body?: unknown): Promise<unknown> {
     const cfg = this.getConfig()
     if (!cfg.serverUrl || !cfg.token) {

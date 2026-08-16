@@ -61,6 +61,8 @@ export type MessageBody =
       fileName?: string
       /** 语音/视频时长（秒），用于播放条展示 */
       durationSec?: number
+      /** 语音转文字结果（ASR），按需生成后缓存在消息上 */
+      transcript?: string
     }
   | { type: 'unsupported'; description: string }
 

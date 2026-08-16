@@ -5,7 +5,9 @@ import type { ClientAuth } from './auth/client-auth'
 import type { ChannelRegistry } from './channels/registry'
 import type { BillingApi } from './billing/billing-api'
 import type { CampaignApi } from './campaigns/campaign-api'
+import type { MediaStore } from './core/media-store'
 import type { Notifier } from './core/notifier'
+import { transcribeMessage } from './core/transcriber'
 import type { ChannelManager } from './core/channel-manager'
 import type { MessageStore } from './core/message-store'
 import type { SettingsStore } from './core/settings-store'
@@ -20,6 +22,7 @@ export interface IpcDeps {
   translators: TranslatorRegistry
   campaigns: CampaignApi
   billingApi: BillingApi
+  media: MediaStore
   notifier: Notifier
   /** 设置更新后的回调（重新装配翻译管道等） */
   onSettingsChanged: (settings: AppSettings) => void
@@ -84,6 +87,28 @@ export function registerIpc(deps: IpcDeps): void {
     manager.submitAuthInput(key, value)
   )
   ipcMain.handle(IPC_METHODS.logoutChannel, (_e, key: string) => manager.logout(key))
+  ipcMain.handle(
+    IPC_METHODS.sendVoice,
+    (_e, conversationId: string, data: Uint8Array, mimeType: string, durationSec: number) =>
+      manager.sendVoice(conversationId, data, mimeType, durationSec)
+  )
+
+  ipcMain.handle(IPC_METHODS.transcribeVoice, (_e, conversationId: string, messageId: string) =>
+    transcribeMessage(
+      {
+        getMessages: (id) => store.listMessages(id, 2000),
+        resolveMedia: (id) => deps.media.resolvePath(id) ?? undefined,
+        asr: (body) => deps.billingApi.transcribe(body),
+        saveMessage: async (msg) => {
+          await store.updateMessage(msg)
+          deps.broadcast({ type: 'message:updated', message: msg })
+        }
+      },
+      conversationId,
+      messageId
+    )
+  )
+
   ipcMain.handle(IPC_METHODS.setUnreadTotal, (_e, total: number) => {
     deps.notifier.setUnreadTotal(Number(total) || 0)
   })
