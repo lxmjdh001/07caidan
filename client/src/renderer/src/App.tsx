@@ -168,9 +168,13 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
       const key = await api.addAccount(kind)
       setActiveAccountKey(key)
       setActiveId(null)
-      // 填凭证类平台：新建后直接打开账号设置让用户填 token
+      // 非扫码类平台（填凭证 / 手机号验证码）新建后直接打开账号设置，
+      // 否则用户点完只多出一个 stopped 账号、界面上看不出任何反应
       const plugin = plugins.find((p) => p.kind === kind)
-      if (plugin?.authType === 'credentials') setAccountModalKey(key)
+      if (plugin && plugin.authType !== 'qr') setAccountModalKey(key)
+      // 手机号验证码类（Telegram 普通账号）应用凭证已内置，直接连接，
+      // 弹窗里马上出现「手机号」输入框，用户不用先点一次保存
+      if (plugin?.authType === 'phone_code') await api.startChannel(key)
     },
     [plugins]
   )

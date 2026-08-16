@@ -1393,3 +1393,17 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgb(0 0 0 / 0.24);
 }
+
+/* 弹窗内的次要文字按钮（如「高级设置」展开） */
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+  align-self: flex-start;
+}
+.link-btn:hover {
+  text-decoration: underline;
+}

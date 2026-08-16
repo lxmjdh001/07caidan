@@ -47,8 +47,15 @@ export interface TranslatorInfo {
 export interface ChannelPluginInfo {
   kind: string
   displayName: string
-  authType: 'qr' | 'credentials'
-  credentialFields?: Array<{ key: string; label: string; placeholder?: string; secret?: boolean }>
+  authType: 'qr' | 'credentials' | 'phone_code'
+  credentialFields?: Array<{
+    key: string
+    label: string
+    placeholder?: string
+    secret?: boolean
+    /** 高级项：默认折叠，普通用户不用填 */
+    advanced?: boolean
+  }>
 }
 
 /** 客户端账号登录状态 */

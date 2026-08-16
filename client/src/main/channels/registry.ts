@@ -28,6 +28,8 @@ export interface CredentialField {
   label: string
   placeholder?: string
   secret?: boolean
+  /** 高级项：UI 默认折叠隐藏，留空走内置默认值 */
+  advanced?: boolean
 }
 
 /**

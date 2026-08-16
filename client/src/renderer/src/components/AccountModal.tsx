@@ -39,8 +39,14 @@ export function AccountModal({
   const [authInput, setAuthInput] = useState('')
   const [authBusy, setAuthBusy] = useState(false)
 
+  const [showAdvanced, setShowAdvanced] = useState(false)
+
   const isWhatsApp = plugin?.kind === 'whatsapp' || accountKey.startsWith('whatsapp:')
-  const credFields = plugin?.credentialFields ?? []
+  const allCredFields = plugin?.credentialFields ?? []
+  // 高级项（如 Telegram 的 api_id）默认折叠：软件已内置，普通用户不该看见
+  const basicFields = allCredFields.filter((f) => !f.advanced)
+  const advancedFields = allCredFields.filter((f) => f.advanced)
+  const credFields = showAdvanced ? allCredFields : basicFields
 
   // Telegram 普通账号：多步交互登录（手机号 → 验证码 → 两步密码）
   const AUTH_STEP: Partial<Record<string, { labelKey: string; hintKey: string }>> = {
@@ -55,8 +61,11 @@ export function AccountModal({
     defaultLang: defaultLang || undefined,
     proxyUrl: proxyUrl.trim() || undefined,
     deviceLabel: isWhatsApp ? deviceLabel.trim() || undefined : undefined,
-    credentials: credFields.length > 0 ? creds : config.credentials
+    credentials: allCredFields.length > 0 ? creds : config.credentials
   })
+
+  /** 需要「保存并连接」的平台：填凭证类与手机号验证码类 */
+  const needsConnect = plugin?.authType === 'credentials' || plugin?.authType === 'phone_code'
 
   const save = async (): Promise<void> => {
     setSaving(true)
@@ -81,13 +90,15 @@ export function AccountModal({
     }
   }
 
-  // 填凭证类：保存后立即连接
+  // 填凭证类：保存后立即连接。
+  // 手机号验证码类（Telegram 普通账号）连接后还要在本弹窗里逐步填手机号/验证码/密码，
+  // 所以不能关窗——关了用户就再也看不到下一步输入框。
   const saveAndConnect = async (): Promise<void> => {
     setSaving(true)
     try {
       await onSave(accountKey, buildConfig())
       await api.startChannel(accountKey)
-      onClose()
+      if (plugin?.authType !== 'phone_code') onClose()
     } finally {
       setSaving(false)
     }
@@ -133,7 +144,7 @@ export function AccountModal({
           </div>
         )}
 
-        {credFields.length > 0 && (
+        {allCredFields.length > 0 && (
           <>
             {credFields.map((f) => (
               <label key={f.key} className="field">
@@ -147,6 +158,11 @@ export function AccountModal({
               </label>
             ))}
             {state?.detail && <p className="field-hint">{state.detail}</p>}
+            {advancedFields.length > 0 && !showAdvanced && (
+              <button type="button" className="link-btn" onClick={() => setShowAdvanced(true)}>
+                {t('account.advanced')}
+              </button>
+            )}
           </>
         )}
 
@@ -231,7 +247,7 @@ export function AccountModal({
           <button type="button" className="ghost-btn" onClick={onClose}>
             {t('settings.cancel')}
           </button>
-          {credFields.length > 0 ? (
+          {needsConnect ? (
             <button
               type="button"
               className="primary-btn"

@@ -79,7 +79,10 @@ export class TelegramUserAdapter extends ChannelAdapter {
     this.stopping = false
     const { apiId, apiHash } = this.opts.getApiCredentials()
     if (!apiId || !apiHash) {
-      this.setState('need_credentials', { detail: '请先在设置中配置 Telegram API ID / API Hash' })
+      // 正常情况下走内置凭证，不该到这里；说明这个版本打包时没注入 OMNI_TG_API_ID
+      this.setState('need_credentials', {
+        detail: '本版本未内置 Telegram 应用凭证，请在全局设置或账号高级设置里填写 API ID / API Hash'
+      })
       return
     }
 
