@@ -32,6 +32,8 @@ export const IPC_METHODS = {
   authSendCode: 'omni:authSendCode',
   authRegister: 'omni:authRegister',
   authLogin: 'omni:authLogin',
+  authForgotPassword: 'omni:authForgotPassword',
+  authResetPassword: 'omni:authResetPassword',
   authLogout: 'omni:authLogout',
   campaignCall: 'omni:campaignCall',
   billingCall: 'omni:billingCall',
@@ -151,6 +153,15 @@ export interface OmniApi {
   authRegister(serverUrl: string, email: string, password: string, code?: string): Promise<AuthResult>
   /** 邮箱密码登录 */
   authLogin(serverUrl: string, email: string, password: string): Promise<AuthResult>
+  /** 找回密码：发送验证码（无论邮箱是否注册都返回 ok，防探测） */
+  authForgotPassword(serverUrl: string, email: string): Promise<AuthResult>
+  /** 找回密码：验码改密；成功后所有旧会话失效 */
+  authResetPassword(
+    serverUrl: string,
+    email: string,
+    code: string,
+    password: string
+  ): Promise<AuthResult>
   /** 退出登录 */
   authLogout(): Promise<void>
   /**

@@ -345,5 +345,10 @@ export const en: Record<MessageKey, string> = {
   'settings.autoReplyCooldown': 'Minimum interval per conversation (seconds)',
   'settings.autoReplyHint': 'Billed in credits (purpose: auto-reply). Two-level switches: after enabling globally, only conversations that opt in are affected.',
   'settings.handoffKeywords': 'Handoff keywords (comma separated)',
-  'settings.handoffHint': 'When a customer message (including voice transcripts) matches any keyword, auto-reply for that conversation is disabled and you get notified to take over.'
+  'settings.handoffHint': 'When a customer message (including voice transcripts) matches any keyword, auto-reply for that conversation is disabled and you get notified to take over.',
+  'auth.forgot': 'Forgot password',
+  'auth.forgotSub': 'Reset your password with an email code',
+  'auth.newPassword': 'New password (min 8 chars)',
+  'auth.doReset': 'Reset password',
+  'auth.resetDone': 'Password reset. Sign in with the new password.'
 }

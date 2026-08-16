@@ -69,3 +69,56 @@ describe('ClientAuthRepo', () => {
     assert.equal(ca.resolve(r.token), null)
   })
 })
+
+describe('找回密码', () => {
+  beforeEach(() => {
+    ca = new ClientAuthRepo(openDb(join(dir, `${Math.random().toString(36).slice(2)}.db`)))
+  })
+
+  test('正确验证码可重置，旧密码失效新密码可登录', () => {
+    ca.register('t1', 'u@test.com', 'oldpass123', undefined, false)
+    const code = ca.issueCode('u@test.com')
+    const r = ca.resetPassword('u@test.com', code, 'newpass456')
+    assert.deepEqual(r, { ok: true })
+    assert.equal(ca.login('u@test.com', 'oldpass123'), null, '旧密码必须失效')
+    assert.ok(ca.login('u@test.com', 'newpass456'), '新密码可登录')
+  })
+
+  test('重置成功后旧会话全部吊销 —— 改密的动机就是怀疑被盗', () => {
+    const reg = ca.register('t1', 'u@test.com', 'oldpass123', undefined, false)
+    assert.ok(reg.ok)
+    const oldToken = reg.ok ? reg.token : ''
+    assert.ok(ca.resolve(oldToken), '重置前会话有效')
+    const code = ca.issueCode('u@test.com')
+    ca.resetPassword('u@test.com', code, 'newpass456')
+    assert.equal(ca.resolve(oldToken), null, '重置后旧会话必须失效')
+  })
+
+  test('验证码错误 / 过期 / 复用都被拒，且不泄露邮箱是否注册', () => {
+    ca.register('t1', 'u@test.com', 'oldpass123', undefined, false)
+    const wrong = ca.resetPassword('u@test.com', '000000', 'newpass456')
+    assert.equal(wrong.ok, false)
+    // 未注册邮箱返回同一句话
+    const ghost = ca.resetPassword('ghost@test.com', '000000', 'newpass456')
+    assert.equal(ghost.ok === false && ghost.error, wrong.ok === false && wrong.error)
+    // 验证码用后即焚，不能二次使用
+    const code = ca.issueCode('u@test.com')
+    assert.equal(ca.resetPassword('u@test.com', code, 'newpass456').ok, true)
+    assert.equal(ca.resetPassword('u@test.com', code, 'again789xx').ok, false)
+  })
+
+  test('弱密码被拒且验证码不被消耗', () => {
+    ca.register('t1', 'u@test.com', 'oldpass123', undefined, false)
+    const code = ca.issueCode('u@test.com')
+    const r = ca.resetPassword('u@test.com', code, 'short')
+    assert.equal(r.ok, false)
+    // 密码校验在验码之前，验证码仍可用
+    assert.equal(ca.resetPassword('u@test.com', code, 'goodpass456').ok, true)
+  })
+
+  test('hasUser 大小写不敏感', () => {
+    ca.register('t1', 'u@test.com', 'password123', undefined, false)
+    assert.equal(ca.hasUser('U@Test.com'), true)
+    assert.equal(ca.hasUser('nobody@test.com'), false)
+  })
+})

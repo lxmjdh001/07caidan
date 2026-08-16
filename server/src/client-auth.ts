@@ -108,6 +108,45 @@ export class ClientAuthRepo {
     return u ? toUser(u) : null
   }
 
+  /** 该邮箱是否已注册（找回密码发码前的静默检查） */
+  hasUser(email: string): boolean {
+    return !!this.db
+      .select({ x: clientUsers.id })
+      .from(clientUsers)
+      .where(eq(clientUsers.email, email.trim().toLowerCase()))
+      .get()
+  }
+
+  /**
+   * 用邮箱验证码重置密码。
+   * 成功后**吊销该用户的全部会话** —— 重置密码的常见动机就是"账号可能被盗"，
+   * 留着旧会话等于白改。
+   */
+  resetPassword(
+    email: string,
+    code: string,
+    newPassword: string
+  ): { ok: true } | { ok: false; error: string } {
+    const normalized = email.trim().toLowerCase()
+    if (newPassword.length < 8) return { ok: false, error: '密码至少 8 位' }
+    const user = this.db
+      .select()
+      .from(clientUsers)
+      .where(eq(clientUsers.email, normalized))
+      .get()
+    // 先验码再判用户存在与否，两种失败返回同一句话，不泄露邮箱是否注册
+    if (!this.checkCode(normalized, code) || !user) {
+      return { ok: false, error: '验证码错误或已过期' }
+    }
+    this.db
+      .update(clientUsers)
+      .set({ passwordHash: hashPassword(newPassword) })
+      .where(eq(clientUsers.id, user.id))
+      .run()
+    this.db.delete(clientSessions).where(eq(clientSessions.userId, user.id)).run()
+    return { ok: true }
+  }
+
   logout(token: string): void {
     this.db.delete(clientSessions).where(eq(clientSessions.token, token)).run()
   }

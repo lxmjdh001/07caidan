@@ -342,7 +342,12 @@ export const zhCN = {
   'settings.autoReplyCooldown': '同一会话最小间隔（秒）',
   'settings.autoReplyHint': '按积分计费（用途：自动回复）。两层开关设计：全局开启后，只对单独打开开关的会话生效，避免误伤所有客户。',
   'settings.handoffKeywords': '转人工关键词（逗号分隔）',
-  'settings.handoffHint': '客户消息命中任一关键词（含语音转写）时：停用该会话的自动回复并弹通知提醒接管。'
+  'settings.handoffHint': '客户消息命中任一关键词（含语音转写）时：停用该会话的自动回复并弹通知提醒接管。',
+  'auth.forgot': '忘记密码',
+  'auth.forgotSub': '通过邮箱验证码重置密码',
+  'auth.newPassword': '新密码（至少 8 位）',
+  'auth.doReset': '重置密码',
+  'auth.resetDone': '密码已重置，请用新密码登录'
 }
 
 export type MessageKey = keyof typeof zhCN

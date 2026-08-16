@@ -12,7 +12,7 @@ interface Props {
 /** 登录/注册门禁：未登录时挡在主应用之前 */
 export function AuthGate({ onAuthed }: Props): React.JSX.Element {
   const { t } = useI18n()
-  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login')
   const [serverUrl, setServerUrl] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -55,6 +55,24 @@ export function AuthGate({ onAuthed }: Props): React.JSX.Element {
   const submit = async (): Promise<void> => {
     setErr('')
     setInfo('')
+    if (mode === 'forgot') {
+      if (!serverUrl || !email || !code || !password) {
+        setErr(t('auth.fillAll'))
+        return
+      }
+      setBusy(true)
+      const r = await api.authResetPassword(serverUrl, email, code, password)
+      setBusy(false)
+      if (r.ok) {
+        // 改密成功回到登录：旧会话已全部失效，必须重新登录
+        setMode('login')
+        setPassword('')
+        setCode('')
+        setCodeSent(false)
+        setInfo(t('auth.resetDone'))
+      } else setErr(r.error ?? t('auth.failed'))
+      return
+    }
     if (!serverUrl || !email || !password) {
       setErr(t('auth.fillAll'))
       return
@@ -69,12 +87,34 @@ export function AuthGate({ onAuthed }: Props): React.JSX.Element {
     else setErr(r.error ?? t('auth.failed'))
   }
 
+  /** 找回密码：发送验证码（后端无论邮箱是否注册都回 ok，防探测） */
+  const sendResetCode = async (): Promise<void> => {
+    setErr('')
+    if (!serverUrl || !email) {
+      setErr(t('auth.needEmail'))
+      return
+    }
+    setBusy(true)
+    const r = await api.authForgotPassword(serverUrl, email)
+    setBusy(false)
+    if (r.ok) {
+      setCodeSent(true)
+      setInfo(t('auth.codeSent'))
+    } else setErr(r.error ?? t('auth.failed'))
+  }
+
   return (
     <div className="auth-gate">
       <div className="auth-card">
         <div className="auth-logo">{brand.logoText}</div>
         <h1>{brand.appName}</h1>
-        <p className="auth-sub">{mode === 'login' ? t('auth.loginSub') : t('auth.registerSub')}</p>
+        <p className="auth-sub">
+          {mode === 'login'
+            ? t('auth.loginSub')
+            : mode === 'register'
+              ? t('auth.registerSub')
+              : t('auth.forgotSub')}
+        </p>
 
         <label className="field">
           <span>{t('auth.serverUrl')}</span>
@@ -90,7 +130,7 @@ export function AuthGate({ onAuthed }: Props): React.JSX.Element {
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         </label>
         <label className="field">
-          <span>{t('auth.password')}</span>
+          <span>{mode === 'forgot' ? t('auth.newPassword') : t('auth.password')}</span>
           <input
             type="password"
             value={password}
@@ -100,6 +140,23 @@ export function AuthGate({ onAuthed }: Props): React.JSX.Element {
             }}
           />
         </label>
+
+        {mode === 'forgot' && (
+          <label className="field">
+            <span>{t('auth.code')}</span>
+            <div className="code-row">
+              <input value={code} onChange={(e) => setCode(e.target.value)} />
+              <button
+                type="button"
+                className="ghost-btn"
+                disabled={busy || codeSent}
+                onClick={() => void sendResetCode()}
+              >
+                {codeSent ? t('auth.codeResent') : t('auth.sendCode')}
+              </button>
+            </div>
+          </label>
+        )}
 
         {mode === 'register' && requireVerify && (
           <label className="field">
@@ -122,7 +179,13 @@ export function AuthGate({ onAuthed }: Props): React.JSX.Element {
         {info && <div className="auth-info">{info}</div>}
 
         <button className="primary-btn auth-submit" disabled={busy} onClick={() => void submit()}>
-          {busy ? '…' : mode === 'login' ? t('auth.login') : t('auth.register')}
+          {busy
+            ? '…'
+            : mode === 'login'
+              ? t('auth.login')
+              : mode === 'register'
+                ? t('auth.register')
+                : t('auth.doReset')}
         </button>
 
         <div className="auth-switch">
@@ -138,6 +201,18 @@ export function AuthGate({ onAuthed }: Props): React.JSX.Element {
                 }}
               >
                 {t('auth.toRegister')}
+              </button>
+              {' · '}
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('forgot')
+                  setErr('')
+                  setInfo('')
+                  setCodeSent(false)
+                }}
+              >
+                {t('auth.forgot')}
               </button>
             </>
           ) : (

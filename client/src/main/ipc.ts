@@ -200,6 +200,14 @@ export function registerIpc(deps: IpcDeps): void {
     (_e, url: string, email: string, pw: string, code?: string) =>
       auth.register(url, email, pw, code)
   )
+  ipcMain.handle(IPC_METHODS.authForgotPassword, (_e, serverUrl: string, email: string) =>
+    deps.auth.forgotPassword(serverUrl, email)
+  )
+  ipcMain.handle(
+    IPC_METHODS.authResetPassword,
+    (_e, serverUrl: string, email: string, code: string, password: string) =>
+      deps.auth.resetPassword(serverUrl, email, code, password)
+  )
   ipcMain.handle(IPC_METHODS.authLogin, (_e, url: string, email: string, pw: string) =>
     auth.login(url, email, pw)
   )

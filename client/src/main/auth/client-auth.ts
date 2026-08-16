@@ -52,6 +52,19 @@ export class ClientAuth {
     return this.authFlow(serverUrl, '/api/client/register', { email, password, code }, email)
   }
 
+  async forgotPassword(serverUrl: string, email: string): Promise<AuthResult> {
+    return this.post(serverUrl, '/api/client/forgot-password', { email })
+  }
+
+  async resetPassword(
+    serverUrl: string,
+    email: string,
+    code: string,
+    password: string
+  ): Promise<AuthResult> {
+    return this.post(serverUrl, '/api/client/reset-password', { email, code, password })
+  }
+
   async login(serverUrl: string, email: string, password: string): Promise<AuthResult> {
     return this.authFlow(serverUrl, '/api/client/login', { email, password }, email)
   }

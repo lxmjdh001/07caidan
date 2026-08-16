@@ -96,7 +96,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   }
 
   // 公开路由前缀（无需鉴权）：管理员登录、客户端注册/登录/发码/配置
-  const PUBLIC = ['/api/login', '/api/client/config', '/api/client/register', '/api/client/login', '/api/client/send-code']
+  const PUBLIC = ['/api/login', '/api/client/config', '/api/client/register', '/api/client/login', '/api/client/send-code', '/api/client/forgot-password', '/api/client/reset-password']
 
   // 鉴权：/api 路由（公开的除外）需带有效令牌。
   // 令牌可为「管理员会话」「客户端用户会话」「静态同步令牌」，映射到不同上下文。
@@ -193,6 +193,44 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
       req.log.error(err, '验证码邮件发送失败')
       return reply.code(502).send({ error: '验证码发送失败，请稍后重试' })
     }
+    return { ok: true }
+  })
+
+  /**
+   * 找回密码第一步：发验证码。
+   * 无论邮箱是否注册都返回 ok —— 否则这个接口就是现成的"撞库探测器"，
+   * 攻击者可以批量确认哪些邮箱是你的客户。
+   */
+  app.post('/api/client/forgot-password', async (req, reply) => {
+    const { email } = (req.body ?? {}) as { email?: string }
+    if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      return reply.code(400).send({ error: '邮箱格式不正确' })
+    }
+    const normalized = email.trim().toLowerCase()
+    if (clientAuth.hasUser(normalized)) {
+      const code = clientAuth.issueCode(normalized)
+      try {
+        await mailer.send(
+          normalized,
+          `${brand.appName} 重置密码`,
+          `你正在重置密码，验证码是 ${code}，10 分钟内有效。若非本人操作请忽略。`
+        )
+      } catch (err) {
+        req.log.error(err, '重置密码邮件发送失败')
+        // 发信失败也返回 ok：错误信息同样能被用来探测邮箱是否存在
+      }
+    }
+    return { ok: true }
+  })
+
+  /** 找回密码第二步：验码改密。成功后旧会话全部失效，需重新登录。 */
+  app.post('/api/client/reset-password', async (req, reply) => {
+    const b = (req.body ?? {}) as { email?: string; code?: string; password?: string }
+    if (!b.email || !b.code || !b.password) {
+      return reply.code(400).send({ error: '邮箱、验证码、新密码必填' })
+    }
+    const r = clientAuth.resetPassword(b.email, b.code, b.password)
+    if (!r.ok) return reply.code(400).send({ error: r.error })
     return { ok: true }
   })
 
