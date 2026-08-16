@@ -1,4 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import type { AiClient } from '../ai/ai-client.ts'
+import { translatePrompt } from '../ai/ai-client.ts'
 import type { AiRepo } from '../ai/ai-repo.ts'
 import { isModelPurpose } from '../billing/credits.ts'
 import type { BillingRepo } from './billing-repo.ts'
@@ -16,6 +18,7 @@ export interface BillingRouteDeps {
   orders: OrderRepo
   channels: ChannelRepo
   ai: AiRepo
+  aiClient: AiClient
   /** 从请求取上下文；由 server.ts 的鉴权钩子填充 */
   ctxOf: (req: FastifyRequest) => {
     tenant: string
@@ -44,7 +47,7 @@ const PERIOD_UNITS: PeriodUnit[] = ['month', 'quarter', 'half_year', 'year', 'da
  * - 支付通道（公开回调）：/pay/notify/:tenant/:channelId，靠各通道自己的验签
  */
 export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDeps): void {
-  const { billing, orders, channels, ai, ctxOf, requirePerm, publicBase } = deps
+  const { billing, orders, channels, ai, aiClient, ctxOf, requirePerm, publicBase } = deps
 
   /** 客户端用户守卫：必须是邮箱登录的桌面端用户（静态同步令牌没有身份，不能有钱包） */
   const requireClientUser = (req: FastifyRequest, reply: FastifyReply): number | null => {
@@ -433,6 +436,125 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     })
     if (!r.ok) return reply.code(402).send({ error: '扣费失败', reason: r.reason, credits: r.credits })
     return r
+  })
+
+  /**
+   * AI 翻译（服务端代理调用，密钥不出后台）。
+   *
+   * 计费顺序：粗预检（防零余额白嫖）→ 调供应商 → 按真实用量扣费。
+   * 用量只有调完才知道，所以扣费在后；预检挡掉明显付不起的请求，
+   * 把「供应商成本已花但用户没付」的窗口压到单次调用以内。
+   * 扣费失败不返回译文 —— 用户没付钱就不能拿到结果。
+   */
+  app.post('/api/ai/translate', async (req, reply) => {
+    const userId = requireClientUser(req, reply)
+    if (userId === null) return
+    const tenant = ctxOf(req).tenant
+    const b = (req.body ?? {}) as { text?: string; targetLang?: string; modelId?: string }
+    if (!b.text?.trim()) return reply.code(400).send({ error: 'text 必填' })
+    if (!b.targetLang) return reply.code(400).send({ error: 'targetLang 必填' })
+    if (b.text.length > 8000) return reply.code(400).send({ error: '文本过长' })
+
+    const model = b.modelId
+      ? ai.getModel(tenant, b.modelId)
+      : (ai.listModels(tenant, { purpose: 'translate' }).find((m) => m.enabled) ?? null)
+    // 未配置模型回 501：客户端据此回落到免费翻译引擎，而不是当成报错弹给用户
+    if (!model || !model.enabled) return reply.code(501).send({ error: '未配置翻译模型' })
+    const provider = ai.providerConfig(tenant, model.providerId)
+    if (!provider) return reply.code(501).send({ error: '模型所属供应商不可用' })
+
+    // 粗预检：按「字符数≈token 数」高估一次调用的成本，付不起就不去花供应商的钱
+    const roughTokens = Math.max(200, b.text.length * 2)
+    const estimated = ai.estimate(tenant, model.id, {
+      inputTokens: roughTokens,
+      outputTokens: roughTokens
+    })
+    const bal = billing.getBalance(tenant, userId)
+    const settings = ai.getSettings(tenant)
+    const affordable =
+      bal.credits >= estimated ||
+      (settings.autoTopUpCredits &&
+        bal.balanceCents * (settings.creditsPerUsd / 100) + bal.credits >= estimated)
+    if (!affordable) {
+      return reply.code(402).send({ error: '积分不足', reason: 'insufficient_credits' })
+    }
+
+    const outcome = await aiClient.chat(provider, {
+      model: model.modelName,
+      system: translatePrompt(b.targetLang),
+      messages: [{ role: 'user', content: b.text }],
+      temperature: 0
+    })
+    if (!outcome.ok) return reply.code(502).send({ error: outcome.error ?? '翻译失败' })
+
+    const charge = ai.chargeUsage(tenant, userId, model.id, 'translate', outcome.usage)
+    if (!charge.ok) {
+      return reply.code(402).send({ error: '扣费失败', reason: charge.reason })
+    }
+    return { text: outcome.text, credits: charge.credits, usage: outcome.usage, modelId: model.id }
+  })
+
+  /** 语音识别。计费按客户端上报的音频时长（花的是他自己的积分）。 */
+  app.post('/api/ai/asr', async (req, reply) => {
+    const userId = requireClientUser(req, reply)
+    if (userId === null) return
+    const tenant = ctxOf(req).tenant
+    const b = (req.body ?? {}) as {
+      audioBase64?: string
+      mimeType?: string
+      durationSec?: number
+      language?: string
+      modelId?: string
+    }
+    if (!b.audioBase64) return reply.code(400).send({ error: 'audioBase64 必填' })
+    const durationSec = Math.max(1, Math.ceil(Number(b.durationSec ?? 0)))
+    if (!Number.isFinite(durationSec) || durationSec > 600) {
+      return reply.code(400).send({ error: '时长不合法（最长 10 分钟）' })
+    }
+
+    const model = b.modelId
+      ? ai.getModel(tenant, b.modelId)
+      : (ai.listModels(tenant, { purpose: 'asr' }).find((m) => m.enabled) ?? null)
+    if (!model || !model.enabled) return reply.code(501).send({ error: '未配置语音识别模型' })
+    const provider = ai.providerConfig(tenant, model.providerId)
+    if (!provider) return reply.code(501).send({ error: '模型所属供应商不可用' })
+    if (provider.type === 'anthropic') {
+      return reply.code(400).send({ error: 'Anthropic 协议没有语音识别端点' })
+    }
+
+    let audio: Buffer
+    try {
+      audio = Buffer.from(b.audioBase64, 'base64')
+    } catch {
+      return reply.code(400).send({ error: '音频编码不合法' })
+    }
+    if (audio.length === 0 || audio.length > 25 * 1024 * 1024) {
+      return reply.code(400).send({ error: '音频大小不合法（最大 25MB）' })
+    }
+
+    // 预检：时长已知，成本可以精确预估
+    const estimated = ai.estimate(tenant, model.id, { audioSeconds: durationSec })
+    const bal = billing.getBalance(tenant, userId)
+    const settings = ai.getSettings(tenant)
+    const affordable =
+      bal.credits >= estimated ||
+      (settings.autoTopUpCredits &&
+        bal.balanceCents * (settings.creditsPerUsd / 100) + bal.credits >= estimated)
+    if (!affordable) {
+      return reply.code(402).send({ error: '积分不足', reason: 'insufficient_credits' })
+    }
+
+    const outcome = await aiClient.transcribe(provider, {
+      modelName: model.modelName,
+      audio: new Uint8Array(audio),
+      mimeType: b.mimeType || 'audio/ogg',
+      language: b.language
+    })
+    if (!outcome.ok) return reply.code(502).send({ error: outcome.error ?? '识别失败' })
+
+    const charge = ai.chargeUsage(tenant, userId, model.id, 'asr', { audioSeconds: durationSec })
+    if (!charge.ok) return reply.code(402).send({ error: '扣费失败', reason: charge.reason })
+    return { text: outcome.text, credits: charge.credits, modelId: model.id }
   })
 
   app.get('/api/billing/usage', async (req, reply) => {

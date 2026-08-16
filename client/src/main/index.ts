@@ -68,7 +68,13 @@ async function bootstrap(): Promise<void> {
 
   const translatorRegistry = createTranslatorRegistry()
   const pipeline = new TranslationPipeline(new PassthroughTranslator())
-  configurePipeline(pipeline, translatorRegistry, settings.get().translation)
+  const pipelineExtras = {
+    getBackend: () => ({
+      serverUrl: settings.get().sync.serverUrl,
+      token: settings.get().sync.token
+    })
+  }
+  configurePipeline(pipeline, translatorRegistry, settings.get().translation, pipelineExtras)
 
   const broadcast = (evt: OmniEvent): void => {
     for (const win of BrowserWindow.getAllWindows()) {
@@ -187,7 +193,7 @@ async function bootstrap(): Promise<void> {
     notifier,
     broadcast,
     onSettingsChanged: (updated) => {
-      configurePipeline(pipeline, translatorRegistry, updated.translation)
+      configurePipeline(pipeline, translatorRegistry, updated.translation, pipelineExtras)
       logger.info('设置已更新')
     },
     onAddAccount: async (channel) => {

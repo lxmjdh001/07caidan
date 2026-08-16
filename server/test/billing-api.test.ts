@@ -5,7 +5,23 @@ import { join } from 'node:path'
 import { after, before, beforeEach, describe, test } from 'node:test'
 import type { FastifyInstance } from 'fastify'
 import type { ServerConfig } from '../src/config.ts'
+import { AiClient } from '../src/ai/ai-client.ts'
 import { buildServer } from '../src/server.ts'
+
+/** 假 AI 供应商：chat 回固定译文与用量，transcribe 回固定文本，绝不发网络 */
+function fakeAiClient(): AiClient {
+  return new AiClient(async (url) => ({
+    ok: true,
+    status: 200,
+    json: async () =>
+      url.includes('/audio/transcriptions')
+        ? { text: 'FAKE_ASR' }
+        : {
+            choices: [{ message: { content: 'FAKE_TRANSLATION' } }],
+            usage: { prompt_tokens: 10, completion_tokens: 5 }
+          }
+  }))
+}
 
 let dir: string
 let app: FastifyInstance
@@ -63,7 +79,9 @@ after(async () => {
 
 beforeEach(async () => {
   await app?.close()
-  app = buildServer(makeConfig(join(dir, `${Math.random().toString(36).slice(2)}.db`)))
+  app = buildServer(makeConfig(join(dir, `${Math.random().toString(36).slice(2)}.db`)), {
+    aiClient: fakeAiClient()
+  })
   await app.ready()
   adminToken = (await api('POST', '/api/login', { username: 'admin', password: 'admin' }, null))
     .json.token
@@ -378,5 +396,87 @@ describe('通道配置安全', () => {
     ).json.order
     const n = await notify(ch, order.id, { amount_minor: '10000' })
     assert.equal(n.status, 200)
+  })
+})
+
+describe('AI 翻译与语音识别（假供应商）', () => {
+  async function setup(opts: { purposes?: string[]; audioPrice?: boolean } = {}) {
+    const p = (
+      await api(
+        'POST',
+        '/api/admin/ai/providers',
+        { type: 'openai', name: 'OpenAI', apiKey: 'sk-fake' },
+        adminToken
+      )
+    ).json.provider
+    const m = (
+      await api(
+        'POST',
+        '/api/admin/ai/models',
+        {
+          providerId: p.id,
+          modelName: 'gpt-4o-mini',
+          purposes: opts.purposes ?? ['translate'],
+          creditsPerMillionInput: 300,
+          creditsPerMillionOutput: 1500,
+          ...(opts.audioPrice ? { creditsPerAudioSecond: 2 } : {})
+        },
+        adminToken
+      )
+    ).json.model
+    return m.id as string
+  }
+
+  async function fund(credits: number): Promise<void> {
+    const ch = await mockChannel()
+    const order = (
+      await api('POST', '/api/billing/orders', { kind: 'topup', amountCents: 10000, channelId: ch })
+    ).json.order
+    await notify(ch, order.id, { amount_minor: '10000' })
+    if (credits > 0) {
+      await api('POST', '/api/billing/exchange-credits', { cents: Math.ceil(credits / 10) })
+    }
+  }
+
+  test('翻译成功：走假 fetch，返回译文并按真实用量扣费', async () => {
+    await setup()
+    await fund(1000)
+    const r = await api('POST', '/api/ai/translate', { text: '你好', targetLang: 'en' })
+    assert.equal(r.status, 200, r.text)
+    assert.equal(r.json.text, 'FAKE_TRANSLATION')
+    assert.equal(r.json.credits, 1, '10+5 token 向上取整为 1 积分')
+    const usage = (await api('GET', '/api/billing/usage')).json.usage
+    assert.equal(usage[0].purpose, 'translate')
+  })
+
+  test('未配置模型回 501 —— 客户端据此回落免费引擎', async () => {
+    const r = await api('POST', '/api/ai/translate', { text: 'hi', targetLang: 'zh' })
+    assert.equal(r.status, 501)
+  })
+
+  test('穷得叮当响时预检直接 402，不去花供应商的钱', async () => {
+    await setup()
+    const r = await api('POST', '/api/ai/translate', { text: '你好', targetLang: 'en' })
+    assert.equal(r.status, 402)
+    assert.equal(r.json.reason, 'insufficient_credits')
+  })
+
+  test('语音识别按时长计费', async () => {
+    await setup({ purposes: ['asr'], audioPrice: true })
+    await fund(1000)
+    const r = await api('POST', '/api/ai/asr', {
+      audioBase64: Buffer.from([1, 2, 3]).toString('base64'),
+      mimeType: 'audio/ogg',
+      durationSec: 13
+    })
+    assert.equal(r.status, 200, r.text)
+    assert.equal(r.json.text, 'FAKE_ASR')
+    assert.equal(r.json.credits, 26, '13 秒 × 2 积分/秒')
+  })
+
+  test('文本超长被拒', async () => {
+    await setup()
+    const r = await api('POST', '/api/ai/translate', { text: 'x'.repeat(9000), targetLang: 'en' })
+    assert.equal(r.status, 400)
   })
 })

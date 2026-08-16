@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import cors from '@fastify/cors'
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
 import { IntentAnalyzer } from './analyzer.ts'
+import { AiClient } from './ai/ai-client.ts'
 import { AiRepo } from './ai/ai-repo.ts'
 import { AuthRepo, type Principal } from './auth-repo.ts'
 import { BillingRepo } from './billing/billing-repo.ts'
@@ -36,7 +37,12 @@ interface ReqCtx {
   clientUserId?: number
 }
 
-export function buildServer(config: ServerConfig): FastifyInstance {
+export interface ServerOverrides {
+  /** 测试注入：假 AI 客户端，避免真调供应商 */
+  aiClient?: AiClient
+}
+
+export function buildServer(config: ServerConfig, overrides: ServerOverrides = {}): FastifyInstance {
   const db = openDb(config.dbPath)
   const repo = new Repo(db)
   const auth = new AuthRepo(db)
@@ -47,6 +53,7 @@ export function buildServer(config: ServerConfig): FastifyInstance {
   const orderRepo = new OrderRepo(db, billingRepo)
   const channelRepo = new ChannelRepo(db)
   const aiRepo = new AiRepo(db, billingRepo)
+  const aiClient = overrides.aiClient ?? new AiClient()
   const mailer = createEmailSender(config)
   auth.bootstrap(config.adminTenant, config.adminUser, config.adminPassword)
   mkdirSync(config.mediaDir, { recursive: true })
@@ -145,6 +152,7 @@ export function buildServer(config: ServerConfig): FastifyInstance {
     orders: orderRepo,
     channels: channelRepo,
     ai: aiRepo,
+    aiClient,
     ctxOf,
     requirePerm: (req, reply, perm) => requirePerm(req, reply, perm as Permission),
     publicBase

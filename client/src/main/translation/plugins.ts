@@ -4,6 +4,7 @@ import type { TranslationPipeline } from './pipeline'
 import { CustomHttpTranslator, type CustomHttpConfig } from './providers/custom-http'
 import { DeepLTranslator, type DeepLConfig } from './providers/deepl'
 import { GoogleCloudTranslator, type GoogleCloudConfig } from './providers/google-cloud'
+import { AiServerTranslator, type AiServerConfig } from './providers/ai-server'
 import { GoogleFreeTranslator } from './providers/google-free'
 import { LlmTranslator, type LlmConfig } from './providers/llm'
 import { TranslatorRegistry } from './registry'
@@ -43,6 +44,17 @@ export function createTranslatorRegistry(): TranslatorRegistry {
   })
 
   registry.register({
+    id: 'ai-server',
+    displayName: 'AI 翻译（后台按积分计费）',
+    create: (config) =>
+      new AiServerTranslator({
+        ...(config as unknown as AiServerConfig),
+        // 积分不足 / 未配模型 / 网络故障时回落免费引擎，翻译永远尽力而为
+        fallback: new GoogleFreeTranslator()
+      })
+  })
+
+  registry.register({
     id: 'off',
     displayName: '关闭翻译',
     create: () => new PassthroughTranslator()
@@ -53,6 +65,7 @@ export function createTranslatorRegistry(): TranslatorRegistry {
 
 /** 各引擎从设置中取各自的配置段 */
 function engineConfig(cfg: TranslationConfig, engine: string): Record<string, unknown> {
+
   switch (engine) {
     case 'custom-http':
       return { url: cfg.custom.url, apiKey: cfg.custom.apiKey }
@@ -68,15 +81,25 @@ function engineConfig(cfg: TranslationConfig, engine: string): Record<string, un
 }
 
 /** 按用户设置装配翻译管道（引擎创建失败时降级为关闭，不阻塞收发） */
+export interface PipelineExtras {
+  /** ai-server 引擎需要的后台地址与令牌（来自 sync 配置，与翻译设置解耦） */
+  getBackend?: () => { serverUrl?: string; token?: string }
+}
+
 export function configurePipeline(
   pipeline: TranslationPipeline,
   registry: TranslatorRegistry,
-  cfg: TranslationConfig
+  cfg: TranslationConfig,
+  extras: PipelineExtras = {}
 ): void {
   const engine = cfg.engine || 'google-free'
   let translator
   try {
-    translator = registry.create(engine, engineConfig(cfg, engine))
+    const config =
+      engine === 'ai-server'
+        ? { getBackend: extras.getBackend ?? (() => ({})) }
+        : engineConfig(cfg, engine)
+    translator = registry.create(engine, config)
   } catch {
     translator = registry.create('off')
   }
