@@ -1,6 +1,8 @@
 import { join } from 'node:path'
-import { app, BrowserWindow } from 'electron'
+import { pathToFileURL } from 'node:url'
+import { app, BrowserWindow, net, protocol } from 'electron'
 import { OMNI_EVENT_CHANNEL, type OmniEvent } from '@shared/ipc'
+import { MediaStore } from './core/media-store'
 import { whatsAppPlugin } from './channels/whatsapp'
 import { ChannelRegistry } from './channels/registry'
 import { channelKey } from '@shared/domain'
@@ -13,6 +15,11 @@ import { TranslationPipeline } from './translation/pipeline'
 import { PassthroughTranslator } from './translation/passthrough-translator'
 import { configurePipeline, createTranslatorRegistry } from './translation/plugins'
 import { createMainWindow } from './window'
+
+// 本地媒体协议：omni-media://local/<mediaId>（必须在 ready 前注册特权）
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'omni-media', privileges: { stream: true, supportFetchAPI: true } }
+])
 
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -35,6 +42,16 @@ async function bootstrap(): Promise<void> {
   const store = new JsonMessageStore(join(userData, 'data'))
   await store.init()
 
+  const media = new MediaStore(join(userData, 'media'))
+  await media.init()
+
+  protocol.handle('omni-media', (request) => {
+    const mediaId = decodeURIComponent(new URL(request.url).pathname.replace(/^\//, ''))
+    const abs = media.resolvePath(mediaId)
+    if (!abs) return new Response('not found', { status: 404 })
+    return net.fetch(pathToFileURL(abs).toString())
+  })
+
   const translatorRegistry = createTranslatorRegistry()
   const pipeline = new TranslationPipeline(new PassthroughTranslator())
   configurePipeline(pipeline, translatorRegistry, settings.get().translation)
@@ -45,7 +62,7 @@ async function bootstrap(): Promise<void> {
     }
   }
 
-  const manager = new ChannelManager(store, pipeline, broadcast, logger.child('manager'))
+  const manager = new ChannelManager(store, pipeline, broadcast, logger.child('manager'), media)
 
   // ── 渠道插件装配。新增平台：注册插件 + 在此为账号创建适配器 ──
   const channels = new ChannelRegistry()
@@ -57,7 +74,8 @@ async function bootstrap(): Promise<void> {
     channels.get('whatsapp').createAdapter(waAccountId, {
       dataDir: join(userData, 'channels', 'whatsapp'),
       logger,
-      getAccountConfig: () => settings.accountConfig(waKey)
+      getAccountConfig: () => settings.accountConfig(waKey),
+      saveMedia: (data, ext) => media.save(data, ext)
     })
   )
 

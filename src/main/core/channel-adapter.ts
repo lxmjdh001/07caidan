@@ -1,4 +1,4 @@
-import type { ChannelKind, ChannelState, UnifiedMessage } from '@shared/domain'
+import type { ChannelKind, ChannelState, MediaType, UnifiedMessage } from '@shared/domain'
 import { channelKey } from '@shared/domain'
 import { TypedEmitter } from './typed-emitter'
 
@@ -13,9 +13,21 @@ export interface OutboundResult {
   externalId?: string
 }
 
+/** 出站媒体：文件已由核心层复制进 MediaStore，适配器按平台方式发出 */
+export interface OutboundMedia {
+  /** 本地绝对路径 */
+  filePath: string
+  mediaType: MediaType
+  mimeType: string
+  fileName: string
+  caption?: string
+}
+
 export interface AdapterEvents extends Record<string, unknown[]> {
   /** 收到新消息（含本账号在手机端发出的消息） */
   message: [UnifiedMessage]
+  /** 已上报消息的后续更新（如媒体下载完成补上 mediaId） */
+  messageUpdate: [UnifiedMessage]
   /** 会话元信息更新 */
   conversation: [ConversationUpsert]
   /** 渠道连接状态变化 */
@@ -43,6 +55,8 @@ export abstract class ChannelAdapter extends TypedEmitter<AdapterEvents> {
   abstract logout(): Promise<void>
   /** 发送文本消息 */
   abstract sendText(externalChatId: string, text: string): Promise<OutboundResult>
+  /** 发送媒体消息（可选能力，不支持的渠道保持 undefined） */
+  sendMedia?(externalChatId: string, media: OutboundMedia): Promise<OutboundResult>
 
   protected makeState(partial: Omit<ChannelState, 'kind' | 'accountId'>): ChannelState {
     return { kind: this.kind, accountId: this.accountId, ...partial }

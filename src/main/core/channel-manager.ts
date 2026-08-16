@@ -2,10 +2,13 @@ import { randomUUID } from 'node:crypto'
 import type { ChannelState, UnifiedMessage } from '@shared/domain'
 import { conversationId, parseConversationId } from '@shared/domain'
 import type { OmniEvent } from '@shared/ipc'
+import { basename } from 'node:path'
 import type { TranslationPipeline } from '../translation/pipeline'
 import type { ChannelAdapter } from './channel-adapter'
 import { noopLogger, type Logger } from './logger'
+import type { MediaStore } from './media-store'
 import type { MessageStore } from './message-store'
+import { mediaTypeFromMime, mimeFromPath } from './mime'
 
 /**
  * 渠道管理器：持有所有适配器实例，把它们的事件汇入
@@ -19,7 +22,8 @@ export class ChannelManager {
     private readonly store: MessageStore,
     private readonly translation: TranslationPipeline,
     private readonly broadcast: (evt: OmniEvent) => void,
-    private readonly logger: Logger = noopLogger
+    private readonly logger: Logger = noopLogger,
+    private readonly media?: MediaStore
   ) {}
 
   register(adapter: ChannelAdapter): void {
@@ -40,6 +44,12 @@ export class ChannelManager {
 
     adapter.on('message', (msg) => {
       void this.handleIncoming(msg)
+    })
+
+    adapter.on('messageUpdate', (msg) => {
+      void this.store.updateMessage(msg).then((updated) => {
+        if (updated) this.broadcast({ type: 'message:updated', message: msg })
+      })
     })
 
     adapter.on('conversation', (upsert) => {
@@ -98,6 +108,49 @@ export class ChannelManager {
     } catch (err) {
       msg.status = 'failed'
       this.logger.error(`[${adapter.key}] 发送失败`, err)
+    }
+
+    const { conversation } = await this.store.recordMessage(msg)
+    this.broadcast({ type: 'message:new', message: msg, conversation })
+    return msg
+  }
+
+  /** UI 发送本地文件：复制进 MediaStore → 适配器发出 → 入库 → 回推 UI */
+  async sendMediaFile(convId: string, filePath: string): Promise<UnifiedMessage> {
+    if (!this.media) throw new Error('MediaStore 未配置')
+    const { channel, accountId, externalChatId } = parseConversationId(convId)
+    const adapter = this.requireAdapter(`${channel}:${accountId}`)
+    if (!adapter.sendMedia) throw new Error(`渠道 ${adapter.key} 暂不支持发送媒体`)
+
+    const mimeType = mimeFromPath(filePath)
+    const mediaType = mediaTypeFromMime(mimeType)
+    const fileName = basename(filePath)
+    const mediaId = await this.media.importFile(filePath)
+    const localPath = this.media.resolvePath(mediaId)!
+
+    const msg: UnifiedMessage = {
+      id: randomUUID(),
+      channel,
+      accountId,
+      conversationId: convId,
+      direction: 'out',
+      body: { type: 'media', mediaType, mediaId, mimeType, fileName },
+      timestamp: Date.now(),
+      status: 'pending'
+    }
+
+    try {
+      const result = await adapter.sendMedia(externalChatId, {
+        filePath: localPath,
+        mediaType,
+        mimeType,
+        fileName
+      })
+      msg.status = 'sent'
+      msg.externalId = result.externalId
+    } catch (err) {
+      msg.status = 'failed'
+      this.logger.error(`[${adapter.key}] 媒体发送失败`, err)
     }
 
     const { conversation } = await this.store.recordMessage(msg)

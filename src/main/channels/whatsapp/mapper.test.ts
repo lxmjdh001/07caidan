@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { extractBody, isGroupJid, mapWaMessage, tsToMillis, type WaRawMessage } from './mapper'
+import {
+  extractBody,
+  isGroupJid,
+  mapWaMessage,
+  mediaFileLength,
+  tsToMillis,
+  type WaRawMessage
+} from './mapper'
 
 const baseKey = { remoteJid: '123@s.whatsapp.net', fromMe: false, id: 'MSG1' }
 
@@ -25,30 +32,44 @@ describe('extractBody', () => {
     })
   })
 
-  it('图片/视频保留 caption', () => {
-    expect(extractBody({ imageMessage: { caption: 'pic' } })).toEqual({
+  it('图片/视频保留 caption 与 mimeType', () => {
+    expect(extractBody({ imageMessage: { caption: 'pic', mimetype: 'image/jpeg' } })).toEqual({
       type: 'media',
       mediaType: 'image',
-      caption: 'pic'
+      caption: 'pic',
+      mimeType: 'image/jpeg'
     })
     expect(extractBody({ videoMessage: {} })).toEqual({
       type: 'media',
       mediaType: 'video',
-      caption: undefined
+      caption: undefined,
+      mimeType: undefined
     })
   })
 
-  it('文档用 fileName 兜底 caption', () => {
-    expect(extractBody({ documentMessage: { fileName: 'a.pdf' } })).toEqual({
+  it('文档保留 fileName 与 mimeType', () => {
+    expect(
+      extractBody({ documentMessage: { fileName: 'a.pdf', mimetype: 'application/pdf' } })
+    ).toEqual({
       type: 'media',
       mediaType: 'document',
-      caption: 'a.pdf'
+      caption: undefined,
+      fileName: 'a.pdf',
+      mimeType: 'application/pdf'
     })
   })
 
   it('语音与贴纸', () => {
-    expect(extractBody({ audioMessage: {} })).toEqual({ type: 'media', mediaType: 'audio' })
-    expect(extractBody({ stickerMessage: {} })).toEqual({ type: 'media', mediaType: 'sticker' })
+    expect(extractBody({ audioMessage: { mimetype: 'audio/ogg; codecs=opus' } })).toEqual({
+      type: 'media',
+      mediaType: 'audio',
+      mimeType: 'audio/ogg; codecs=opus'
+    })
+    expect(extractBody({ stickerMessage: {} })).toEqual({
+      type: 'media',
+      mediaType: 'sticker',
+      mimeType: undefined
+    })
   })
 
   it('阅后即焚/一次性查看逐层解包', () => {
@@ -122,6 +143,22 @@ describe('tsToMillis', () => {
   it('空值用 fallback', () => {
     expect(tsToMillis(null, 42)).toBe(42)
     expect(tsToMillis(undefined, 42)).toBe(42)
+  })
+})
+
+describe('mediaFileLength', () => {
+  it('number / string / Long 风格与包裹消息', () => {
+    expect(mediaFileLength({ imageMessage: { fileLength: 1234 } })).toBe(1234)
+    expect(mediaFileLength({ videoMessage: { fileLength: '5678' } })).toBe(5678)
+    expect(mediaFileLength({ audioMessage: { fileLength: { toNumber: () => 42 } } })).toBe(42)
+    expect(
+      mediaFileLength({ viewOnceMessageV2: { message: { imageMessage: { fileLength: 99 } } } })
+    ).toBe(99)
+  })
+
+  it('非媒体或空消息返回 0', () => {
+    expect(mediaFileLength({ conversation: 'hi' })).toBe(0)
+    expect(mediaFileLength(null)).toBe(0)
   })
 })
 

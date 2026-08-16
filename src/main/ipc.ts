@@ -1,4 +1,4 @@
-import { ipcMain } from 'electron'
+import { BrowserWindow, dialog, ipcMain } from 'electron'
 import { IPC_METHODS } from '@shared/ipc'
 import type { AppSettings } from '@shared/settings'
 import type { ChannelManager } from './core/channel-manager'
@@ -33,6 +33,20 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle(IPC_METHODS.markRead, (_e, conversationId: string) =>
     store.markRead(conversationId)
   )
+
+  ipcMain.handle(IPC_METHODS.sendMedia, async (e, conversationId: string) => {
+    const win = BrowserWindow.fromWebContents(e.sender) ?? undefined
+    const picked = await dialog.showOpenDialog(win!, {
+      properties: ['openFile'],
+      filters: [
+        { name: '媒体与文件', extensions: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'webm', 'mp3', 'm4a', 'aac', 'ogg', 'wav', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'txt'] },
+        { name: '所有文件', extensions: ['*'] }
+      ]
+    })
+    const filePath = picked.filePaths[0]
+    if (picked.canceled || !filePath) return null
+    return manager.sendMediaFile(conversationId, filePath)
+  })
 
   ipcMain.handle(IPC_METHODS.getSettings, () => settings.get())
   ipcMain.handle(IPC_METHODS.updateSettings, async (_e, patch: Partial<AppSettings>) => {

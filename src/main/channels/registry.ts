@@ -8,6 +8,8 @@ export interface ChannelPluginContext {
   logger: Logger
   /** 读取该账号的最新配置（代理等）。做成函数以便设置变更后重连即生效。 */
   getAccountConfig: () => { proxyUrl?: string }
+  /** 保存渠道下载的媒体，返回 mediaId */
+  saveMedia: (data: Buffer, ext: string) => Promise<string>
 }
 
 /**

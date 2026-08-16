@@ -25,6 +25,8 @@ export interface ConversationPatch {
 export interface MessageStore {
   init(): Promise<void>
   recordMessage(msg: UnifiedMessage, opts?: RecordMessageOptions): Promise<RecordMessageResult>
+  /** 按内部 id 整体替换已存在的消息（媒体下载完成等场景）；不存在则忽略并返回 false */
+  updateMessage(msg: UnifiedMessage): Promise<boolean>
   patchConversation(patch: ConversationPatch): Promise<Conversation | undefined>
   listConversations(): Promise<Conversation[]>
   listMessages(conversationId: string, limit?: number): Promise<UnifiedMessage[]>

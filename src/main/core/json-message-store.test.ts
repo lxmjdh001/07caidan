@@ -95,6 +95,24 @@ describe('JsonMessageStore', () => {
     expect(recent[4]?.timestamp).toBe(2_009)
   })
 
+  it('updateMessage 按 id 替换（媒体下载完成场景），不存在返回 false', async () => {
+    const original = msg({ body: { type: 'media', mediaType: 'image' } })
+    await store.recordMessage(original)
+
+    const updated = {
+      ...original,
+      body: { type: 'media' as const, mediaType: 'image' as const, mediaId: 'abc.jpg' }
+    }
+    expect(await store.updateMessage(updated)).toBe(true)
+    const list = await store.listMessages(original.conversationId)
+    expect(list[0]?.body).toMatchObject({ mediaId: 'abc.jpg' })
+
+    expect(await store.updateMessage(msg({ id: 'ghost' }))).toBe(false)
+    expect(
+      await store.updateMessage(msg({ conversationId: 'whatsapp:main:nope@s.whatsapp.net' }))
+    ).toBe(false)
+  })
+
   it('patch 不存在的会话返回 undefined', async () => {
     expect(await store.patchConversation({ id: 'whatsapp:main:none', title: 'x' })).toBeUndefined()
   })

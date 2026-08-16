@@ -9,13 +9,46 @@ interface Props {
   messages: UnifiedMessage[]
   connected: boolean
   onSend: (text: string) => Promise<void>
+  onSendMedia: () => Promise<void>
 }
 
-function bodyText(body: MessageBody): string {
-  return body.type === 'text' ? body.text : previewOf(body)
+type MediaBody = Extract<MessageBody, { type: 'media' }>
+
+function MediaContent({ body, downloading }: { body: MediaBody; downloading: string }): React.JSX.Element {
+  if (!body.mediaId) {
+    return (
+      <div className="media-pending">
+        {previewOf(body)} <span className="media-pending-hint">{downloading}</span>
+      </div>
+    )
+  }
+  const url = `omni-media://local/${body.mediaId}`
+  switch (body.mediaType) {
+    case 'image':
+      return <img className="media-img" src={url} alt={body.caption ?? ''} />
+    case 'sticker':
+      return <img className="media-sticker" src={url} alt="" />
+    case 'video':
+      return <video className="media-video" src={url} controls preload="metadata" />
+    case 'audio':
+      return <audio className="media-audio" src={url} controls preload="metadata" />
+    case 'document':
+      return (
+        <div className="media-doc">
+          <span className="media-doc-icon">📄</span>
+          <span className="media-doc-name">{body.fileName ?? previewOf(body)}</span>
+        </div>
+      )
+  }
 }
 
-export function ChatView({ conversation, messages, connected, onSend }: Props): React.JSX.Element {
+export function ChatView({
+  conversation,
+  messages,
+  connected,
+  onSend,
+  onSendMedia
+}: Props): React.JSX.Element {
   const { t, locale } = useI18n()
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
@@ -62,7 +95,16 @@ export function ChatView({ conversation, messages, connected, onSend }: Props): 
               {conversation.isGroup && m.direction === 'in' && m.authorName && (
                 <div className="bubble-author">{m.authorName}</div>
               )}
-              <div className="bubble-text">{bodyText(m.body)}</div>
+              {m.body.type === 'media' ? (
+                <>
+                  <MediaContent body={m.body} downloading={t('chat.mediaDownloading')} />
+                  {m.body.caption && <div className="bubble-text">{m.body.caption}</div>}
+                </>
+              ) : (
+                <div className="bubble-text">
+                  {m.body.type === 'text' ? m.body.text : previewOf(m.body)}
+                </div>
+              )}
               {m.translation && (
                 <div className="bubble-translation">
                   {m.translation.text}
@@ -84,6 +126,16 @@ export function ChatView({ conversation, messages, connected, onSend }: Props): 
         ))}
       </div>
       <footer className="composer">
+        <button
+          type="button"
+          className="attach-btn"
+          title={t('chat.attach')}
+          onClick={() => void onSendMedia()}
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+            <path d="M21 12.5l-8.5 8.5a6 6 0 0 1-8.5-8.5L12.6 4a4 4 0 1 1 5.7 5.7l-8.5 8.5a2 2 0 0 1-2.8-2.8L15.5 7" />
+          </svg>
+        </button>
         <textarea
           rows={1}
           value={draft}

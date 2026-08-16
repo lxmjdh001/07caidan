@@ -48,6 +48,18 @@ export function App(): React.JSX.Element {
         case 'conversation:updated':
           upsertConversation(evt.conversation)
           break
+        case 'message:updated':
+          setMessages((prev) => {
+            const list = prev[evt.message.conversationId]
+            if (!list) return prev
+            return {
+              ...prev,
+              [evt.message.conversationId]: list.map((m) =>
+                m.id === evt.message.id ? evt.message : m
+              )
+            }
+          })
+          break
         case 'message:new': {
           const conv = evt.conversation
           const isActive = activeIdRef.current === conv.id
@@ -94,6 +106,17 @@ export function App(): React.JSX.Element {
     [activeId]
   )
 
+  const sendMediaFile = useCallback(async () => {
+    if (!activeId) return
+    const msg = await api.sendMedia(activeId)
+    if (!msg) return
+    setMessages((prev) => {
+      const list = prev[activeId] ?? []
+      if (list.some((m) => m.id === msg.id)) return prev
+      return { ...prev, [activeId]: [...list, msg] }
+    })
+  }, [activeId])
+
   const saveSettings = useCallback(async (patch: Partial<AppSettings>) => {
     const updated = await api.updateSettings(patch)
     setSettings(updated)
@@ -135,6 +158,7 @@ export function App(): React.JSX.Element {
               messages={activeId ? messages[activeId] ?? [] : []}
               connected={waState?.status === 'connected'}
               onSend={sendText}
+              onSendMedia={sendMediaFile}
             />
           )}
         </main>

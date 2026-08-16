@@ -33,7 +33,15 @@ export type MediaType = 'image' | 'video' | 'audio' | 'document' | 'sticker'
 
 export type MessageBody =
   | { type: 'text'; text: string }
-  | { type: 'media'; mediaType: MediaType; caption?: string }
+  | {
+      type: 'media'
+      mediaType: MediaType
+      caption?: string
+      /** 本地媒体文件 ID（MediaStore 内的文件名）。未下载完成/失败时为空，UI 显示占位 */
+      mediaId?: string
+      mimeType?: string
+      fileName?: string
+    }
   | { type: 'unsupported'; description: string }
 
 export interface Translation {

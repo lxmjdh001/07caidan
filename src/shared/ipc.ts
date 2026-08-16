@@ -13,6 +13,7 @@ export const IPC_METHODS = {
   listMessages: 'omni:listMessages',
   sendText: 'omni:sendText',
   markRead: 'omni:markRead',
+  sendMedia: 'omni:sendMedia',
   getSettings: 'omni:getSettings',
   updateSettings: 'omni:updateSettings',
   listTranslators: 'omni:listTranslators'
@@ -20,6 +21,7 @@ export const IPC_METHODS = {
 
 export type OmniEvent =
   | { type: 'message:new'; message: UnifiedMessage; conversation: Conversation }
+  | { type: 'message:updated'; message: UnifiedMessage }
   | { type: 'conversation:updated'; conversation: Conversation }
   | { type: 'channel:state'; state: ChannelState }
 
@@ -36,6 +38,8 @@ export interface OmniApi {
   listConversations(): Promise<Conversation[]>
   listMessages(conversationId: string, limit?: number): Promise<UnifiedMessage[]>
   sendText(conversationId: string, text: string): Promise<UnifiedMessage>
+  /** 弹出文件选择框并发送所选媒体；用户取消返回 null */
+  sendMedia(conversationId: string): Promise<UnifiedMessage | null>
   markRead(conversationId: string): Promise<void>
   getSettings(): Promise<AppSettings>
   updateSettings(patch: Partial<AppSettings>): Promise<AppSettings>

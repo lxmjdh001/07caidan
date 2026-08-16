@@ -12,6 +12,7 @@ const api: OmniApi = {
     ipcRenderer.invoke(IPC_METHODS.listMessages, conversationId, limit),
   sendText: (conversationId: string, text: string) =>
     ipcRenderer.invoke(IPC_METHODS.sendText, conversationId, text),
+  sendMedia: (conversationId: string) => ipcRenderer.invoke(IPC_METHODS.sendMedia, conversationId),
   markRead: (conversationId: string) => ipcRenderer.invoke(IPC_METHODS.markRead, conversationId),
   getSettings: () => ipcRenderer.invoke(IPC_METHODS.getSettings),
   updateSettings: (patch: Partial<AppSettings>) =>

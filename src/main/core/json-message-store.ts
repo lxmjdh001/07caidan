@@ -70,6 +70,16 @@ export class JsonMessageStore implements MessageStore {
     return { conversation: conv, duplicated: false }
   }
 
+  async updateMessage(msg: UnifiedMessage): Promise<boolean> {
+    const list = this.data.messages[msg.conversationId]
+    if (!list) return false
+    const idx = list.findIndex((m) => m.id === msg.id)
+    if (idx < 0) return false
+    list[idx] = msg
+    this.scheduleFlush()
+    return true
+  }
+
   async patchConversation(patch: ConversationPatch): Promise<Conversation | undefined> {
     const conv = this.data.conversations[patch.id]
     if (!conv) return undefined

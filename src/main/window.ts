@@ -9,7 +9,6 @@ export function createMainWindow(): BrowserWindow {
     minHeight: 620,
     title: 'OmniChat',
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    trafficLightPosition: { x: 18, y: 18 },
     backgroundColor: '#f4f5f7',
     webPreferences: {
       preload: join(import.meta.dirname, '../preload/index.mjs'),

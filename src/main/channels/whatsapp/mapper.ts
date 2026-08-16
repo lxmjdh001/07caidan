@@ -39,6 +39,39 @@ export function tsToMillis(
 /** 包裹类消息（一次性查看、阅后即焚）逐层解包 */
 const WRAPPER_KEYS = ['ephemeralMessage', 'viewOnceMessage', 'viewOnceMessageV2', 'documentWithCaptionMessage']
 
+interface MediaNode {
+  caption?: string
+  mimetype?: string
+  fileName?: string
+  fileLength?: number | string | { toNumber(): number }
+}
+
+const MEDIA_NODE_KEYS = [
+  'imageMessage',
+  'videoMessage',
+  'audioMessage',
+  'stickerMessage',
+  'documentMessage'
+]
+
+/** 媒体文件大小（字节），拿不到返回 0 */
+export function mediaFileLength(message: Record<string, unknown> | null | undefined): number {
+  if (!message) return 0
+  for (const key of WRAPPER_KEYS) {
+    const wrapped = message[key] as { message?: Record<string, unknown> } | undefined
+    if (wrapped?.message) return mediaFileLength(wrapped.message)
+  }
+  for (const key of MEDIA_NODE_KEYS) {
+    const node = message[key] as MediaNode | undefined
+    const len = node?.fileLength
+    if (len == null) continue
+    if (typeof len === 'number') return len
+    if (typeof len === 'string') return Number(len) || 0
+    if (typeof len.toNumber === 'function') return len.toNumber()
+  }
+  return 0
+}
+
 /** 协议/系统类消息，对用户不可见，直接忽略 */
 const IGNORED_KEYS = new Set([
   'protocolMessage',
@@ -65,18 +98,41 @@ export function extractBody(message: Record<string, unknown> | null | undefined)
     return { type: 'text', text: extended.text }
   }
 
-  const image = message.imageMessage as { caption?: string } | undefined
-  if (image) return { type: 'media', mediaType: 'image', caption: image.caption || undefined }
+  const image = message.imageMessage as MediaNode | undefined
+  if (image) {
+    return {
+      type: 'media',
+      mediaType: 'image',
+      caption: image.caption || undefined,
+      mimeType: image.mimetype || undefined
+    }
+  }
 
-  const video = message.videoMessage as { caption?: string } | undefined
-  if (video) return { type: 'media', mediaType: 'video', caption: video.caption || undefined }
+  const video = message.videoMessage as MediaNode | undefined
+  if (video) {
+    return {
+      type: 'media',
+      mediaType: 'video',
+      caption: video.caption || undefined,
+      mimeType: video.mimetype || undefined
+    }
+  }
 
-  if (message.audioMessage) return { type: 'media', mediaType: 'audio' }
-  if (message.stickerMessage) return { type: 'media', mediaType: 'sticker' }
+  const audio = message.audioMessage as MediaNode | undefined
+  if (audio) return { type: 'media', mediaType: 'audio', mimeType: audio.mimetype || undefined }
 
-  const doc = message.documentMessage as { fileName?: string; caption?: string } | undefined
+  const sticker = message.stickerMessage as MediaNode | undefined
+  if (sticker) return { type: 'media', mediaType: 'sticker', mimeType: sticker.mimetype || undefined }
+
+  const doc = message.documentMessage as MediaNode | undefined
   if (doc) {
-    return { type: 'media', mediaType: 'document', caption: doc.caption || doc.fileName || undefined }
+    return {
+      type: 'media',
+      mediaType: 'document',
+      caption: doc.caption || undefined,
+      fileName: doc.fileName || undefined,
+      mimeType: doc.mimetype || undefined
+    }
   }
 
   const keys = Object.keys(message).filter((k) => !IGNORED_KEYS.has(k))
