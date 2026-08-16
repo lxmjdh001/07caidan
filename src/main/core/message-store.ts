@@ -18,6 +18,9 @@ export interface ConversationPatch {
   isGroup?: boolean
   avatarMediaId?: string
   contactId?: string
+  detectedLang?: string
+  /** 手动客户语言；null 表示清除（回到自动） */
+  langOverride?: string | null
 }
 
 /**
@@ -30,6 +33,7 @@ export interface MessageStore {
   /** 按内部 id 整体替换已存在的消息（媒体下载完成等场景）；不存在则忽略并返回 false */
   updateMessage(msg: UnifiedMessage): Promise<boolean>
   patchConversation(patch: ConversationPatch): Promise<Conversation | undefined>
+  getConversation(id: string): Promise<Conversation | undefined>
   listConversations(): Promise<Conversation[]>
   listMessages(conversationId: string, limit?: number): Promise<UnifiedMessage[]>
   markRead(conversationId: string): Promise<void>

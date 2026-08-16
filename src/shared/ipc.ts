@@ -14,6 +14,7 @@ export const IPC_METHODS = {
   sendText: 'omni:sendText',
   markRead: 'omni:markRead',
   sendMedia: 'omni:sendMedia',
+  setConversationLang: 'omni:setConversationLang',
   getSettings: 'omni:getSettings',
   updateSettings: 'omni:updateSettings',
   listTranslators: 'omni:listTranslators'
@@ -42,6 +43,8 @@ export interface OmniApi {
   sendText(conversationId: string, text: string): Promise<UnifiedMessage>
   /** 弹出文件选择框并发送所选媒体；用户取消返回 null */
   sendMedia(conversationId: string): Promise<UnifiedMessage | null>
+  /** 设置会话的客户语言（null = 清除，回到自动） */
+  setConversationLang(conversationId: string, lang: string | null): Promise<void>
   markRead(conversationId: string): Promise<void>
   getSettings(): Promise<AppSettings>
   updateSettings(patch: Partial<AppSettings>): Promise<AppSettings>

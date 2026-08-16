@@ -1,5 +1,5 @@
 import { BrowserWindow, dialog, ipcMain } from 'electron'
-import { IPC_METHODS } from '@shared/ipc'
+import { IPC_METHODS, type OmniEvent } from '@shared/ipc'
 import type { AppSettings } from '@shared/settings'
 import type { ChannelManager } from './core/channel-manager'
 import type { MessageStore } from './core/message-store'
@@ -13,6 +13,8 @@ export interface IpcDeps {
   translators: TranslatorRegistry
   /** 设置更新后的回调（重新装配翻译管道等） */
   onSettingsChanged: (settings: AppSettings) => void
+  /** 主动推送事件到渲染进程 */
+  broadcast: (evt: OmniEvent) => void
 }
 
 /** 渲染进程可调用的全部主进程能力，集中在此注册 */
@@ -32,6 +34,14 @@ export function registerIpc(deps: IpcDeps): void {
   )
   ipcMain.handle(IPC_METHODS.markRead, (_e, conversationId: string) =>
     store.markRead(conversationId)
+  )
+
+  ipcMain.handle(
+    IPC_METHODS.setConversationLang,
+    async (_e, conversationId: string, lang: string | null) => {
+      const updated = await store.patchConversation({ id: conversationId, langOverride: lang })
+      if (updated) deps.broadcast({ type: 'conversation:updated', conversation: updated })
+    }
   )
 
   ipcMain.handle(IPC_METHODS.sendMedia, async (e, conversationId: string) => {

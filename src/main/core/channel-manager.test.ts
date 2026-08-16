@@ -137,6 +137,47 @@ describe('ChannelManager', () => {
     expect(events.some((e) => e.type === 'conversation:updated')).toBe(true)
   })
 
+  it('出站目标语言解析优先级：会话手动 > 检测 > 账号默认 > 全局默认', async () => {
+    manager.getLangDefaults = () => ({ accountDefault: 'ja', globalDefault: 'en' })
+    const convId = 'whatsapp:main:42@s.whatsapp.net'
+
+    // 无会话记录 → 账号默认
+    expect(await manager.resolveTargetLang(convId)).toBe('ja')
+
+    // 无账号默认 → 全局默认
+    manager.getLangDefaults = () => ({ globalDefault: 'en' })
+    expect(await manager.resolveTargetLang(convId)).toBe('en')
+
+    // 有检测语言 → 用检测
+    adapter.fakeIncoming()
+    await flushAsync()
+    await store.patchConversation({ id: convId, detectedLang: 'es' })
+    expect(await manager.resolveTargetLang(convId)).toBe('es')
+
+    // 手动设置最优先
+    await store.patchConversation({ id: convId, langOverride: 'fr' })
+    expect(await manager.resolveTargetLang(convId)).toBe('fr')
+
+    // 清除手动设置 → 回到检测
+    await store.patchConversation({ id: convId, langOverride: null })
+    expect(await manager.resolveTargetLang(convId)).toBe('es')
+  })
+
+  it('入站消息触发客户语言检测并写入会话', async () => {
+    const detecting = new TranslationPipeline(
+      { name: 'det', translate: async (text) => ({ text: `[译]${text}`, sourceLang: 'pt' }) },
+      { inboundEnabled: true, outboundEnabled: false, displayLang: 'zh-CN' }
+    )
+    const mgr = new ChannelManager(store, detecting, (evt) => events.push(evt), noopLogger)
+    const a2 = new FakeAdapter()
+    mgr.register(a2)
+    a2.fakeIncoming({ body: { type: 'text', text: 'ola tudo bem' } })
+    await flushAsync()
+
+    const conv = await store.getConversation('whatsapp:main:42@s.whatsapp.net')
+    expect(conv?.detectedLang).toBe('pt')
+  })
+
   it('sendText 成功：调用适配器、状态 sent、入库并广播', async () => {
     const msg = await manager.sendText('whatsapp:main:42@s.whatsapp.net', 'hi there')
     expect(adapter.sendText).toHaveBeenCalledWith('42@s.whatsapp.net', 'hi there')

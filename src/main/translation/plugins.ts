@@ -2,7 +2,10 @@ import type { TranslationConfig } from '@shared/settings'
 import { PassthroughTranslator } from './passthrough-translator'
 import type { TranslationPipeline } from './pipeline'
 import { CustomHttpTranslator, type CustomHttpConfig } from './providers/custom-http'
+import { DeepLTranslator, type DeepLConfig } from './providers/deepl'
+import { GoogleCloudTranslator, type GoogleCloudConfig } from './providers/google-cloud'
 import { GoogleFreeTranslator } from './providers/google-free'
+import { LlmTranslator, type LlmConfig } from './providers/llm'
 import { TranslatorRegistry } from './registry'
 
 /** 内置翻译插件。新增引擎在此注册即可出现在设置页。 */
@@ -13,6 +16,24 @@ export function createTranslatorRegistry(): TranslatorRegistry {
     id: 'google-free',
     displayName: 'Google 翻译（免费）',
     create: () => new GoogleFreeTranslator()
+  })
+
+  registry.register({
+    id: 'deepl',
+    displayName: 'DeepL',
+    create: (config) => new DeepLTranslator(config as unknown as DeepLConfig)
+  })
+
+  registry.register({
+    id: 'google-cloud',
+    displayName: 'Google Cloud Translation（官方）',
+    create: (config) => new GoogleCloudTranslator(config as unknown as GoogleCloudConfig)
+  })
+
+  registry.register({
+    id: 'llm',
+    displayName: 'LLM 翻译（OpenAI 兼容）',
+    create: (config) => new LlmTranslator(config as unknown as LlmConfig)
   })
 
   registry.register({
@@ -30,6 +51,22 @@ export function createTranslatorRegistry(): TranslatorRegistry {
   return registry
 }
 
+/** 各引擎从设置中取各自的配置段 */
+function engineConfig(cfg: TranslationConfig, engine: string): Record<string, unknown> {
+  switch (engine) {
+    case 'custom-http':
+      return { url: cfg.custom.url, apiKey: cfg.custom.apiKey }
+    case 'deepl':
+      return { apiKey: cfg.deepl.apiKey }
+    case 'google-cloud':
+      return { apiKey: cfg.googleCloud.apiKey }
+    case 'llm':
+      return { baseUrl: cfg.llm.baseUrl, apiKey: cfg.llm.apiKey, model: cfg.llm.model }
+    default:
+      return {}
+  }
+}
+
 /** 按用户设置装配翻译管道（引擎创建失败时降级为关闭，不阻塞收发） */
 export function configurePipeline(
   pipeline: TranslationPipeline,
@@ -39,10 +76,7 @@ export function configurePipeline(
   const engine = cfg.engine || 'google-free'
   let translator
   try {
-    translator = registry.create(
-      engine,
-      engine === 'custom-http' ? { url: cfg.custom.url, apiKey: cfg.custom.apiKey } : {}
-    )
+    translator = registry.create(engine, engineConfig(cfg, engine))
   } catch {
     translator = registry.create('off')
   }

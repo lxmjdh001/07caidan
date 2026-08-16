@@ -83,6 +83,10 @@ export interface Conversation {
   contactId?: string
   /** 对方头像（MediaStore 内的文件 ID），未获取到则用首字母占位 */
   avatarMediaId?: string
+  /** 自动检测到的客户语言（来自入站消息翻译时的源语言识别） */
+  detectedLang?: string
+  /** 手动指定的客户语言（会话级设置，优先级最高）；空 = 自动 */
+  langOverride?: string
   isGroup: boolean
   lastMessageAt: number
   lastMessagePreview: string

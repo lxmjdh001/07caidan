@@ -117,6 +117,13 @@ export function App(): React.JSX.Element {
     })
   }, [activeId])
 
+  const setConvLang = useCallback(
+    async (lang: string | null) => {
+      if (activeId) await api.setConversationLang(activeId, lang)
+    },
+    [activeId]
+  )
+
   const saveSettings = useCallback(async (patch: Partial<AppSettings>) => {
     const updated = await api.updateSettings(patch)
     setSettings(updated)
@@ -175,6 +182,7 @@ export function App(): React.JSX.Element {
                 knownFromOther={knownFromOther}
                 onSend={sendText}
                 onSendMedia={sendMediaFile}
+                onSetLang={setConvLang}
               />
             )}
           </main>

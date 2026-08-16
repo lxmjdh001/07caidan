@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { TranslatorInfo } from '@shared/ipc'
+import { LANGUAGES } from '@shared/langs'
 import type { AppSettings } from '@shared/settings'
 import { dictionaries, useI18n } from '../i18n'
 
@@ -11,6 +12,28 @@ interface Props {
   onClose: () => void
 }
 
+function LangSelect({
+  value,
+  onChange,
+  allowEmpty
+}: {
+  value: string
+  onChange: (v: string) => void
+  /** 传入 label 时增加一个空值选项（如"跟随全局"） */
+  allowEmpty?: string
+}): React.JSX.Element {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)}>
+      {allowEmpty !== undefined && <option value="">{allowEmpty}</option>}
+      {LANGUAGES.map((l) => (
+        <option key={l.code} value={l.code}>
+          {l.label}
+        </option>
+      ))}
+    </select>
+  )
+}
+
 export function SettingsModal({
   settings,
   translators,
@@ -19,13 +42,24 @@ export function SettingsModal({
   onClose
 }: Props): React.JSX.Element {
   const { t } = useI18n()
+  const tr = settings.translation
   const [locale, setLocale] = useState(settings.locale)
-  const [engine, setEngine] = useState(settings.translation.engine)
-  const [inbound, setInbound] = useState(settings.translation.inboundEnabled)
-  const [displayLang, setDisplayLang] = useState(settings.translation.displayLang)
-  const [customUrl, setCustomUrl] = useState(settings.translation.custom.url)
-  const [customKey, setCustomKey] = useState(settings.translation.custom.apiKey)
+  const [engine, setEngine] = useState(tr.engine)
+  const [inbound, setInbound] = useState(tr.inboundEnabled)
+  const [outbound, setOutbound] = useState(tr.outboundEnabled)
+  const [displayLang, setDisplayLang] = useState(tr.displayLang)
+  const [targetLangDefault, setTargetLangDefault] = useState(tr.targetLangDefault)
+  const [customUrl, setCustomUrl] = useState(tr.custom.url)
+  const [customKey, setCustomKey] = useState(tr.custom.apiKey)
+  const [deeplKey, setDeeplKey] = useState(tr.deepl.apiKey)
+  const [gcKey, setGcKey] = useState(tr.googleCloud.apiKey)
+  const [llmBaseUrl, setLlmBaseUrl] = useState(tr.llm.baseUrl)
+  const [llmKey, setLlmKey] = useState(tr.llm.apiKey)
+  const [llmModel, setLlmModel] = useState(tr.llm.model)
   const [proxyUrl, setProxyUrl] = useState(settings.accounts['whatsapp:main']?.proxyUrl ?? '')
+  const [accountLang, setAccountLang] = useState(
+    settings.accounts['whatsapp:main']?.defaultLang ?? ''
+  )
   const [saving, setSaving] = useState(false)
 
   const save = async (): Promise<void> => {
@@ -36,13 +70,20 @@ export function SettingsModal({
         translation: {
           engine,
           inboundEnabled: inbound,
-          outboundEnabled: settings.translation.outboundEnabled,
+          outboundEnabled: outbound,
           displayLang,
-          custom: { url: customUrl.trim(), apiKey: customKey.trim() }
+          targetLangDefault,
+          custom: { url: customUrl.trim(), apiKey: customKey.trim() },
+          deepl: { apiKey: deeplKey.trim() },
+          googleCloud: { apiKey: gcKey.trim() },
+          llm: { baseUrl: llmBaseUrl.trim(), apiKey: llmKey.trim(), model: llmModel.trim() }
         },
         accounts: {
           ...settings.accounts,
-          'whatsapp:main': { proxyUrl: proxyUrl.trim() || undefined }
+          'whatsapp:main': {
+            proxyUrl: proxyUrl.trim() || undefined,
+            defaultLang: accountLang || undefined
+          }
         }
       })
     } finally {
@@ -74,34 +115,53 @@ export function SettingsModal({
           <label className="field">
             <span>{t('settings.engine')}</span>
             <select value={engine} onChange={(e) => setEngine(e.target.value)}>
-              {translators.map((tr) => (
-                <option key={tr.id} value={tr.id}>
-                  {tr.displayName}
+              {translators.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.displayName}
                 </option>
               ))}
             </select>
           </label>
           <p className="field-hint">{t('settings.engine.hint')}</p>
-          <label className="field checkbox">
-            <input
-              type="checkbox"
-              checked={inbound}
-              onChange={(e) => setInbound(e.target.checked)}
-            />
-            <span>{t('settings.inbound')}</span>
-          </label>
-          <label className="field">
-            <span>{t('settings.displayLang')}</span>
-            <select value={displayLang} onChange={(e) => setDisplayLang(e.target.value)}>
-              <option value="zh-CN">简体中文</option>
-              <option value="zh-TW">繁體中文</option>
-              <option value="en">English</option>
-              <option value="ja">日本語</option>
-              <option value="ko">한국어</option>
-              <option value="es">Español</option>
-              <option value="pt">Português</option>
-            </select>
-          </label>
+
+          {engine === 'deepl' && (
+            <label className="field">
+              <span>{t('settings.deeplKey')}</span>
+              <input type="password" value={deeplKey} onChange={(e) => setDeeplKey(e.target.value)} />
+            </label>
+          )}
+          {engine === 'google-cloud' && (
+            <label className="field">
+              <span>{t('settings.gcKey')}</span>
+              <input type="password" value={gcKey} onChange={(e) => setGcKey(e.target.value)} />
+            </label>
+          )}
+          {engine === 'llm' && (
+            <>
+              <label className="field">
+                <span>{t('settings.llmBaseUrl')}</span>
+                <input
+                  type="text"
+                  value={llmBaseUrl}
+                  placeholder="https://api.openai.com/v1"
+                  onChange={(e) => setLlmBaseUrl(e.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span>{t('settings.llmKey')}</span>
+                <input type="password" value={llmKey} onChange={(e) => setLlmKey(e.target.value)} />
+              </label>
+              <label className="field">
+                <span>{t('settings.llmModel')}</span>
+                <input
+                  type="text"
+                  value={llmModel}
+                  placeholder="claude-haiku-4-5-20251001 / gpt-4o-mini …"
+                  onChange={(e) => setLlmModel(e.target.value)}
+                />
+              </label>
+            </>
+          )}
           {engine === 'custom-http' && (
             <>
               <label className="field">
@@ -124,10 +184,39 @@ export function SettingsModal({
               <p className="field-hint">{t('settings.customHint')}</p>
             </>
           )}
+
+          <label className="field checkbox">
+            <input type="checkbox" checked={inbound} onChange={(e) => setInbound(e.target.checked)} />
+            <span>{t('settings.inbound')}</span>
+          </label>
+          <label className="field checkbox">
+            <input
+              type="checkbox"
+              checked={outbound}
+              onChange={(e) => setOutbound(e.target.checked)}
+            />
+            <span>{t('settings.outbound')}</span>
+          </label>
+          <label className="field">
+            <span>{t('settings.displayLang')}</span>
+            <LangSelect value={displayLang} onChange={setDisplayLang} />
+          </label>
+          <label className="field">
+            <span>{t('settings.targetLangDefault')}</span>
+            <LangSelect value={targetLangDefault} onChange={setTargetLangDefault} />
+          </label>
         </section>
 
         <section>
           <h3>{t('settings.account')}</h3>
+          <label className="field">
+            <span>{t('settings.accountLang')}</span>
+            <LangSelect
+              value={accountLang}
+              onChange={setAccountLang}
+              allowEmpty={t('settings.followGlobal')}
+            />
+          </label>
           <label className="field">
             <span>{t('settings.proxy')}</span>
             <input

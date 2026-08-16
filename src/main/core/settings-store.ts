@@ -19,19 +19,7 @@ export class SettingsStore {
       const raw = await readFile(this.filePath, 'utf8')
       const parsed = JSON.parse(raw) as Partial<AppSettings>
       // 与默认值深合并，保证升级后新增字段有值
-      this.settings = {
-        ...structuredClone(DEFAULT_SETTINGS),
-        ...parsed,
-        translation: {
-          ...structuredClone(DEFAULT_SETTINGS.translation),
-          ...parsed.translation,
-          custom: {
-            ...DEFAULT_SETTINGS.translation.custom,
-            ...parsed.translation?.custom
-          }
-        },
-        accounts: parsed.accounts ?? {}
-      }
+      this.settings = mergeSettings(structuredClone(DEFAULT_SETTINGS), parsed)
     } catch {
       // 首次运行：使用默认值
     }
@@ -42,12 +30,7 @@ export class SettingsStore {
   }
 
   async update(patch: Partial<AppSettings>): Promise<AppSettings> {
-    this.settings = {
-      ...this.settings,
-      ...patch,
-      translation: { ...this.settings.translation, ...patch.translation },
-      accounts: { ...this.settings.accounts, ...patch.accounts }
-    }
+    this.settings = mergeSettings(this.settings, patch)
     const tmp = `${this.filePath}.tmp`
     await writeFile(tmp, JSON.stringify(this.settings, null, 2), 'utf8')
     await rename(tmp, this.filePath)
@@ -57,4 +40,33 @@ export class SettingsStore {
   accountConfig(key: string): AccountConfig {
     return this.settings.accounts[key] ?? {}
   }
+}
+
+/** 递归合并：patch 的对象字段与 base 合并，标量/数组直接覆盖 */
+function mergeSettings(base: AppSettings, patch: Partial<AppSettings>): AppSettings {
+  return deepMerge(base as unknown as Record<string, unknown>, patch as Record<string, unknown>) as unknown as AppSettings
+}
+
+function deepMerge(
+  base: Record<string, unknown>,
+  patch: Record<string, unknown>
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base }
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue
+    const prev = out[key]
+    if (
+      value !== null &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      prev !== null &&
+      typeof prev === 'object' &&
+      !Array.isArray(prev)
+    ) {
+      out[key] = deepMerge(prev as Record<string, unknown>, value as Record<string, unknown>)
+    } else {
+      out[key] = value
+    }
+  }
+  return out
 }

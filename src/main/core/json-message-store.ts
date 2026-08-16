@@ -87,8 +87,16 @@ export class JsonMessageStore implements MessageStore {
     if (patch.isGroup !== undefined) conv.isGroup = patch.isGroup
     if (patch.avatarMediaId) conv.avatarMediaId = patch.avatarMediaId
     if (patch.contactId) conv.contactId = patch.contactId
+    if (patch.detectedLang) conv.detectedLang = patch.detectedLang
+    if (patch.langOverride !== undefined) {
+      conv.langOverride = patch.langOverride ?? undefined
+    }
     this.scheduleFlush()
     return conv
+  }
+
+  async getConversation(id: string): Promise<Conversation | undefined> {
+    return this.data.conversations[id]
   }
 
   async listConversations(): Promise<Conversation[]> {

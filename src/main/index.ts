@@ -75,6 +75,11 @@ async function bootstrap(): Promise<void> {
     media,
     contacts
   )
+  // 出站翻译目标语言的账号级/全局默认（会话级优先逻辑在 ChannelManager 内）
+  manager.getLangDefaults = (key) => ({
+    accountDefault: settings.accountConfig(key).defaultLang,
+    globalDefault: settings.get().translation.targetLangDefault
+  })
 
   // ── 渠道插件装配。新增平台：注册插件 + 在此为账号创建适配器 ──
   const channels = new ChannelRegistry()
@@ -96,6 +101,7 @@ async function bootstrap(): Promise<void> {
     store,
     settings,
     translators: translatorRegistry,
+    broadcast,
     onSettingsChanged: (updated) => {
       configurePipeline(pipeline, translatorRegistry, updated.translation)
       logger.info('设置已更新')

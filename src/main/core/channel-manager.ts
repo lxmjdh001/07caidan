@@ -102,13 +102,29 @@ export class ChannelManager {
     await this.requireAdapter(key).logout()
   }
 
-  /** UI 发送文本：翻译（可选）→ 适配器发出 → 入库 → 回推 UI */
+  /**
+   * 出站目标语言解析，优先级：
+   * 会话手动设置 > 自动检测 > 账号默认 > 全局默认
+   */
+  async resolveTargetLang(convId: string): Promise<string> {
+    const conv = await this.store.getConversation(convId)
+    if (conv?.langOverride) return conv.langOverride
+    if (conv?.detectedLang) return conv.detectedLang
+    const { channel, accountId } = parseConversationId(convId)
+    const fallback = this.getLangDefaults?.(`${channel}:${accountId}`)
+    return fallback?.accountDefault || fallback?.globalDefault || 'en'
+  }
+
+  /** 由装配层注入：读取账号级/全局默认客户语言 */
+  getLangDefaults?: (channelKey: string) => { accountDefault?: string; globalDefault: string }
+
+  /** UI 发送文本：翻译成客户语言（可关）→ 适配器发出 → 入库 → 回推 UI */
   async sendText(convId: string, text: string): Promise<UnifiedMessage> {
     const { channel, accountId, externalChatId } = parseConversationId(convId)
     const adapter = this.requireAdapter(`${channel}:${accountId}`)
 
-    // 目标语言暂按会话维度配置（后续接入设置）；当前默认不翻译出站
-    const outbound = await this.translation.processOutbound(text, 'auto')
+    const targetLang = await this.resolveTargetLang(convId)
+    const outbound = await this.translation.processOutbound(text, targetLang)
 
     const msg: UnifiedMessage = {
       id: randomUUID(),
@@ -117,6 +133,11 @@ export class ChannelManager {
       conversationId: convId,
       direction: 'out',
       body: { type: 'text', text: outbound.send },
+      // 发生了翻译时，把坐席原文挂在 translation 字段供 UI 双显
+      translation:
+        outbound.engine !== undefined
+          ? { text: outbound.original, targetLang, engine: outbound.engine }
+          : undefined,
       timestamp: Date.now(),
       status: 'pending'
     }
@@ -183,12 +204,21 @@ export class ChannelManager {
 
   private async handleIncoming(raw: UnifiedMessage): Promise<void> {
     try {
-      const msg = await this.translation.processInbound(raw)
+      const { message: msg, detectedLang } = await this.translation.processInbound(raw)
       const { conversation, duplicated } = await this.store.recordMessage(msg, {
         incrementUnread: msg.direction === 'in'
       })
       if (duplicated) return
       this.broadcast({ type: 'message:new', message: msg, conversation })
+      // 客户语言自动检测：只依据客户的来信（自己发的不算）
+      if (
+        msg.direction === 'in' &&
+        detectedLang &&
+        conversation.detectedLang !== detectedLang
+      ) {
+        const updated = await this.store.patchConversation({ id: conversation.id, detectedLang })
+        if (updated) this.broadcast({ type: 'conversation:updated', conversation: updated })
+      }
       this.ensureAvatar(conversation)
       this.ensureTitle(conversation)
       this.ensureContactId(conversation)

@@ -323,12 +323,49 @@ body {
 }
 
 .chat-header {
+  position: relative;
   padding: 11px 22px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.conv-settings-btn {
+  margin-left: auto;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-secondary);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.conv-settings-btn:hover {
+  background: var(--panel-alt);
+  color: var(--text);
+}
+
+.conv-settings-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 16px;
+  z-index: 30;
+  width: 300px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 14px 16px;
+}
+
+.conv-settings-popover h4 {
+  font-size: 13px;
+  margin-bottom: 10px;
 }
 
 .chat-header-text {
