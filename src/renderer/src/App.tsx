@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChannelState, Conversation, UnifiedMessage } from '@shared/domain'
 import type { AppSettings } from '@shared/settings'
 import type { OutboundPreview, TranslatorInfo } from '@shared/ipc'
+import { AccountList, type AccountRow } from './components/AccountList'
 import { AccountModal } from './components/AccountModal'
-import { ChannelRail } from './components/ChannelRail'
 import { ChatView } from './components/ChatView'
 import { ConversationList } from './components/ConversationList'
 import { QrPanel } from './components/QrPanel'
@@ -179,6 +179,35 @@ export function App(): React.JSX.Element {
     return labels
   }, [channels, settings])
 
+  /** 每账号未读聚合 */
+  const unreadByAccount = useMemo(() => {
+    const map: Record<string, number> = {}
+    for (const c of conversations) {
+      const key = `${c.channel}:${c.accountId}`
+      map[key] = (map[key] ?? 0) + c.unreadCount
+    }
+    return map
+  }, [conversations])
+
+  const accountRows = useMemo<AccountRow[]>(() => {
+    return Object.entries(channels)
+      .filter(([key]) => key.startsWith('whatsapp:'))
+      .sort(([a], [b]) =>
+        a === 'whatsapp:main' ? -1 : b === 'whatsapp:main' ? 1 : a.localeCompare(b)
+      )
+      .map(([key, state]) => ({
+        key,
+        label: accountLabels[key] ?? key,
+        state,
+        unread: unreadByAccount[key] ?? 0
+      }))
+  }, [channels, accountLabels, unreadByAccount])
+
+  const totalUnread = useMemo(
+    () => conversations.reduce((sum, c) => sum + c.unreadCount, 0),
+    [conversations]
+  )
+
   const visibleConversations = useMemo(
     () =>
       activeAccountKey
@@ -227,9 +256,9 @@ export function App(): React.JSX.Element {
           <span className="titlebar-title">OmniChat</span>
         </header>
         <div className="app-body">
-          <ChannelRail
-            channels={channels}
-            labels={accountLabels}
+          <AccountList
+            accounts={accountRows}
+            totalUnread={totalUnread}
             activeKey={activeAccountKey}
             onSelect={(key) => {
               selectAccount(key)
