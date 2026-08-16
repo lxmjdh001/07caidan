@@ -136,7 +136,8 @@ export class JsonMessageStore implements MessageStore {
       msg.direction === 'in' &&
       msg.authorName &&
       !conv.isGroup &&
-      conv.title === conv.externalChatId
+      // 标题还是占位（原始平台 ID 或 "+手机号"）时，用发信人昵称升级
+      (conv.title === conv.externalChatId || /^\+\d+$/.test(conv.title))
     ) {
       conv.title = msg.authorName
     }

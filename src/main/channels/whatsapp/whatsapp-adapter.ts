@@ -138,13 +138,25 @@ export class WhatsAppAdapter extends ChannelAdapter {
       const meta = await this.sock.groupMetadata(externalChatId).catch(() => undefined)
       return meta?.subject || undefined
     }
+    // LID（隐私隐藏 ID）：映射回真实手机号，与手机端显示一致
+    if (externalChatId.endsWith('@lid')) {
+      const pn = await this.sock.signalRepository?.lidMapping
+        ?.getPNForLID(externalChatId)
+        .catch(() => null)
+      const number = pn?.split('@')[0]?.split(':')[0]
+      return number ? `+${number}` : undefined
+    }
     // 自己的会话（Message Yourself）
     const selfJid = this.sock.user?.id?.split(':')[0]
     if (selfJid && externalChatId.startsWith(`${selfJid}@`)) {
       const name = this.sock.user?.name
       return name ? `${name}（我）` : '我'
     }
-    // 普通联系人没有公开的"取名"接口，靠 pushName / 通讯录同步事件
+    // 普通联系人：显示手机号（昵称靠 pushName / 通讯录同步事件覆盖）
+    if (externalChatId.endsWith('@s.whatsapp.net')) {
+      const number = externalChatId.split('@')[0]?.split(':')[0]
+      return number ? `+${number}` : undefined
+    }
     return undefined
   }
 
