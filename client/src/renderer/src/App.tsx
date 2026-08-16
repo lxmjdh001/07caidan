@@ -11,6 +11,7 @@ import { ChannelPicker } from './components/ChannelPicker'
 import { ChatView } from './components/ChatView'
 import { ConversationList } from './components/ConversationList'
 import { QrPanel } from './components/QrPanel'
+import { brand } from '@shared/branding'
 import { I18nProvider, localeDir, resolveLocale, type Locale } from './i18n'
 
 const api = window.omni
@@ -308,7 +309,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
     <I18nProvider locale={locale}>
       <div className={`app platform-${api.platform}`}>
         <header className="titlebar">
-          <span className="titlebar-title">OmniChat</span>
+          <span className="titlebar-title">{brand.appName}</span>
         </header>
         <div className="app-body">
           <AccountList

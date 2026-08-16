@@ -27,6 +27,7 @@ import { TranslationPipeline } from './translation/pipeline'
 import { PassthroughTranslator } from './translation/passthrough-translator'
 import { configurePipeline, createTranslatorRegistry } from './translation/plugins'
 import { createMainWindow } from './window'
+import { brand } from '@shared/branding'
 
 // 本地媒体协议：omni-media://local/<mediaId>（必须在 ready 前注册特权）
 protocol.registerSchemesAsPrivileged([
@@ -41,12 +42,14 @@ if (!app.requestSingleInstanceLock()) {
 
 async function bootstrap(): Promise<void> {
   // 未打包时 Electron 默认把 userData 指到共享的 "Electron" 目录，显式固定到应用专属目录
-  app.setPath('userData', join(app.getPath('appData'), 'OmniChat'))
+  // 每个品牌独立的数据目录：贴牌版与原版共存时数据不能串
+  app.setName(brand.appName)
+  app.setPath('userData', join(app.getPath('appData'), brand.appName || 'OmniChat'))
   await app.whenReady()
 
   const userData = app.getPath('userData')
   const logger = initLogging(join(userData, 'logs'))
-  logger.info('OmniChat 启动', { version: app.getVersion(), userData })
+  logger.info(`${brand.appName} 启动`, { version: app.getVersion(), userData })
 
   const settings = new SettingsStore(userData)
   await settings.init()

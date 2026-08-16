@@ -1,4 +1,5 @@
 import { app, BrowserWindow, Notification } from 'electron'
+import { brand } from '@shared/branding'
 import type { Conversation, UnifiedMessage } from '@shared/domain'
 import type { NotificationConfig } from '@shared/settings'
 import { noopLogger, type Logger } from './logger'
@@ -72,7 +73,7 @@ export class Notifier {
 
     try {
       const n = new Notification({
-        title: title || 'OmniChat',
+        title: title || brand.appName,
         body: cfg.showPreview ? preview(message) : bodyKind(message),
         silent: !cfg.sound
       })

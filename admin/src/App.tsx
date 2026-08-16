@@ -7,6 +7,7 @@ import { AnalysisPanel } from './components/AnalysisPanel'
 import { UsersView } from './components/UsersView'
 import { BillingView } from './components/BillingView'
 import { CampaignsView } from './components/CampaignsView'
+import { brand } from './branding'
 import { LOCALES, useI18n, type Locale } from './i18n'
 
 export function App(): React.JSX.Element {
@@ -59,7 +60,7 @@ export function App(): React.JSX.Element {
     <div className="layout">
       <aside className="sidebar">
         <div className="sidebar-logo">
-          <span className="logo">OC</span>
+          <span className="logo">{brand.logoText}</span>
           <span className="sidebar-title">{t('app.title')}</span>
         </div>
         <nav className="sidebar-nav">

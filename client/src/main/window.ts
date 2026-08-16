@@ -1,5 +1,6 @@
 import { join } from 'node:path'
 import { BrowserWindow, shell } from 'electron'
+import { brand } from '@shared/branding'
 
 /** 自绘标题栏高度，与渲染层 styles.css 的 --titlebar-h 保持一致 */
 export const TITLEBAR_HEIGHT = 40
@@ -13,7 +14,7 @@ export function createMainWindow(): BrowserWindow {
     height: 840,
     minWidth: 980,
     minHeight: 620,
-    title: 'OmniChat',
+    title: brand.appName,
     backgroundColor: '#1f2430',
     // 两个平台都隐藏原生标题栏，由渲染层自绘：
     // - macOS: hiddenInset 保留原生红绿灯（内嵌位置），标题栏左侧留白

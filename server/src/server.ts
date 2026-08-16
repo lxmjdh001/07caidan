@@ -25,6 +25,7 @@ import { createEmailSender } from './email.ts'
 import { LineRelay } from './line-relay.ts'
 import { Repo } from './repo.ts'
 import type { SyncPayload } from './types.ts'
+import { brand } from './branding.ts'
 
 /** 请求上下文：要么是同步客户端（仅 tenant），要么是登录的管理员（含权限） */
 interface ReqCtx {
@@ -82,7 +83,9 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   const readDashboardHtml = async (): Promise<string> => {
     if (dashboardHtml === null) {
       const here = dirname(fileURLToPath(import.meta.url))
-      dashboardHtml = await readFile(join(here, '..', 'public', 'campaign.html'), 'utf8')
+      const raw = await readFile(join(here, '..', 'public', 'campaign.html'), 'utf8')
+      // 白牌：标题占位符在服务端替换，页面本身保持纯静态
+      dashboardHtml = raw.replaceAll('__DASHBOARD_TITLE__', brand.dashboardTitle)
     }
     return dashboardHtml
   }
@@ -185,7 +188,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     }
     const code = clientAuth.issueCode(email)
     try {
-      await mailer.send(email, 'OmniChat 验证码', `你的验证码是 ${code}，10 分钟内有效。`)
+      await mailer.send(email, `${brand.appName} 验证码`, `你的验证码是 ${code}，10 分钟内有效。`)
     } catch (err) {
       req.log.error(err, '验证码邮件发送失败')
       return reply.code(502).send({ error: '验证码发送失败，请稍后重试' })

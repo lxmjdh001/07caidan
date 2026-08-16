@@ -132,13 +132,14 @@
 ## M7 — 白牌定制（贴牌打包）
 > 目标：同一份代码，构建时指定一个品牌配置即可产出不同名称/图标的客户端与后台。
 > 三端（client / server / admin）**共用同一份配置**，避免改名时漏掉某一端。
-- [ ] 品牌配置单一来源：仓库根 `branding/<brand>.json`（appName、shortName、logo/icon 路径、
-      主题色、公司名、官网、支持邮箱、协议链接），默认 `branding/default.json`
-- [ ] 构建时选择品牌：`BRAND=acme npm run build`，三端各自读取同一份 JSON
-- [ ] 客户端：窗口标题 / 关于页 / 托盘名 / 安装包名与图标（electron-builder productName、
-      icon、appId 从品牌配置注入），登录页 logo
-- [ ] 管理后台（admin/）：登录页与侧边栏 logo + 名称、浏览器标题、favicon、主题色
-- [ ] 后端：公开看板页（`/c/:token`）的名称与 logo、邮件模板署名与发件人显示名
+- [x] 品牌配置单一来源：仓库根 branding/<brand>.json，默认 default.json
+- [x] BRAND=<name> 选择品牌：client/admin 构建期注入，server 运行时读取；
+      打错品牌名硬失败，不悄悄回落默认
+- [x] 客户端：窗口标题/标题栏/登录 Logo/通知兜底标题/app 名；
+      各品牌独立 userData 目录（贴牌版与原版共存不串数据）
+- [ ] electron-builder 打包接入（productName/appId/icon 从品牌配置取，待打包配置建立）
+- [x] 管理后台：登录页标题、侧栏 Logo/名称、浏览器标题（favicon/主题色预留）
+- [x] 后端：看板页标题占位符替换、验证码邮件署名（logo 预留）
 - [ ] logo 资源按品牌目录存放（`branding/<brand>/logo.svg`、`icon.icns`、`icon.ico`、`favicon`），
       构建脚本按需拷贝，缺失时回落到默认并给出告警
 - [ ] 校验：CI 里对每个品牌跑一次构建，防止某端漏读配置导致上线才发现还叫旧名字
