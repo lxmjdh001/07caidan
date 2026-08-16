@@ -2,20 +2,13 @@ import { useMemo, useState } from 'react'
 import type { ChannelState, Conversation } from '@shared/domain'
 import { useI18n } from '../i18n'
 import { formatListTime } from '../time'
+import { Avatar } from './Avatar'
 
 interface Props {
   conversations: Conversation[]
   activeId: string | null
   waState: ChannelState | undefined
   onSelect: (id: string) => void
-}
-
-const AVATAR_COLORS = ['#4f9cf9', '#22a06b', '#e8833a', '#9a6ff0', '#e5588c', '#2fb5b5']
-
-function avatarColor(id: string): string {
-  let hash = 0
-  for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) | 0
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]!
 }
 
 export function ConversationList({
@@ -74,9 +67,7 @@ export function ConversationList({
               className={`conversation-item ${c.id === activeId ? 'active' : ''}`}
               onClick={() => onSelect(c.id)}
             >
-              <span className="avatar" style={{ background: avatarColor(c.id) }}>
-                {c.title.slice(0, 1).toUpperCase()}
-              </span>
+              <Avatar id={c.id} title={c.title} avatarMediaId={c.avatarMediaId} />
               <span className="conversation-main">
                 <span className="conversation-top">
                   <span className="conversation-title">{c.title}</span>

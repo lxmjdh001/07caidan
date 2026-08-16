@@ -293,10 +293,22 @@ body {
 }
 
 .chat-header {
-  padding: 14px 22px;
+  padding: 11px 22px;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
   -webkit-app-region: drag;
+}
+
+.chat-header-text {
+  min-width: 0;
+}
+
+.avatar-img {
+  object-fit: cover;
+  border-radius: 50%;
 }
 
 .chat-title {

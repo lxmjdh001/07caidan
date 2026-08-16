@@ -16,6 +16,7 @@ export interface ConversationPatch {
   id: string
   title?: string
   isGroup?: boolean
+  avatarMediaId?: string
 }
 
 /**

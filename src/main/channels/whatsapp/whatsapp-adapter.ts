@@ -48,8 +48,10 @@ export class WhatsAppAdapter extends ChannelAdapter {
 
   private readonly authDir: string
   private readonly log: Logger
-  /** Baileys 内部日志走独立的静默 pino；关键连接事件由本适配器自行记录 */
-  private readonly waLogger = pino({ level: 'silent' })
+  /** Baileys 内部日志：error 级别输出到 stdout，解密/协议错误必须可见 */
+  private readonly waLogger = pino({ level: 'error' })
+  /** 最近发出的消息内容缓存，供对端请求重发（getMessage）使用 */
+  private readonly sentCache = new Map<string, unknown>()
 
   private sock: ReturnType<typeof makeWASocket> | undefined
   private status: ChannelStatus = 'stopped'
@@ -113,6 +115,7 @@ export class WhatsAppAdapter extends ChannelAdapter {
       throw new Error('WhatsApp 未连接，无法发送')
     }
     const result = await this.sock.sendMessage(externalChatId, { text })
+    this.cacheSent(result?.key?.id, result?.message)
     this.log.debug('消息已发送', { to: externalChatId, id: result?.key?.id })
     return { externalId: result?.key?.id ?? undefined }
   }
@@ -123,8 +126,30 @@ export class WhatsAppAdapter extends ChannelAdapter {
     }
     const content = toWaMediaContent(media)
     const result = await this.sock.sendMessage(externalChatId, content)
+    this.cacheSent(result?.key?.id, result?.message)
     this.log.debug('媒体已发送', { to: externalChatId, type: media.mediaType, id: result?.key?.id })
     return { externalId: result?.key?.id ?? undefined }
+  }
+
+  override async fetchAvatar(externalChatId: string): Promise<string | undefined> {
+    if (!this.sock || this.status !== 'connected' || !this.saveMedia) return undefined
+    // 无头像/无权限查看时 profilePictureUrl 会抛错，视为无头像
+    const url = await this.sock.profilePictureUrl(externalChatId, 'image').catch(() => undefined)
+    if (!url) return undefined
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) })
+    if (!res.ok) return undefined
+    const buffer = Buffer.from(await res.arrayBuffer())
+    return this.saveMedia(buffer, '.jpg')
+  }
+
+  private cacheSent(id: string | null | undefined, message: unknown): void {
+    if (!id || !message) return
+    this.sentCache.set(id, message)
+    // 只保留最近 200 条
+    if (this.sentCache.size > 200) {
+      const first = this.sentCache.keys().next().value
+      if (first) this.sentCache.delete(first)
+    }
   }
 
   /** 后台下载入站媒体，成功后通过 messageUpdate 补上 mediaId */
@@ -175,7 +200,11 @@ export class WhatsAppAdapter extends ChannelAdapter {
       browser: Browsers.macOS('Desktop'),
       markOnlineOnConnect: false,
       syncFullHistory: false,
-      generateHighQualityLinkPreview: false
+      generateHighQualityLinkPreview: false,
+      // 对端因解密失败请求重发时，从最近发送缓存取回消息内容
+      getMessage: async (key) => {
+        return (this.sentCache.get(key.id ?? '') ?? undefined) as never
+      }
     })
     this.sock = sock
 
@@ -216,8 +245,29 @@ export class WhatsAppAdapter extends ChannelAdapter {
       }
     })
 
-    sock.ev.on('messages.upsert', ({ messages }) => {
+    sock.ev.on('messages.upsert', ({ messages, type }) => {
+      this.log.debug('messages.upsert', {
+        type,
+        count: messages.length,
+        items: messages.map((m) => ({
+          jid: m.key?.remoteJid,
+          fromMe: m.key?.fromMe,
+          id: m.key?.id,
+          stub: (m as { messageStubType?: number }).messageStubType,
+          contentKeys: m.message ? Object.keys(m.message) : null
+        }))
+      })
       for (const raw of messages) {
+        const stub = (raw as { messageStubType?: number }).messageStubType
+        if (!raw.message && stub) {
+          // 解密失败/系统占位消息：记录下来便于排障（Baileys 会自动发起重试）
+          this.log.warn('收到无法解析的消息（可能解密失败，等待对端重发）', {
+            jid: raw.key?.remoteJid,
+            id: raw.key?.id,
+            stubType: stub
+          })
+          continue
+        }
         const mapped = mapWaMessage(raw as unknown as WaRawMessage, this.accountId)
         if (!mapped) continue
         this.emit('message', mapped)

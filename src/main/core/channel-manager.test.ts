@@ -211,6 +211,31 @@ describe('ChannelManager', () => {
     expect(events.some((e) => e.type === 'message:new')).toBe(true)
   })
 
+  it('新会话自动拉取头像并广播 conversation:updated，且只尝试一次', async () => {
+    adapter.fetchAvatar = vi.fn(async () => 'avatar-1.jpg')
+    adapter.fakeIncoming()
+    await flushAsync()
+    adapter.fakeIncoming({ id: 'second' })
+    await flushAsync()
+
+    expect(adapter.fetchAvatar).toHaveBeenCalledTimes(1)
+    const convs = await store.listConversations()
+    expect(convs[0]?.avatarMediaId).toBe('avatar-1.jpg')
+    const evt = events.find(
+      (e) => e.type === 'conversation:updated' && e.conversation.avatarMediaId === 'avatar-1.jpg'
+    )
+    expect(evt).toBeDefined()
+  })
+
+  it('头像拉取失败不影响消息流程', async () => {
+    adapter.fetchAvatar = vi.fn(async () => {
+      throw new Error('404')
+    })
+    adapter.fakeIncoming()
+    await flushAsync()
+    expect(events.some((e) => e.type === 'message:new')).toBe(true)
+  })
+
   it('sendMediaFile 失败：状态 failed 仍入库', async () => {
     adapter.sendMedia.mockRejectedValueOnce(new Error('upload failed'))
     const src = join(dir, 'clip.mp4')

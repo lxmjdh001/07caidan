@@ -76,6 +76,8 @@ export interface Conversation {
   /** 平台侧会话 ID（WhatsApp 为 jid，Telegram 为 chat id 等） */
   externalChatId: string
   title: string
+  /** 对方头像（MediaStore 内的文件 ID），未获取到则用首字母占位 */
+  avatarMediaId?: string
   isGroup: boolean
   lastMessageAt: number
   lastMessagePreview: string

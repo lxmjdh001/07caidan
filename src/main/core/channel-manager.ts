@@ -17,6 +17,8 @@ import { mediaTypeFromMime, mimeFromPath } from './mime'
 export class ChannelManager {
   private readonly adapters = new Map<string, ChannelAdapter>()
   private readonly states = new Map<string, ChannelState>()
+  /** 已尝试拉取头像的会话（避免重复请求，无论成败本次运行只试一次） */
+  private readonly avatarAttempted = new Set<string>()
 
   constructor(
     private readonly store: MessageStore,
@@ -40,6 +42,16 @@ export class ChannelManager {
     adapter.on('state', (state) => {
       this.states.set(adapter.key, state)
       this.broadcast({ type: 'channel:state', state })
+      // 连接就绪后为该渠道的历史会话补拉头像
+      if (state.status === 'connected') {
+        void this.store.listConversations().then((list) => {
+          for (const conv of list) {
+            if (conv.channel === adapter.kind && conv.accountId === adapter.accountId) {
+              this.ensureAvatar(conv)
+            }
+          }
+        })
+      }
     })
 
     adapter.on('message', (msg) => {
@@ -155,6 +167,7 @@ export class ChannelManager {
 
     const { conversation } = await this.store.recordMessage(msg)
     this.broadcast({ type: 'message:new', message: msg, conversation })
+    this.ensureAvatar(conversation)
     return msg
   }
 
@@ -166,9 +179,29 @@ export class ChannelManager {
       })
       if (duplicated) return
       this.broadcast({ type: 'message:new', message: msg, conversation })
+      this.ensureAvatar(conversation)
     } catch (err) {
       this.logger.error('入站消息处理失败', err)
     }
+  }
+
+  /** 会话还没有头像时异步拉取一次（成功后广播 conversation:updated） */
+  private ensureAvatar(conv: { id: string; avatarMediaId?: string }): void {
+    if (conv.avatarMediaId || this.avatarAttempted.has(conv.id)) return
+    this.avatarAttempted.add(conv.id)
+    void (async () => {
+      const { channel, accountId, externalChatId } = parseConversationId(conv.id)
+      const adapter = this.adapters.get(`${channel}:${accountId}`)
+      if (!adapter?.fetchAvatar) return
+      try {
+        const mediaId = await adapter.fetchAvatar(externalChatId)
+        if (!mediaId) return
+        const updated = await this.store.patchConversation({ id: conv.id, avatarMediaId: mediaId })
+        if (updated) this.broadcast({ type: 'conversation:updated', conversation: updated })
+      } catch (err) {
+        this.logger.debug(`拉取头像失败 ${conv.id}`, err)
+      }
+    })()
   }
 
   private requireAdapter(key: string): ChannelAdapter {

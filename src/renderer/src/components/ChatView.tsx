@@ -3,6 +3,7 @@ import type { Conversation, MessageBody, UnifiedMessage } from '@shared/domain'
 import { previewOf } from '@shared/domain'
 import { useI18n } from '../i18n'
 import { formatBubbleTime } from '../time'
+import { Avatar } from './Avatar'
 
 interface Props {
   conversation: Conversation | null
@@ -82,10 +83,18 @@ export function ChatView({
   return (
     <div className="chat">
       <header className="chat-header">
-        <div className="chat-title">{conversation.title}</div>
-        <div className="chat-subtitle">
-          <span className="channel-chip">{t('channel.whatsapp')}</span>
-          {conversation.isGroup ? ' · 群组' : ''}
+        <Avatar
+          id={conversation.id}
+          title={conversation.title}
+          avatarMediaId={conversation.avatarMediaId}
+          size={38}
+        />
+        <div className="chat-header-text">
+          <div className="chat-title">{conversation.title}</div>
+          <div className="chat-subtitle">
+            <span className="channel-chip">{t('channel.whatsapp')}</span>
+            {conversation.isGroup ? ' · 群组' : ''}
+          </div>
         </div>
       </header>
       <div className="chat-scroll" ref={scrollRef}>
