@@ -445,6 +445,83 @@ export const billingSettings = sqliteTable('billing_settings', {
   updatedAt: integer('updated_at').notNull()
 })
 
+// ══════════ 运营公告与通知 ══════════
+
+/**
+ * 公告（管理员 → 定向人群）。受众在**拉取时**按用户实时求值，
+ * 不做静态名单 —— 用户今天买了套餐，明天就该看到对应套餐的公告。
+ */
+export const announcements = sqliteTable(
+  'announcements',
+  {
+    tenant: text('tenant').notNull(),
+    id: text('id').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    /** all / plan / new_users / expiring */
+    audience: text('audience').notNull().default('all'),
+    /** plan → planId；new_users/expiring → 天数 */
+    audienceParam: text('audience_param').notNull().default(''),
+    enabled: integer('enabled').notNull().default(1),
+    createdAt: integer('created_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.id] })]
+)
+
+/** 公告已读标记 */
+export const announcementReads = sqliteTable(
+  'announcement_reads',
+  {
+    tenant: text('tenant').notNull(),
+    announcementId: text('announcement_id').notNull(),
+    userId: integer('user_id').notNull(),
+    readAt: integer('read_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.announcementId, t.userId] })]
+)
+
+/** 个人通知（系统生成，如到期提醒）；readAt 为空 = 未读 */
+export const userNotices = sqliteTable(
+  'user_notices',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    tenant: text('tenant').notNull(),
+    userId: integer('user_id').notNull(),
+    /** expiry / system */
+    kind: text('kind').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull(),
+    readAt: integer('read_at'),
+    createdAt: integer('created_at').notNull()
+  },
+  (t) => [index('idx_notices_user').on(t.tenant, t.userId, t.readAt)]
+)
+
+/** 到期提醒配置（租户级） */
+export const reminderSettings = sqliteTable('reminder_settings', {
+  tenant: text('tenant').primaryKey(),
+  enabled: integer('enabled').notNull().default(0),
+  /** 逗号分隔的提前天数，如 "7,3,1" */
+  daysBefore: text('days_before').notNull().default('7,3,1'),
+  emailEnabled: integer('email_enabled').notNull().default(0),
+  emailSubject: text('email_subject').notNull().default(''),
+  emailBody: text('email_body').notNull().default(''),
+  updatedAt: integer('updated_at').notNull()
+})
+
+/** 到期提醒去重：每档提前天数对每个到期周期只发一次 */
+export const remindersSent = sqliteTable(
+  'reminders_sent',
+  {
+    tenant: text('tenant').notNull(),
+    userId: integer('user_id').notNull(),
+    threshold: integer('threshold').notNull(),
+    expiresAt: integer('expires_at').notNull(),
+    sentAt: integer('sent_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.userId, t.threshold, t.expiresAt] })]
+)
+
 export const media = sqliteTable(
   'media',
   {

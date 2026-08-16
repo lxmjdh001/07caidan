@@ -108,6 +108,26 @@ export class ClientAuthRepo {
     return u ? toUser(u) : null
   }
 
+  /** 注册时间（公告受众"新用户"求值用） */
+  registeredAt(userId: number): number | undefined {
+    const r = this.db
+      .select({ createdAt: clientUsers.createdAt })
+      .from(clientUsers)
+      .where(eq(clientUsers.id, userId))
+      .get()
+    return r?.createdAt
+  }
+
+  /** 按用户 id 取邮箱（到期提醒发邮件用） */
+  emailOf(userId: number): string | undefined {
+    const r = this.db
+      .select({ email: clientUsers.email })
+      .from(clientUsers)
+      .where(eq(clientUsers.id, userId))
+      .get()
+    return r?.email
+  }
+
   /** 该邮箱是否已注册（找回密码发码前的静默检查） */
   hasUser(email: string): boolean {
     return !!this.db

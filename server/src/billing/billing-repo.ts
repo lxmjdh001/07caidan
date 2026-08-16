@@ -364,6 +364,30 @@ export class BillingRepo {
       .run()
   }
 
+  /** 未来 before 之前到期、当前仍生效的订阅（到期提醒用） */
+  listExpiringSubscriptions(tenant: string, before: number, now = Date.now()): Subscription[] {
+    return this.db
+      .select()
+      .from(subscriptions)
+      .where(
+        and(
+          eq(subscriptions.tenant, tenant),
+          eq(subscriptions.status, 'active'),
+          sql`${subscriptions.expiresAt} > ${now}`,
+          sql`${subscriptions.expiresAt} <= ${before}`
+        )
+      )
+      .all()
+      .map((r) => ({
+        userId: r.userId,
+        planId: r.planId,
+        startAt: r.startAt,
+        expiresAt: r.expiresAt,
+        autoRenew: r.autoRenew === 1,
+        status: r.status
+      }))
+  }
+
   /** 到期的生效订阅（定时任务处理续费/过期用） */
   listDueSubscriptions(tenant: string, now = Date.now()): Subscription[] {
     return this.db

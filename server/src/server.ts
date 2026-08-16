@@ -23,6 +23,9 @@ import type { ServerConfig } from './config.ts'
 import { openDb } from './db.ts'
 import { createEmailSender } from './email.ts'
 import { LineRelay } from './line-relay.ts'
+import { NotifyRepo, type Audience } from './notify/notify-repo.ts'
+import { sweepReminders } from './notify/reminder-cron.ts'
+import { REMINDER_VARS } from './notify/template.ts'
 import { Repo } from './repo.ts'
 import type { SyncPayload } from './types.ts'
 import { brand } from './branding.ts'
@@ -54,6 +57,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   const orderRepo = new OrderRepo(db, billingRepo)
   const channelRepo = new ChannelRepo(db)
   const aiRepo = new AiRepo(db, billingRepo)
+  const notifyRepo = new NotifyRepo(db)
   const aiClient = overrides.aiClient ?? new AiClient()
   const mailer = createEmailSender(config)
   auth.bootstrap(config.adminTenant, config.adminUser, config.adminPassword)
@@ -174,6 +178,25 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     logger: app.log
   })
   app.addHook('onClose', async () => stopBillingCron())
+
+  // 到期提醒巡检（每小时；sweep 幂等，重启补跑安全）
+  const reminderTimer = setInterval(
+    () =>
+      void sweepReminders({
+        billing: billingRepo,
+        notify: notifyRepo,
+        emailOf: (_t, userId) => clientAuth.emailOf(userId),
+        sendMail: (to, subject, body) => mailer.send(to, subject, body),
+        appName: brand.appName,
+        tenants: () => [config.clientTenant],
+        logger: app.log
+      }).then((n) => {
+        if (n > 0) app.log.info({ sent: n }, '到期提醒已发送')
+      }),
+    60 * 60 * 1000
+  )
+  reminderTimer.unref?.()
+  app.addHook('onClose', async () => clearInterval(reminderTimer))
 
   // LINE 事件队列超龄清理：客户端长期离线时 3 天前的事件已无时效价值
   const linePrune = setInterval(
@@ -697,6 +720,99 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   // 分享页本体：独立静态页，收件人打开一个 URL 就能看
   app.get('/c/:token', async (_req, reply) => {
     return reply.type('text/html; charset=utf-8').send(await readDashboardHtml())
+  })
+
+  // ── 运营公告（需 announcements:manage）──
+  const AUDIENCES: Audience[] = ['all', 'plan', 'new_users', 'expiring']
+
+  app.get('/api/admin/announcements', async (req, reply) => {
+    if (!requirePerm(req, reply, 'announcements:manage')) return
+    return { announcements: notifyRepo.listAnnouncements(ctxOf(req).tenant) }
+  })
+
+  app.post('/api/admin/announcements', async (req, reply) => {
+    if (!requirePerm(req, reply, 'announcements:manage')) return
+    const b = (req.body ?? {}) as {
+      title?: string
+      body?: string
+      audience?: string
+      audienceParam?: string
+    }
+    if (!b.title?.trim() || !b.body?.trim()) {
+      return reply.code(400).send({ error: '标题与正文必填' })
+    }
+    const audience = (b.audience ?? 'all') as Audience
+    if (!AUDIENCES.includes(audience)) return reply.code(400).send({ error: '受众类型不合法' })
+    return {
+      announcement: notifyRepo.createAnnouncement(ctxOf(req).tenant, {
+        title: b.title.trim(),
+        body: b.body,
+        audience,
+        audienceParam: b.audienceParam ?? ''
+      })
+    }
+  })
+
+  app.patch('/api/admin/announcements/:id', async (req, reply) => {
+    if (!requirePerm(req, reply, 'announcements:manage')) return
+    const ok = notifyRepo.updateAnnouncement(
+      ctxOf(req).tenant,
+      (req.params as { id: string }).id,
+      (req.body ?? {}) as Record<string, never>
+    )
+    return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
+  })
+
+  app.delete('/api/admin/announcements/:id', async (req, reply) => {
+    if (!requirePerm(req, reply, 'announcements:manage')) return
+    const ok = notifyRepo.deleteAnnouncement(ctxOf(req).tenant, (req.params as { id: string }).id)
+    return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
+  })
+
+  app.get('/api/admin/reminder-settings', async (req, reply) => {
+    if (!requirePerm(req, reply, 'announcements:manage')) return
+    return { settings: notifyRepo.reminderConfig(ctxOf(req).tenant), vars: REMINDER_VARS }
+  })
+
+  app.put('/api/admin/reminder-settings', async (req, reply) => {
+    if (!requirePerm(req, reply, 'announcements:manage')) return
+    return {
+      settings: notifyRepo.updateReminderConfig(
+        ctxOf(req).tenant,
+        (req.body ?? {}) as Record<string, never>
+      )
+    }
+  })
+
+  // ── 客户端：拉取未读通知（公告 + 个人通知合并） ──
+  app.get('/api/notices', async (req, reply) => {
+    const ctx = ctxOf(req)
+    if (ctx.clientUserId === undefined) {
+      return reply.code(403).send({ error: '需要客户端账号登录' })
+    }
+    const sub = billingRepo.getSubscription(ctx.tenant, ctx.clientUserId)
+    const registeredAt = clientAuth.registeredAt(ctx.clientUserId) ?? Date.now()
+    const profile = {
+      userId: ctx.clientUserId,
+      registeredAt,
+      planId: sub?.status === 'active' ? sub.planId : undefined,
+      expiresAt: sub?.status === 'active' ? sub.expiresAt : undefined
+    }
+    return {
+      announcements: notifyRepo.unreadAnnouncementsFor(ctx.tenant, profile),
+      notices: notifyRepo.unreadNotices(ctx.tenant, ctx.clientUserId)
+    }
+  })
+
+  app.post('/api/notices/read', async (req, reply) => {
+    const ctx = ctxOf(req)
+    if (ctx.clientUserId === undefined) {
+      return reply.code(403).send({ error: '需要客户端账号登录' })
+    }
+    const b = (req.body ?? {}) as { announcementIds?: string[]; noticeIds?: number[] }
+    notifyRepo.markAnnouncementsRead(ctx.tenant, ctx.clientUserId, b.announcementIds ?? [])
+    notifyRepo.markNoticesRead(ctx.tenant, ctx.clientUserId, (b.noticeIds ?? []).map(Number))
+    return { ok: true }
   })
 
   // ── AI 分析（需 analyze:run）──

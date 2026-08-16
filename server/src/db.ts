@@ -176,6 +176,37 @@ export function openDb(dbPath: string): Db {
     );
     CREATE INDEX IF NOT EXISTS idx_orders_user ON orders (tenant, user_id, created_at);
 
+    CREATE TABLE IF NOT EXISTS announcements (
+      tenant TEXT NOT NULL, id TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL,
+      audience TEXT NOT NULL DEFAULT 'all', audience_param TEXT NOT NULL DEFAULT '',
+      enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, id)
+    );
+    CREATE TABLE IF NOT EXISTS announcement_reads (
+      tenant TEXT NOT NULL, announcement_id TEXT NOT NULL, user_id INTEGER NOT NULL,
+      read_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, announcement_id, user_id)
+    );
+    CREATE TABLE IF NOT EXISTS user_notices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant TEXT NOT NULL, user_id INTEGER NOT NULL, kind TEXT NOT NULL,
+      title TEXT NOT NULL, body TEXT NOT NULL,
+      read_at INTEGER, created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_notices_user ON user_notices (tenant, user_id, read_at);
+    CREATE TABLE IF NOT EXISTS reminder_settings (
+      tenant TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 0,
+      days_before TEXT NOT NULL DEFAULT '7,3,1',
+      email_enabled INTEGER NOT NULL DEFAULT 0,
+      email_subject TEXT NOT NULL DEFAULT '', email_body TEXT NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS reminders_sent (
+      tenant TEXT NOT NULL, user_id INTEGER NOT NULL, threshold INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL, sent_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, user_id, threshold, expires_at)
+    );
+
     CREATE TABLE IF NOT EXISTS ai_providers (
       tenant TEXT NOT NULL, id TEXT NOT NULL, type TEXT NOT NULL, name TEXT NOT NULL,
       base_url TEXT NOT NULL DEFAULT '', api_key TEXT NOT NULL DEFAULT '',
