@@ -127,6 +127,35 @@ body {
   cursor: default;
 }
 
+.rail-item.active {
+  background: rgb(255 255 255 / 0.14);
+  color: #fff;
+}
+
+.rail-divider {
+  width: 28px;
+  height: 1px;
+  background: rgb(255 255 255 / 0.12);
+  margin: 2px 0;
+}
+
+.rail-index {
+  position: absolute;
+  top: 3px;
+  right: 5px;
+  font-size: 9px;
+  font-weight: 700;
+  color: #9aa3b2;
+}
+
+.rail-add {
+  border: 1px dashed rgb(255 255 255 / 0.25);
+}
+
+.rail-all {
+  color: #c6ccd6;
+}
+
 .rail-spacer {
   flex: 1;
 }
@@ -808,6 +837,35 @@ body {
   color: var(--muted);
   margin: -6px 0 12px;
   line-height: 1.5;
+}
+
+.account-block {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+
+.account-block-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.account-name {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+
+.account-key {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.account-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .modal-footer {

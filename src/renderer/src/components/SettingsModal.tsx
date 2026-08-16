@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { ChannelState } from '@shared/domain'
 import type { TranslatorInfo } from '@shared/ipc'
 import { LANGUAGES } from '@shared/langs'
 import type { AppSettings } from '@shared/settings'
@@ -6,10 +7,17 @@ import { dictionaries, useI18n } from '../i18n'
 
 interface Props {
   settings: AppSettings
+  channels: Record<string, ChannelState>
   translators: TranslatorInfo[]
   onSave: (patch: Partial<AppSettings>) => Promise<void>
-  onLogoutWhatsApp: () => Promise<void>
+  onLogoutAccount: (key: string) => Promise<void>
+  onRemoveAccount: (key: string) => Promise<void>
   onClose: () => void
+}
+
+interface AccountDraft {
+  proxyUrl: string
+  defaultLang: string
 }
 
 function LangSelect({
@@ -36,9 +44,11 @@ function LangSelect({
 
 export function SettingsModal({
   settings,
+  channels,
   translators,
   onSave,
-  onLogoutWhatsApp,
+  onLogoutAccount,
+  onRemoveAccount,
   onClose
 }: Props): React.JSX.Element {
   const { t } = useI18n()
@@ -57,11 +67,25 @@ export function SettingsModal({
   const [llmBaseUrl, setLlmBaseUrl] = useState(tr.llm.baseUrl)
   const [llmKey, setLlmKey] = useState(tr.llm.apiKey)
   const [llmModel, setLlmModel] = useState(tr.llm.model)
-  const [proxyUrl, setProxyUrl] = useState(settings.accounts['whatsapp:main']?.proxyUrl ?? '')
-  const [accountLang, setAccountLang] = useState(
-    settings.accounts['whatsapp:main']?.defaultLang ?? ''
+  const accountKeys = Object.keys(settings.accounts).sort((a, b) =>
+    a === 'whatsapp:main' ? -1 : b === 'whatsapp:main' ? 1 : a.localeCompare(b)
+  )
+  const [accountsCfg, setAccountsCfg] = useState<Record<string, AccountDraft>>(() =>
+    Object.fromEntries(
+      accountKeys.map((key) => [
+        key,
+        {
+          proxyUrl: settings.accounts[key]?.proxyUrl ?? '',
+          defaultLang: settings.accounts[key]?.defaultLang ?? ''
+        }
+      ])
+    )
   )
   const [saving, setSaving] = useState(false)
+
+  const patchAccount = (key: string, patch: Partial<AccountDraft>): void => {
+    setAccountsCfg((prev) => ({ ...prev, [key]: { ...prev[key]!, ...patch } }))
+  }
 
   const save = async (): Promise<void> => {
     setSaving(true)
@@ -80,13 +104,16 @@ export function SettingsModal({
           googleCloud: { apiKey: gcKey.trim() },
           llm: { baseUrl: llmBaseUrl.trim(), apiKey: llmKey.trim(), model: llmModel.trim() }
         },
-        accounts: {
-          ...settings.accounts,
-          'whatsapp:main': {
-            proxyUrl: proxyUrl.trim() || undefined,
-            defaultLang: accountLang || undefined
-          }
-        }
+        accounts: Object.fromEntries(
+          Object.entries(accountsCfg).map(([key, draft]) => [
+            key,
+            {
+              ...settings.accounts[key],
+              proxyUrl: draft.proxyUrl.trim() || undefined,
+              defaultLang: draft.defaultLang || undefined
+            }
+          ])
+        )
       })
     } finally {
       setSaving(false)
@@ -219,36 +246,65 @@ export function SettingsModal({
 
         <section>
           <h3>{t('settings.account')}</h3>
-          <label className="field">
-            <span>{t('settings.accountLang')}</span>
-            <LangSelect
-              value={accountLang}
-              onChange={setAccountLang}
-              allowEmpty={t('settings.followGlobal')}
-            />
-          </label>
-          <label className="field">
-            <span>{t('settings.proxy')}</span>
-            <input
-              type="text"
-              value={proxyUrl}
-              placeholder="socks5://127.0.0.1:1080"
-              onChange={(e) => setProxyUrl(e.target.value)}
-            />
-          </label>
-          <p className="field-hint">{t('settings.proxyHint')}</p>
-          <button
-            type="button"
-            className="danger-btn"
-            onClick={() => {
-              if (window.confirm(t('settings.logoutConfirm'))) {
-                void onLogoutWhatsApp()
-                onClose()
-              }
-            }}
-          >
-            {t('settings.logout')}
-          </button>
+          {accountKeys.map((key, i) => {
+            const draft = accountsCfg[key]!
+            const state = channels[key]
+            const name = state?.selfName || `WhatsApp ${i + 1}`
+            return (
+              <div key={key} className="account-block">
+                <div className="account-block-head">
+                  <span className="account-name">{name}</span>
+                  <span className="account-key">{key}</span>
+                </div>
+                <label className="field">
+                  <span>{t('settings.accountLang')}</span>
+                  <LangSelect
+                    value={draft.defaultLang}
+                    onChange={(v) => patchAccount(key, { defaultLang: v })}
+                    allowEmpty={t('settings.followGlobal')}
+                  />
+                </label>
+                <label className="field">
+                  <span>{t('settings.proxy')}</span>
+                  <input
+                    type="text"
+                    value={draft.proxyUrl}
+                    placeholder="socks5://127.0.0.1:1080"
+                    onChange={(e) => patchAccount(key, { proxyUrl: e.target.value })}
+                  />
+                </label>
+                <p className="field-hint">{t('settings.proxyHint')}</p>
+                <div className="account-actions">
+                  <button
+                    type="button"
+                    className="danger-btn"
+                    onClick={() => {
+                      if (window.confirm(t('settings.logoutConfirm'))) {
+                        void onLogoutAccount(key)
+                        onClose()
+                      }
+                    }}
+                  >
+                    {t('settings.logout')}
+                  </button>
+                  {key !== 'whatsapp:main' && (
+                    <button
+                      type="button"
+                      className="danger-btn"
+                      onClick={() => {
+                        if (window.confirm(t('settings.removeConfirm'))) {
+                          void onRemoveAccount(key)
+                          onClose()
+                        }
+                      }}
+                    >
+                      {t('settings.removeAccount')}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </section>
 
         <footer className="modal-footer">

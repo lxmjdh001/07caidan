@@ -16,6 +16,8 @@ export function App(): React.JSX.Element {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [messages, setMessages] = useState<Record<string, UnifiedMessage[]>>({})
   const [activeId, setActiveId] = useState<string | null>(null)
+  /** null = 全部消息；否则为 channel key（如 whatsapp:main），只看该账号 */
+  const [activeAccountKey, setActiveAccountKey] = useState<string | null>(null)
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [translators, setTranslators] = useState<TranslatorInfo[]>([])
   const [showSettings, setShowSettings] = useState(false)
@@ -44,6 +46,13 @@ export function App(): React.JSX.Element {
             ...prev,
             [`${evt.state.kind}:${evt.state.accountId}`]: evt.state
           }))
+          break
+        case 'channel:removed':
+          setChannels((prev) => {
+            const next = { ...prev }
+            delete next[evt.key]
+            return next
+          })
           break
         case 'conversation:updated':
           upsertConversation(evt.conversation)
@@ -137,12 +146,49 @@ export function App(): React.JSX.Element {
     setSettings(updated)
   }, [])
 
+  const selectAccount = useCallback(
+    (key: string | null) => {
+      setActiveAccountKey(key)
+      // 切换账号视图时，若当前会话不属于该账号则退出会话
+      if (key && activeId && !activeId.startsWith(`${key}:`)) setActiveId(null)
+    },
+    [activeId]
+  )
+
+  const addAccount = useCallback(async () => {
+    const key = await api.addAccount('whatsapp')
+    setActiveAccountKey(key)
+    setActiveId(null)
+  }, [])
+
   const locale: Locale = settings && isLocale(settings.locale) ? settings.locale : 'zh-CN'
-  const waState = channels['whatsapp:main']
+
+  const visibleConversations = useMemo(
+    () =>
+      activeAccountKey
+        ? conversations.filter((c) => `${c.channel}:${c.accountId}` === activeAccountKey)
+        : conversations,
+    [conversations, activeAccountKey]
+  )
+
+  /** 当前视图相关的渠道状态（横幅/二维码用） */
+  const relevantStates = useMemo(() => {
+    if (activeAccountKey) {
+      const s = channels[activeAccountKey]
+      return s ? [s] : []
+    }
+    return Object.values(channels)
+  }, [channels, activeAccountKey])
+
   const activeConversation = useMemo(
     () => conversations.find((c) => c.id === activeId) ?? null,
     [conversations, activeId]
   )
+
+  const activeConvConnected = activeConversation
+    ? channels[`${activeConversation.channel}:${activeConversation.accountId}`]?.status ===
+      'connected'
+    : relevantStates.some((s) => s.status === 'connected')
   // 同一客户（contactId 相同）是否在其他账号/渠道出现过
   const knownFromOther = useMemo(() => {
     const c = activeConversation
@@ -154,7 +200,9 @@ export function App(): React.JSX.Element {
         (other.accountId !== c.accountId || other.channel !== c.channel)
     )
   }, [conversations, activeConversation])
-  const showQr = waState?.status === 'waiting_qr'
+  // 选中具体账号且它在等扫码 → 聊天区显示二维码
+  const qrState = activeAccountKey ? channels[activeAccountKey] : undefined
+  const showQr = qrState?.status === 'waiting_qr'
 
   return (
     <I18nProvider locale={locale}>
@@ -164,29 +212,37 @@ export function App(): React.JSX.Element {
         </header>
         <div className="app-body">
           <ChannelRail
-          channels={channels}
-          onChannelClick={(key) => {
-            const st = channels[key]
-            if (st && (st.status === 'stopped' || st.status === 'logged_out' || st.status === 'error')) {
-              void api.startChannel(key)
-            }
-          }}
-          onOpenSettings={() => setShowSettings(true)}
-        />
-        <ConversationList
-          conversations={conversations}
-          activeId={activeId}
-          waState={waState}
-          onSelect={selectConversation}
-        />
+            channels={channels}
+            activeKey={activeAccountKey}
+            onSelect={(key) => {
+              selectAccount(key)
+              if (key) {
+                const st = channels[key]
+                if (
+                  st &&
+                  (st.status === 'stopped' || st.status === 'logged_out' || st.status === 'error')
+                ) {
+                  void api.startChannel(key)
+                }
+              }
+            }}
+            onAddAccount={() => void addAccount()}
+            onOpenSettings={() => setShowSettings(true)}
+          />
+          <ConversationList
+            conversations={visibleConversations}
+            activeId={activeId}
+            states={relevantStates}
+            onSelect={selectConversation}
+          />
           <main className="content">
             {showQr ? (
-              <QrPanel qrDataUrl={waState?.qrDataUrl} />
+              <QrPanel qrDataUrl={qrState?.qrDataUrl} />
             ) : (
               <ChatView
                 conversation={activeConversation}
                 messages={activeId ? messages[activeId] ?? [] : []}
-                connected={waState?.status === 'connected'}
+                connected={activeConvConnected}
                 knownFromOther={knownFromOther}
                 onSend={sendText}
                 onSendMedia={sendMediaFile}
@@ -200,12 +256,19 @@ export function App(): React.JSX.Element {
         {showSettings && settings && (
           <SettingsModal
             settings={settings}
+            channels={channels}
             translators={translators}
             onSave={async (patch) => {
               await saveSettings(patch)
               setShowSettings(false)
             }}
-            onLogoutWhatsApp={() => api.logoutChannel('whatsapp:main')}
+            onLogoutAccount={(key) => api.logoutChannel(key)}
+            onRemoveAccount={async (key) => {
+              await api.removeAccount(key)
+              const updated = await api.getSettings()
+              setSettings(updated)
+              if (activeAccountKey === key) setActiveAccountKey(null)
+            }}
             onClose={() => setShowSettings(false)}
           />
         )}

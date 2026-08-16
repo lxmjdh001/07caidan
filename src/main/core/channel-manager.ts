@@ -86,6 +86,21 @@ export class ChannelManager {
     return [...this.states.values()]
   }
 
+  /** 注销账号：停止连接、解绑事件、从注册表移除并广播 */
+  async unregister(key: string): Promise<void> {
+    const adapter = this.adapters.get(key)
+    if (!adapter) return
+    try {
+      await adapter.stop()
+    } catch {
+      // 停止失败也继续移除
+    }
+    adapter.removeAllListeners()
+    this.adapters.delete(key)
+    this.states.delete(key)
+    this.broadcast({ type: 'channel:removed', key })
+  }
+
   async start(key: string): Promise<void> {
     await this.requireAdapter(key).start()
   }

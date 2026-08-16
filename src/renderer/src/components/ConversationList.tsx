@@ -7,14 +7,15 @@ import { Avatar } from './Avatar'
 interface Props {
   conversations: Conversation[]
   activeId: string | null
-  waState: ChannelState | undefined
+  /** 当前视图相关的渠道状态（未连接的会显示横幅） */
+  states: ChannelState[]
   onSelect: (id: string) => void
 }
 
 export function ConversationList({
   conversations,
   activeId,
-  waState,
+  states,
   onSelect
 }: Props): React.JSX.Element {
   const { t, locale } = useI18n()
@@ -28,8 +29,11 @@ export function ConversationList({
     )
   }, [conversations, query])
 
-  const status = waState?.status
-  const showBanner = status && status !== 'connected'
+  // 有账号未连接时显示横幅（多账号时标注账号名）
+  const issue = states.find((s) => s.status !== 'connected')
+  const status = issue?.status
+  const issueLabel =
+    issue && states.length > 1 ? `${issue.selfName || issue.accountId}: ` : ''
 
   return (
     <aside className="sidebar">
@@ -44,10 +48,11 @@ export function ConversationList({
           onChange={(e) => setQuery(e.target.value)}
         />
       </div>
-      {showBanner && (
+      {status && (
         <div className={`channel-banner ${status === 'error' ? 'danger' : ''}`}>
+          {issueLabel}
           {t(`status.${status}` as 'status.connecting')}
-          {waState?.detail ? ` · ${waState.detail}` : ''}
+          {issue?.detail ? ` · ${issue.detail}` : ''}
         </div>
       )}
       <div className="conversation-scroll">

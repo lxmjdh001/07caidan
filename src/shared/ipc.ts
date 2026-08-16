@@ -9,6 +9,8 @@ export const IPC_METHODS = {
   listChannels: 'omni:listChannels',
   startChannel: 'omni:startChannel',
   logoutChannel: 'omni:logoutChannel',
+  addAccount: 'omni:addAccount',
+  removeAccount: 'omni:removeAccount',
   listConversations: 'omni:listConversations',
   listMessages: 'omni:listMessages',
   sendText: 'omni:sendText',
@@ -26,6 +28,7 @@ export type OmniEvent =
   | { type: 'message:updated'; message: UnifiedMessage }
   | { type: 'conversation:updated'; conversation: Conversation }
   | { type: 'channel:state'; state: ChannelState }
+  | { type: 'channel:removed'; key: string }
 
 export interface TranslatorInfo {
   id: string
@@ -51,6 +54,10 @@ export interface OmniApi {
   listChannels(): Promise<ChannelState[]>
   startChannel(key: string): Promise<void>
   logoutChannel(key: string): Promise<void>
+  /** 新增一个账号（当前支持 whatsapp），返回其 channel key（如 whatsapp:wa1abc） */
+  addAccount(channel: string): Promise<string>
+  /** 删除账号：退出登录 + 移除（主账号 whatsapp:main 不可删除；聊天记录保留） */
+  removeAccount(key: string): Promise<void>
   listConversations(): Promise<Conversation[]>
   listMessages(conversationId: string, limit?: number): Promise<UnifiedMessage[]>
   /** prepared 传入预览结果时直接按其发送（不再重复翻译） */

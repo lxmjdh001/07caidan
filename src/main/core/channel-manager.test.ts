@@ -89,6 +89,23 @@ describe('ChannelManager', () => {
     expect(() => manager.register(new FakeAdapter())).toThrow()
   })
 
+  it('unregister：停止适配器、移除状态并广播 channel:removed，之后可重新注册', async () => {
+    await manager.unregister('whatsapp:main')
+    expect(adapter.stop).toHaveBeenCalled()
+    expect(manager.listChannels()).toEqual([])
+    expect(events.some((e) => e.type === 'channel:removed' && e.key === 'whatsapp:main')).toBe(true)
+    // 移除后事件不再进入管线
+    adapter.fakeIncoming()
+    await flushAsync()
+    expect(events.some((e) => e.type === 'message:new')).toBe(false)
+    // 可重新注册同 key
+    expect(() => manager.register(new FakeAdapter())).not.toThrow()
+  })
+
+  it('unregister 未注册的 key 静默忽略', async () => {
+    await expect(manager.unregister('whatsapp:ghost')).resolves.toBeUndefined()
+  })
+
   it('适配器消息 → 入库 + 广播，入站累计未读', async () => {
     adapter.fakeIncoming()
     await flushAsync()

@@ -15,6 +15,10 @@ export interface IpcDeps {
   onSettingsChanged: (settings: AppSettings) => void
   /** 主动推送事件到渲染进程 */
   broadcast: (evt: OmniEvent) => void
+  /** 新增账号（返回 channel key） */
+  onAddAccount: (channel: string) => Promise<string>
+  /** 删除账号 */
+  onRemoveAccount: (key: string) => Promise<void>
 }
 
 /** 渲染进程可调用的全部主进程能力，集中在此注册 */
@@ -24,6 +28,8 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle(IPC_METHODS.listChannels, () => manager.listChannels())
   ipcMain.handle(IPC_METHODS.startChannel, (_e, key: string) => manager.start(key))
   ipcMain.handle(IPC_METHODS.logoutChannel, (_e, key: string) => manager.logout(key))
+  ipcMain.handle(IPC_METHODS.addAccount, (_e, channel: string) => deps.onAddAccount(channel))
+  ipcMain.handle(IPC_METHODS.removeAccount, (_e, key: string) => deps.onRemoveAccount(key))
 
   ipcMain.handle(IPC_METHODS.listConversations, () => store.listConversations())
   ipcMain.handle(IPC_METHODS.listMessages, (_e, conversationId: string, limit?: number) =>

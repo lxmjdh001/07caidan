@@ -85,16 +85,25 @@ async function bootstrap(): Promise<void> {
   const channels = new ChannelRegistry()
   channels.register(whatsAppPlugin)
 
-  const waAccountId = 'main'
-  const waKey = channelKey('whatsapp', waAccountId)
-  manager.register(
-    channels.get('whatsapp').createAdapter(waAccountId, {
-      dataDir: join(userData, 'channels', 'whatsapp'),
-      logger,
-      getAccountConfig: () => settings.accountConfig(waKey),
-      saveMedia: (data, ext) => media.save(data, ext)
-    })
-  )
+  const registerWaAccount = (accountId: string): void => {
+    const key = channelKey('whatsapp', accountId)
+    manager.register(
+      channels.get('whatsapp').createAdapter(accountId, {
+        dataDir: join(userData, 'channels', 'whatsapp'),
+        logger,
+        getAccountConfig: () => settings.accountConfig(key),
+        saveMedia: (data, ext) => media.save(data, ext)
+      })
+    )
+  }
+
+  // 账号注册表 = settings.accounts 的 key 集合（whatsapp:main 始终存在）
+  for (const key of Object.keys(settings.get().accounts)) {
+    const sep = key.indexOf(':')
+    const kind = key.slice(0, sep)
+    const accountId = key.slice(sep + 1)
+    if (kind === 'whatsapp' && accountId) registerWaAccount(accountId)
+  }
 
   registerIpc({
     manager,
@@ -105,6 +114,23 @@ async function bootstrap(): Promise<void> {
     onSettingsChanged: (updated) => {
       configurePipeline(pipeline, translatorRegistry, updated.translation)
       logger.info('设置已更新')
+    },
+    onAddAccount: async (channel) => {
+      if (channel !== 'whatsapp') throw new Error(`暂不支持添加 ${channel} 账号`)
+      const accountId = `wa${Date.now().toString(36)}`
+      const key = channelKey('whatsapp', accountId)
+      await settings.update({ accounts: { [key]: {} } })
+      registerWaAccount(accountId)
+      await manager.start(key)
+      logger.info('新增账号', { key })
+      return key
+    },
+    onRemoveAccount: async (key) => {
+      if (key === 'whatsapp:main') throw new Error('主账号不可删除，只能退出登录')
+      await manager.logout(key).catch(() => undefined)
+      await manager.unregister(key)
+      await settings.removeAccount(key)
+      logger.info('已删除账号', { key })
     }
   })
 

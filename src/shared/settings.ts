@@ -25,13 +25,19 @@ export interface AccountConfig {
   proxyUrl?: string
   /** 该账号的默认客户语言（覆盖全局 targetLangDefault）；留空跟随全局 */
   defaultLang?: string
+  /** 显示名（默认用登录后的账号名） */
+  label?: string
 }
 
 export interface AppSettings {
   /** 界面语言 */
   locale: string
   translation: TranslationConfig
-  /** 按渠道账号 key（如 whatsapp:main）的独立配置 */
+  /**
+   * 按渠道账号 key（如 whatsapp:main）的独立配置。
+   * 这里的 key 集合同时是"账号注册表"：启动时为每个 key 创建适配器。
+   * whatsapp:main 为固定主账号（不可删除，只能退出登录）。
+   */
   accounts: Record<string, AccountConfig>
 }
 
@@ -49,5 +55,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
     googleCloud: { apiKey: '' },
     llm: { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: '' }
   },
-  accounts: {}
+  accounts: { 'whatsapp:main': {} }
 }

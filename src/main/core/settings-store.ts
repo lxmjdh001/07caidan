@@ -31,10 +31,21 @@ export class SettingsStore {
 
   async update(patch: Partial<AppSettings>): Promise<AppSettings> {
     this.settings = mergeSettings(this.settings, patch)
+    await this.persist()
+    return this.get()
+  }
+
+  /** 删除账号配置（合并语义做不到删除，单独提供） */
+  async removeAccount(key: string): Promise<AppSettings> {
+    delete this.settings.accounts[key]
+    await this.persist()
+    return this.get()
+  }
+
+  private async persist(): Promise<void> {
     const tmp = `${this.filePath}.tmp`
     await writeFile(tmp, JSON.stringify(this.settings, null, 2), 'utf8')
     await rename(tmp, this.filePath)
-    return this.get()
   }
 
   accountConfig(key: string): AccountConfig {

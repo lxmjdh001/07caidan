@@ -20,42 +20,75 @@ function WhatsAppIcon(): React.JSX.Element {
 
 interface Props {
   channels: Record<string, ChannelState>
-  onChannelClick: (key: string) => void
+  /** null = 全部消息视图 */
+  activeKey: string | null
+  onSelect: (key: string | null) => void
+  onAddAccount: () => void
   onOpenSettings: () => void
 }
 
-export function ChannelRail({ channels, onChannelClick, onOpenSettings }: Props): React.JSX.Element {
+/** 账号显示名：登录名 > 自定义序号 */
+function accountLabel(state: ChannelState, index: number): string {
+  return state.selfName || `账号 ${index + 1}`
+}
+
+export function ChannelRail({
+  channels,
+  activeKey,
+  onSelect,
+  onAddAccount,
+  onOpenSettings
+}: Props): React.JSX.Element {
   const { t } = useI18n()
-  const wa = channels['whatsapp:main']
-  const waTitle = `${t('channel.whatsapp')} — ${t(`status.${wa?.status ?? 'stopped'}` as 'status.stopped')}`
+  // 账号排序：main 永远在前，其余按 key 稳定排序
+  const waAccounts = Object.entries(channels)
+    .filter(([key]) => key.startsWith('whatsapp:'))
+    .sort(([a], [b]) => {
+      if (a === 'whatsapp:main') return -1
+      if (b === 'whatsapp:main') return 1
+      return a.localeCompare(b)
+    })
 
   return (
     <nav className="rail">
-      <div className="rail-logo" title={t('app.name')}>
-        OC
-      </div>
       <button
         type="button"
-        className="rail-item"
-        title={waTitle}
-        onClick={() => onChannelClick('whatsapp:main')}
+        className={`rail-item rail-all ${activeKey === null ? 'active' : ''}`}
+        title={t('rail.allChats')}
+        onClick={() => onSelect(null)}
       >
-        <WhatsAppIcon />
-        <span
-          className="status-dot"
-          style={{ background: STATUS_COLOR[wa?.status ?? 'stopped'] }}
-        />
-      </button>
-      <button type="button" className="rail-item disabled" title={t('channel.telegram')} disabled>
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden>
-          <path d="M21.9 4.6c.3-1.1-.8-2-1.8-1.6L2.7 9.7c-1.1.4-1.1 2 .1 2.3l4.4 1.3 1.7 5.4c.3 1 1.6 1.3 2.3.5l2.4-2.5 4.5 3.3c.9.7 2.2.2 2.4-.9l3.4-14.5ZM8.5 12.8l9.7-6.1c.2-.1.4.2.2.3l-8 7.4-.3 3-1.6-4.6Z" />
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+          <path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.8-.8L3 20l1.1-5A8 8 0 0 1 3.5 11.5 8.4 8.4 0 0 1 12 3.2a8.4 8.4 0 0 1 9 8.3Z" />
         </svg>
       </button>
-      <button type="button" className="rail-item disabled" title={t('channel.line')} disabled>
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden>
-          <path d="M12 3C6.5 3 2 6.6 2 11.1c0 4 3.6 7.4 8.4 8 .3.1.8.2.9.5.1.3.1.7 0 1l-.1.9c0 .3-.2 1 .9.6 1.1-.5 6-3.5 8.2-6C21.7 14.4 22 12.8 22 11c0-4.4-4.5-8-10-8Zm-4.9 10.6H5.2a.5.5 0 0 1-.5-.5V9.3a.5.5 0 0 1 1 0v3.3h1.4a.5.5 0 1 1 0 1Zm2.2-.5a.5.5 0 0 1-1 0V9.3a.5.5 0 0 1 1 0v3.8Zm4.6 0a.5.5 0 0 1-.9.3l-2-2.7v2.4a.5.5 0 0 1-1 0V9.3a.5.5 0 0 1 .9-.3l2 2.7V9.3a.5.5 0 0 1 1 0v3.8Zm3.9-2.4a.5.5 0 1 1 0 1h-1.4v.9h1.4a.5.5 0 1 1 0 1h-1.9a.5.5 0 0 1-.5-.5V9.3a.5.5 0 0 1 .5-.5h1.9a.5.5 0 1 1 0 1h-1.4v.9h1.4Z" />
+
+      <div className="rail-divider" />
+
+      {waAccounts.map(([key, state], i) => (
+        <button
+          type="button"
+          key={key}
+          className={`rail-item ${activeKey === key ? 'active' : ''}`}
+          title={`WhatsApp · ${accountLabel(state, i)} — ${t(`status.${state.status}` as 'status.stopped')}`}
+          onClick={() => onSelect(key)}
+        >
+          <WhatsAppIcon />
+          {waAccounts.length > 1 && <span className="rail-index">{i + 1}</span>}
+          <span className="status-dot" style={{ background: STATUS_COLOR[state.status] }} />
+        </button>
+      ))}
+
+      <button
+        type="button"
+        className="rail-item rail-add"
+        title={t('rail.addAccount')}
+        onClick={onAddAccount}
+      >
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <path d="M12 5v14M5 12h14" />
         </svg>
       </button>
+
       <div className="rail-spacer" />
       <button type="button" className="rail-item" title={t('settings.title')} onClick={onOpenSettings}>
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>

@@ -43,6 +43,21 @@ describe('SettingsStore', () => {
     expect(store.accountConfig('whatsapp:main').proxyUrl).toBe('socks5://127.0.0.1:1080')
   })
 
+  it('默认包含主账号 whatsapp:main；新增/删除账号并持久化', async () => {
+    expect(Object.keys(store.get().accounts)).toContain('whatsapp:main')
+
+    await store.update({ accounts: { 'whatsapp:wa2': { defaultLang: 'ja' } } })
+    expect(Object.keys(store.get().accounts).sort()).toEqual(['whatsapp:main', 'whatsapp:wa2'])
+
+    await store.removeAccount('whatsapp:wa2')
+    expect(store.get().accounts['whatsapp:wa2']).toBeUndefined()
+
+    const reloaded = new SettingsStore(dir)
+    await reloaded.init()
+    expect(reloaded.get().accounts['whatsapp:wa2']).toBeUndefined()
+    expect(reloaded.get().accounts['whatsapp:main']).toBeDefined()
+  })
+
   it('get 返回副本，外部修改不污染内部状态', () => {
     const s = store.get()
     s.locale = 'hacked'
