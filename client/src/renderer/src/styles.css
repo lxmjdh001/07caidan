@@ -1407,3 +1407,18 @@ body {
 .link-btn:hover {
   text-decoration: underline;
 }
+
+/* Telegram 扫码登录区（嵌在账号弹窗内，比独立登录页紧凑） */
+.tg-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.tg-qr .qr-img {
+  width: 200px;
+  height: 200px;
+  border-radius: 8px;
+  background: #fff;
+}

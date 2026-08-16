@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises'
+import QRCode from 'qrcode'
 import { Api, TelegramClient } from 'telegram'
 // GramJS 是 CJS 包且没有 exports 映射，ESM 下目录导入会被拒，必须写到具体文件
 import { NewMessage, type NewMessageEvent } from 'telegram/events/index.js'
@@ -12,6 +13,7 @@ import {
   chatIdToContactId,
   mapTgUserMessage,
   peerToChatId,
+  qrLoginUrl,
   type TgPeer,
   type TgRawMedia,
   type TgRawMessage
@@ -32,6 +34,9 @@ export interface TelegramUserAdapterOptions {
   getDeviceFingerprint?: () => { deviceModel: string; systemVersion: string; appVersion: string }
   saveMedia?: (data: Buffer, ext: string) => Promise<string>
 }
+
+/** Telegram 普通账号的登录方式 */
+export type TgLoginMode = 'qr' | 'phone'
 
 /** 交互式登录时，等待 UI 回填输入的挂起请求 */
 interface PendingInput {
@@ -67,6 +72,8 @@ export class TelegramUserAdapter extends ChannelAdapter {
   private pending: PendingInput | undefined
   /** 登录中缓存的手机号 */
   private phone = ''
+  /** 登录方式；与官方客户端一致，默认扫码 */
+  private loginMode: TgLoginMode = 'qr'
 
   constructor(opts: TelegramUserAdapterOptions) {
     super()
@@ -104,33 +111,59 @@ export class TelegramUserAdapter extends ChannelAdapter {
       })
       this.client = client
 
-      // 已有会话串则直连；否则走交互式登录（手机号 → 验证码 → 两步密码）
-      await client.start({
-        phoneNumber: async () => {
-          if (this.phone) return this.phone
-          this.setState('waiting_phone', { detail: '请输入该账号的手机号（含国家码）' })
-          this.phone = await this.awaitInput()
-          return this.phone
-        },
-        phoneCode: async (isCodeViaApp?: boolean) => {
-          this.setState('waiting_code', {
-            detail: isCodeViaApp ? '验证码已发送到 Telegram 应用内' : '验证码已发短信'
-          })
-          return this.awaitInput()
-        },
-        password: async (hint?: string) => {
-          this.setState('waiting_password', {
-            detail: hint ? `两步验证密码（提示：${hint}）` : '请输入两步验证密码'
-          })
-          return this.awaitInput()
-        },
-        onError: async (err: Error) => {
-          this.log.error('登录失败', err)
-          this.setState('error', { detail: err.message })
-          // 返回 true 终止登录流程，避免 GramJS 无限重试
-          return true
-        }
-      })
+      const password = async (hint?: string): Promise<string> => {
+        this.setState('waiting_password', {
+          detail: hint ? `两步验证密码（提示：${hint}）` : '请输入两步验证密码'
+        })
+        return this.awaitInput()
+      }
+      const onError = async (err: Error): Promise<boolean> => {
+        this.log.error('登录失败', err)
+        this.setState('error', { detail: err.message })
+        // 返回 true 终止登录流程，避免 GramJS 无限重试
+        return true
+      }
+
+      await client.connect()
+      if (await client.checkAuthorization()) {
+        this.log.info('已有会话，免登录')
+      } else if (this.loginMode === 'qr') {
+        // 扫码登录：GramJS 会自动续期令牌并反复回调，这里每次重画二维码
+        await client.signInUserWithQrCode(
+          { apiId, apiHash },
+          {
+            qrCode: async (qr) => {
+              const dataUrl = await QRCode.toDataURL(qrLoginUrl(qr.token), {
+                margin: 1,
+                width: 320
+              })
+              this.setState('waiting_qr', {
+                qrDataUrl: dataUrl,
+                detail: '用手机 Telegram 扫码：设置 → 设备 → 关联桌面设备'
+              })
+            },
+            password,
+            onError
+          }
+        )
+      } else {
+        await client.start({
+          phoneNumber: async () => {
+            if (this.phone) return this.phone
+            this.setState('waiting_phone', { detail: '请输入该账号的手机号（含国家码）' })
+            this.phone = await this.awaitInput()
+            return this.phone
+          },
+          phoneCode: async (isCodeViaApp?: boolean) => {
+            this.setState('waiting_code', {
+              detail: isCodeViaApp ? '验证码已发送到 Telegram 应用内' : '验证码已发短信'
+            })
+            return this.awaitInput()
+          },
+          password,
+          onError
+        })
+      }
 
       // 登录成功：持久化会话串，下次免验证码
       const saved = client.session.save() as unknown as string
@@ -154,6 +187,19 @@ export class TelegramUserAdapter extends ChannelAdapter {
       this.log.error('启动失败', err)
       this.setState('error', { detail: err instanceof Error ? err.message : String(err) })
     }
+  }
+
+  /**
+   * 切换登录方式并重新开始登录。
+   * 必须先断开：GramJS 的登录流程挂在连接上，不重建客户端切不过去。
+   */
+  override async setLoginMode(mode: string): Promise<void> {
+    const next: TgLoginMode = mode === 'phone' ? 'phone' : 'qr'
+    if (next === this.loginMode && this.status !== 'error') return
+    this.loginMode = next
+    this.phone = ''
+    await this.stop()
+    await this.start()
   }
 
   async stop(): Promise<void> {
@@ -334,7 +380,7 @@ export class TelegramUserAdapter extends ChannelAdapter {
 
   private setState(
     status: ChannelStatus,
-    extra: { detail?: string; selfName?: string } = {}
+    extra: { detail?: string; selfName?: string; qrDataUrl?: string } = {}
   ): void {
     this.status = status
     this.emit('state', this.makeState({ status, ...extra }))

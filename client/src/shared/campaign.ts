@@ -1,0 +1,101 @@
+/**
+ * 工单（引流任务）与重粉库的共享类型，与 server 端保持一致。
+ *
+ * ⚠️ 统计结构里刻意不含任何客户标识、昵称、聊天内容 —— 工单看板可以被
+ * 公开分享，只允许展示聚合数字。给这些结构加字段前先想清楚这一点。
+ */
+
+export interface Campaign {
+  id: string
+  name: string
+  accountIds: string[]
+  accountLabels: Record<string, string>
+  startAt: number
+  endAt?: number
+  dedupLibraryIds: string[]
+  dedupBeforeAt?: number
+  tzOffsetMinutes: number
+  createdBy?: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface CampaignInput {
+  name: string
+  accountIds: string[]
+  accountLabels?: Record<string, string>
+  startAt: number
+  endAt?: number
+  dedupLibraryIds?: string[]
+  dedupBeforeAt?: number
+  tzOffsetMinutes?: number
+}
+
+export interface CampaignLink {
+  token: string
+  campaignId: string
+  label?: string
+  /** 空 = 永不过期 */
+  expiresAt?: number
+  revoked: boolean
+  createdAt: number
+  /** 派生：未撤销且未过期 */
+  active: boolean
+}
+
+export interface LinkOptions {
+  label?: string
+  expiresAt?: number
+}
+
+export interface Bucket {
+  total: number
+  duplicate: number
+  fresh: number
+}
+
+export interface CampaignStats {
+  total: number
+  duplicate: number
+  fresh: number
+  effective: number
+  duplicateBy: { library: number; timeRange: number }
+  byAccount: Array<{ accountId: string; channel: string; label?: string } & Bucket>
+  byDay: Array<{ date: string } & Bucket>
+  response: { replied: number; replyRate: number; medianFirstReplySec: number | null }
+  computedAt: number
+}
+
+export interface CampaignStatsResult {
+  campaign: Campaign
+  stats: CampaignStats
+}
+
+export interface FanLibrary {
+  id: string
+  name: string
+  channel: string
+  /** export=从系统历史导出，import=外部名单导入 */
+  source: string
+  entryCount: number
+  createdAt: number
+}
+
+/** 导入结果：除了成功条数，还要把问题行回报给用户 */
+export interface ImportResult {
+  library?: FanLibrary
+  added: number
+  parsed: {
+    contactIds: string[]
+    errors: string[]
+    totalLines: number
+    duplicates: number
+  }
+}
+
+/** 支持建重粉库的平台（Bot 渠道没有稳定的自然人标识，不参与判重） */
+export const LIBRARY_CHANNELS = [
+  { value: 'whatsapp', label: 'WhatsApp' },
+  { value: 'telegram', label: 'Telegram' },
+  { value: 'line', label: 'LINE' }
+] as const

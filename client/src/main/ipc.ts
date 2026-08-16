@@ -39,6 +39,9 @@ export function registerIpc(deps: IpcDeps): void {
     }))
   )
   ipcMain.handle(IPC_METHODS.startChannel, (_e, key: string) => manager.start(key))
+  ipcMain.handle(IPC_METHODS.setLoginMode, (_e, key: string, mode: string) =>
+    manager.setLoginMode(key, mode)
+  )
   ipcMain.handle(IPC_METHODS.submitAuthInput, (_e, key: string, value: string) =>
     manager.submitAuthInput(key, value)
   )

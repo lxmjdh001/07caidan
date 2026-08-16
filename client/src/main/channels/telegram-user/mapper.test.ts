@@ -5,6 +5,7 @@ import {
   isPrivatePeer,
   mapTgUserMessage,
   peerToChatId,
+  qrLoginUrl,
   type TgRawMessage
 } from './mapper'
 
@@ -101,5 +102,24 @@ describe('mapTgUserMessage', () => {
 
   it('缺少 peer 时忽略', () => {
     expect(mapTgUserMessage(msg({ peer: { type: 'user', id: '' } }), 'tg1')).toBeNull()
+  })
+})
+
+describe('qrLoginUrl', () => {
+  it('生成 Telegram 约定的 tg://login scheme', () => {
+    expect(qrLoginUrl(Buffer.from([1, 2, 3]))).toBe('tg://login?token=AQID')
+  })
+
+  it('使用 base64url 且去掉填充（官方 App 不认标准 base64）', () => {
+    // 0xfb 0xff 在标准 base64 下会产生 + 与 /
+    const url = qrLoginUrl(Buffer.from([0xfb, 0xff, 0xbf, 0xfe]))
+    const token = url.slice('tg://login?token='.length)
+    expect(token).not.toContain('+')
+    expect(token).not.toContain('/')
+    expect(token).not.toContain('=')
+  })
+
+  it('接受 Uint8Array', () => {
+    expect(qrLoginUrl(new Uint8Array([1, 2, 3]))).toBe('tg://login?token=AQID')
   })
 })

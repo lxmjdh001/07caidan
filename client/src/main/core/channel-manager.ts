@@ -117,6 +117,13 @@ export class ChannelManager {
     await this.requireAdapter(key).logout()
   }
 
+  /** 切换某账号的登录方式（扫码 / 手机号），适配器会重启登录流程 */
+  async setLoginMode(key: string, mode: string): Promise<void> {
+    const adapter = this.requireAdapter(key)
+    if (!adapter.setLoginMode) throw new Error(`渠道 ${key} 不支持切换登录方式`)
+    await adapter.setLoginMode(mode)
+  }
+
   /** 提交交互式登录输入（手机号/验证码/两步密码），仅 phone_code 类平台支持 */
   async submitAuthInput(key: string, value: string): Promise<void> {
     const adapter = this.requireAdapter(key)

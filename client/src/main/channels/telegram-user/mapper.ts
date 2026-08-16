@@ -45,6 +45,17 @@ export function isPrivatePeer(peer: TgPeer): boolean {
   return peer.type === 'user'
 }
 
+/**
+ * 扫码登录的二维码内容。
+ * Telegram 约定为 `tg://login?token=<base64url>`（无填充），
+ * 官方 App 扫到这个 scheme 才会进入「关联设备」确认页。
+ */
+export function qrLoginUrl(token: Buffer | Uint8Array): string {
+  const b64 = Buffer.from(token).toString('base64')
+  const urlSafe = b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  return `tg://login?token=${urlSafe}`
+}
+
 /** 会话在本系统内的外部 id：私聊用 user id，群加 g 前缀避免与私聊撞号 */
 export function peerToChatId(peer: TgPeer): string {
   return peer.type === 'user' ? peer.id : `g${peer.id}`

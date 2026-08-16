@@ -56,6 +56,18 @@ export function AccountModal({
   }
   const authStep = state?.status ? AUTH_STEP[state.status] : undefined
 
+  // phone_code 类平台同时支持扫码与手机号（Telegram 官方客户端默认扫码）
+  const supportsQrLogin = plugin?.authType === 'phone_code'
+  const loggedIn = state?.status === 'connected'
+  const switchLogin = async (mode: 'qr' | 'phone'): Promise<void> => {
+    setAuthBusy(true)
+    try {
+      await api.setLoginMode(accountKey, mode)
+    } finally {
+      setAuthBusy(false)
+    }
+  }
+
   const buildConfig = (): AccountConfig => ({
     label: label.trim() || undefined,
     defaultLang: defaultLang || undefined,
@@ -117,6 +129,39 @@ export function AccountModal({
             {t(`status.${state?.status ?? 'stopped'}` as 'status.stopped')}
           </span>
         </div>
+
+        {supportsQrLogin && !loggedIn && (
+          <>
+            <div className="login-tabs">
+              <button
+                type="button"
+                className={state?.status === 'waiting_qr' ? 'on' : ''}
+                disabled={authBusy}
+                onClick={() => void switchLogin('qr')}
+              >
+                {t('qr.tabQr')}
+              </button>
+              <button
+                type="button"
+                className={state?.status !== 'waiting_qr' ? 'on' : ''}
+                disabled={authBusy}
+                onClick={() => void switchLogin('phone')}
+              >
+                {t('qr.tabPhone')}
+              </button>
+            </div>
+            {state?.status === 'waiting_qr' && (
+              <div className="tg-qr">
+                {state.qrDataUrl ? (
+                  <img className="qr-img" src={state.qrDataUrl} alt="Telegram QR" />
+                ) : (
+                  <div className="qr-placeholder">{t('qr.waiting')}</div>
+                )}
+                <p className="field-hint">{state.detail || t('qr.tgHint')}</p>
+              </div>
+            )}
+          </>
+        )}
 
         {authStep && (
           <div className="auth-step">

@@ -74,6 +74,9 @@ export abstract class ChannelAdapter extends TypedEmitter<AdapterEvents> {
    */
   submitAuthInput?(value: string): Promise<void>
 
+  /** 切换登录方式（如 Telegram 在扫码与手机号之间切换），会重启登录流程 */
+  setLoginMode?(mode: string): Promise<void>
+
   protected makeState(partial: Omit<ChannelState, 'kind' | 'accountId'>): ChannelState {
     return { kind: this.kind, accountId: this.accountId, ...partial }
   }
