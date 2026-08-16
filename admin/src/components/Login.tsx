@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
-import { ApiClient, type Conversation } from '../api'
+import { ApiClient, login, type Me } from '../api'
 
 interface Props {
-  onLogin: (client: ApiClient, base: string, conversations: Conversation[]) => void
+  onLogin: (client: ApiClient, base: string, me: Me) => void
 }
 
 export function Login({ onLogin }: Props): React.JSX.Element {
   const [url, setUrl] = useState('http://localhost:8787')
-  const [token, setToken] = useState('')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -16,32 +17,28 @@ export function Login({ onLogin }: Props): React.JSX.Element {
     setBusy(true)
     try {
       const base = url.trim().replace(/\/$/, '')
-      const client = new ApiClient(base, token.trim())
-      const { conversations } = await client.listConversations()
+      const { token, user } = await login(base, username.trim(), password)
       localStorage.setItem('omni_base', base)
-      localStorage.setItem('omni_token', token.trim())
-      onLogin(client, base, conversations)
+      localStorage.setItem('omni_token', token)
+      onLogin(new ApiClient(base, token), base, user)
     } catch (e) {
-      setErr('登录失败：' + (e as Error).message + '（检查地址与令牌）')
+      setErr('登录失败：' + (e as Error).message)
     } finally {
       setBusy(false)
     }
   }
 
-  // 记住上次登录，自动尝试
+  // 记住上次会话令牌，自动恢复
   useEffect(() => {
     const t = localStorage.getItem('omni_token')
     const b = localStorage.getItem('omni_base')
     if (t && b) {
       setUrl(b)
-      setToken(t)
       const client = new ApiClient(b, t)
       client
-        .listConversations()
-        .then(({ conversations }) => onLogin(client, b, conversations))
-        .catch(() => {
-          /* 令牌失效则停在登录页 */
-        })
+        .me()
+        .then((me) => onLogin(client, b, me))
+        .catch(() => localStorage.removeItem('omni_token'))
     }
   }, [onLogin])
 
@@ -49,21 +46,25 @@ export function Login({ onLogin }: Props): React.JSX.Element {
     <div className="login">
       <div className="login-card">
         <h1>OmniChat 管理后台</h1>
-        <p>输入后台地址与同步令牌登录</p>
+        <p>使用账号密码登录</p>
         <label className="field">
           <span>后台地址</span>
           <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="http://localhost:8787" />
         </label>
         <label className="field">
-          <span>令牌 Token</span>
+          <span>账号</span>
+          <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="admin" />
+        </label>
+        <label className="field">
+          <span>密码</span>
           <input
             type="password"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') void submit()
             }}
-            placeholder="同步令牌"
+            placeholder="密码"
           />
         </label>
         <button className="btn" disabled={busy} onClick={() => void submit()}>

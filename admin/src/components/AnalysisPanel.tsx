@@ -5,9 +5,10 @@ import { INTENT_LABEL } from '../util'
 interface Props {
   client: ApiClient
   conversation: Conversation
+  canAnalyze: boolean
 }
 
-export function AnalysisPanel({ client, conversation }: Props): React.JSX.Element {
+export function AnalysisPanel({ client, conversation, canAnalyze }: Props): React.JSX.Element {
   const [analysis, setAnalysis] = useState<IntentAnalysis | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -39,12 +40,15 @@ export function AnalysisPanel({ client, conversation }: Props): React.JSX.Elemen
     <aside className="analysis">
       <div className="analysis-head">
         <h3>AI 意向分析</h3>
-        <button className="btn btn-sm" disabled={busy} onClick={() => void run()}>
-          {busy ? '分析中…' : '分析意向'}
-        </button>
+        {canAnalyze && (
+          <button className="btn btn-sm" disabled={busy} onClick={() => void run()}>
+            {busy ? '分析中…' : '分析意向'}
+          </button>
+        )}
       </div>
       <div className="analysis-body">
-        {err && <div className="analysis-empty">分析失败：{err}</div>}
+        {!canAnalyze && <div className="analysis-empty">你没有「运行 AI 分析」权限。</div>}
+        {canAnalyze && err && <div className="analysis-empty">分析失败：{err}</div>}
         {!analysis && !err && !busy && (
           <div className="analysis-empty">
             点击「分析意向」，用 AI 分析该客户

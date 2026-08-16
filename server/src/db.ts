@@ -39,6 +39,17 @@ export function openDb(dbPath: string): Db {
       tenant TEXT NOT NULL, media_id TEXT NOT NULL, mime_type TEXT,
       path TEXT NOT NULL, size INTEGER NOT NULL, PRIMARY KEY (tenant, media_id)
     );
+
+    CREATE TABLE IF NOT EXISTS admin_users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, tenant TEXT NOT NULL,
+      username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
+      role TEXT NOT NULL, permissions TEXT NOT NULL DEFAULT '[]',
+      enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS admin_sessions (
+      token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL
+    );
   `)
 
   return drizzle(sqlite, { schema })

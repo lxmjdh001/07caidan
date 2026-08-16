@@ -16,20 +16,30 @@ export interface ServerConfig {
   anthropicApiKey: string | undefined
   /** 意向分析使用的模型 */
   analysisModel: string
+  /** 管理后台登录账号 */
+  adminUser: string
+  /** 管理后台登录密码 */
+  adminPassword: string
+  /** 管理员登录后可见的租户（默认第一个同步令牌所属租户） */
+  adminTenant: string
 }
 
 export function loadConfig(): ServerConfig {
   const dataDir = process.env.OMNI_DATA_DIR || join(process.cwd(), 'data')
+  const tokens = (process.env.OMNI_TOKENS || 'dev-token')
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean)
   return {
     port: Number(process.env.PORT || 8787),
     host: process.env.HOST || '0.0.0.0',
     dbPath: process.env.OMNI_DB_PATH || join(dataDir, 'omnichat.db'),
     mediaDir: process.env.OMNI_MEDIA_DIR || join(dataDir, 'media'),
-    tokens: (process.env.OMNI_TOKENS || 'dev-token')
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean),
+    tokens,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
-    analysisModel: process.env.OMNI_ANALYSIS_MODEL || 'claude-opus-5'
+    analysisModel: process.env.OMNI_ANALYSIS_MODEL || 'claude-opus-5',
+    adminUser: process.env.OMNI_ADMIN_USER || 'admin',
+    adminPassword: process.env.OMNI_ADMIN_PASSWORD || 'admin',
+    adminTenant: process.env.OMNI_ADMIN_TENANT || tokens[0] || 'dev-token'
   }
 }

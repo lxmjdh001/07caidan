@@ -3,23 +3,29 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import cors from '@fastify/cors'
-import Fastify, { type FastifyInstance } from 'fastify'
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
 import { IntentAnalyzer } from './analyzer.ts'
+import { AuthRepo, type Principal } from './auth-repo.ts'
+import { PERMISSIONS, ROLE_PRESETS, ROLES, type Permission } from './auth.ts'
 import type { ServerConfig } from './config.ts'
 import { openDb } from './db.ts'
 import { Repo } from './repo.ts'
 import type { SyncPayload } from './types.ts'
 
-/** 从 Authorization: Bearer <token> 解析租户；token 即租户标识（第一版） */
-function tenantFromAuth(auth: string | undefined, tokens: string[]): string | null {
-  if (!auth?.startsWith('Bearer ')) return null
-  const token = auth.slice(7).trim()
-  return tokens.includes(token) ? token : null
+/** 请求上下文：要么是同步客户端（仅 tenant），要么是登录的管理员（含权限） */
+interface ReqCtx {
+  tenant: string
+  /** 管理员登录用户；同步客户端为空 */
+  principal?: Principal
+  /** 是否为同步客户端令牌 */
+  isSyncClient?: boolean
 }
 
 export function buildServer(config: ServerConfig): FastifyInstance {
   const db = openDb(config.dbPath)
   const repo = new Repo(db)
+  const auth = new AuthRepo(db)
+  auth.bootstrap(config.adminTenant, config.adminUser, config.adminPassword)
   mkdirSync(config.mediaDir, { recursive: true })
   const analyzer = config.anthropicApiKey
     ? new IntentAnalyzer(config.anthropicApiKey, config.analysisModel)
@@ -29,45 +35,170 @@ export function buildServer(config: ServerConfig): FastifyInstance {
   // 前后端分离：管理后台是独立前端（admin/），这里开放跨域即可
   void app.register(cors, { origin: true })
 
-  // 鉴权：所有 /api 路由需带有效 Bearer token
+  const bearer = (req: FastifyRequest): string | null => {
+    const a = req.headers.authorization
+    return a?.startsWith('Bearer ') ? a.slice(7).trim() : null
+  }
+
+  // 鉴权：/api 路由（登录除外）需带有效令牌。
+  // 令牌可为「管理员会话 token」或「同步客户端 token」，映射到不同上下文。
   app.addHook('onRequest', async (req, reply) => {
-    if (!req.url.startsWith('/api')) return
-    const tenant = tenantFromAuth(req.headers.authorization, config.tokens)
-    if (!tenant) {
-      await reply.code(401).send({ error: 'unauthorized' })
-      return
+    if (!req.url.startsWith('/api') || req.url.startsWith('/api/login')) return
+    const token = bearer(req)
+    if (token) {
+      const principal = auth.resolve(token)
+      if (principal) {
+        ;(req as unknown as { ctx?: ReqCtx }).ctx = { tenant: principal.tenant, principal }
+        return
+      }
+      if (config.tokens.includes(token)) {
+        ;(req as unknown as { ctx?: ReqCtx }).ctx = { tenant: token, isSyncClient: true }
+        return
+      }
     }
-    ;(req as { tenant?: string }).tenant = tenant
+    await reply.code(401).send({ error: 'unauthorized' })
   })
 
-  const tenantOf = (req: unknown): string => (req as { tenant: string }).tenant
+  const ctxOf = (req: FastifyRequest): ReqCtx => (req as unknown as { ctx: ReqCtx }).ctx
+
+  /** 权限守卫：要求管理员且具备指定权限 */
+  const requirePerm = (req: FastifyRequest, reply: FastifyReply, perm: Permission): boolean => {
+    const ctx = ctxOf(req)
+    if (!ctx.principal || !ctx.principal.permissions.includes(perm)) {
+      void reply.code(403).send({ error: 'forbidden', need: perm })
+      return false
+    }
+    return true
+  }
 
   app.get('/health', async () => ({ ok: true }))
 
-  // 批量同步：客户端定时上传增量
-  app.post('/api/sync', async (req) => {
+  // ── 认证 ──
+  app.post('/api/login', async (req, reply) => {
+    const { username, password } = (req.body ?? {}) as { username?: string; password?: string }
+    if (!username || !password) return reply.code(400).send({ error: 'missing credentials' })
+    const r = auth.login(username, password)
+    if (!r) return reply.code(401).send({ error: '账号或密码错误' })
+    return {
+      token: r.token,
+      user: {
+        username: r.principal.username,
+        role: r.principal.role,
+        permissions: r.principal.permissions
+      }
+    }
+  })
+
+  app.get('/api/me', async (req, reply) => {
+    const ctx = ctxOf(req)
+    if (!ctx.principal) return reply.code(403).send({ error: 'not an admin session' })
+    return {
+      username: ctx.principal.username,
+      role: ctx.principal.role,
+      permissions: ctx.principal.permissions
+    }
+  })
+
+  app.post('/api/logout', async (req) => {
+    const token = bearer(req)
+    if (token) auth.logout(token)
+    return { ok: true }
+  })
+
+  // 权限/角色元数据（前端渲染分配界面用）
+  app.get('/api/meta/permissions', async (req, reply) => {
+    if (!requirePerm(req, reply, 'users:manage')) return
+    return { permissions: PERMISSIONS, roles: ROLES, rolePresets: ROLE_PRESETS }
+  })
+
+  // ── 用户管理（RBAC：需 users:manage）──
+  app.get('/api/users', async (req, reply) => {
+    if (!requirePerm(req, reply, 'users:manage')) return
+    return { users: auth.listUsers(ctxOf(req).tenant) }
+  })
+
+  app.post('/api/users', async (req, reply) => {
+    if (!requirePerm(req, reply, 'users:manage')) return
+    const b = (req.body ?? {}) as {
+      username?: string
+      password?: string
+      role?: string
+      permissions?: string[]
+    }
+    if (!b.username || !b.password || !b.role) {
+      return reply.code(400).send({ error: 'username/password/role required' })
+    }
+    if (!ROLES.includes(b.role)) return reply.code(400).send({ error: 'invalid role' })
+    try {
+      const user = auth.createUser(
+        ctxOf(req).tenant,
+        b.username,
+        b.password,
+        b.role,
+        b.permissions ?? []
+      )
+      return { user }
+    } catch {
+      return reply.code(409).send({ error: '用户名已存在' })
+    }
+  })
+
+  app.patch('/api/users/:id', async (req, reply) => {
+    if (!requirePerm(req, reply, 'users:manage')) return
+    const id = Number((req.params as { id: string }).id)
+    const b = (req.body ?? {}) as {
+      role?: string
+      permissions?: string[]
+      enabled?: boolean
+      password?: string
+    }
+    if (b.role && !ROLES.includes(b.role)) return reply.code(400).send({ error: 'invalid role' })
+    const ok = auth.updateUser(ctxOf(req).tenant, id, b)
+    return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
+  })
+
+  app.delete('/api/users/:id', async (req, reply) => {
+    if (!requirePerm(req, reply, 'users:manage')) return
+    const id = Number((req.params as { id: string }).id)
+    // 不允许删除自己
+    if (ctxOf(req).principal?.userId === id) {
+      return reply.code(400).send({ error: '不能删除当前登录用户' })
+    }
+    const ok = auth.deleteUser(ctxOf(req).tenant, id)
+    return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
+  })
+
+  // ── 同步（仅同步客户端令牌）──
+  const requireSync = (req: FastifyRequest, reply: FastifyReply): boolean => {
+    if (!ctxOf(req).isSyncClient) {
+      void reply.code(403).send({ error: '需要同步客户端令牌' })
+      return false
+    }
+    return true
+  }
+
+  app.post('/api/sync', async (req, reply) => {
+    if (!requireSync(req, reply)) return
     const payload = req.body as SyncPayload
-    const result = repo.ingest(tenantOf(req), {
+    const result = repo.ingest(ctxOf(req).tenant, {
       conversations: payload.conversations ?? [],
       messages: payload.messages ?? []
     })
     return { ok: true, ...result }
   })
 
-  // 媒体去重探测：客户端上传前先问哪些 mediaId 还没上传
-  app.post('/api/media/missing', async (req) => {
+  app.post('/api/media/missing', async (req, reply) => {
+    if (!requireSync(req, reply)) return
     const { mediaIds } = req.body as { mediaIds: string[] }
-    const missing = (mediaIds ?? []).filter((id) => !repo.hasMedia(tenantOf(req), id))
+    const missing = (mediaIds ?? []).filter((id) => !repo.hasMedia(ctxOf(req).tenant, id))
     return { missing }
   })
 
-  // 媒体二进制上传（raw body），路径参数为 mediaId
   app.put('/api/media/:mediaId', async (req, reply) => {
-    const tenant = tenantOf(req)
+    if (!requireSync(req, reply)) return
+    const tenant = ctxOf(req).tenant
     const mediaId = (req.params as { mediaId: string }).mediaId
-    if (!/^[\w.-]+$/.test(mediaId)) {
-      return reply.code(400).send({ error: 'invalid mediaId' })
-    }
+    if (!/^[\w.-]+$/.test(mediaId)) return reply.code(400).send({ error: 'invalid mediaId' })
     const dir = join(config.mediaDir, tenant)
     mkdirSync(dir, { recursive: true })
     const path = join(dir, mediaId)
@@ -83,37 +214,39 @@ export function buildServer(config: ServerConfig): FastifyInstance {
     return { ok: true, size }
   })
 
-  // 查询：会话列表
-  app.get('/api/conversations', async (req) => {
+  // ── 查询（需 conversations:read）──
+  app.get('/api/conversations', async (req, reply) => {
+    if (!requirePerm(req, reply, 'conversations:read')) return
     const q = req.query as { limit?: string; offset?: string }
     return {
       conversations: repo.listConversations(
-        tenantOf(req),
+        ctxOf(req).tenant,
         Number(q.limit) || 100,
         Number(q.offset) || 0
       )
     }
   })
 
-  // 查询：某会话的消息
-  app.get('/api/conversations/:id/messages', async (req) => {
+  app.get('/api/conversations/:id/messages', async (req, reply) => {
+    if (!requirePerm(req, reply, 'conversations:read')) return
     const id = (req.params as { id: string }).id
-    return { messages: repo.listMessages(tenantOf(req), id, 500) }
+    return { messages: repo.listMessages(ctxOf(req).tenant, id, 500) }
   })
 
-  // AI 分析：按会话
+  // ── AI 分析（需 analyze:run）──
   app.post('/api/analyze/conversation/:id', async (req, reply) => {
+    if (!requirePerm(req, reply, 'analyze:run')) return
     if (!analyzer) return reply.code(501).send({ error: 'AI 分析未配置（缺少 ANTHROPIC_API_KEY）' })
     const id = (req.params as { id: string }).id
-    const messages = repo.listMessages(tenantOf(req), id, 500)
+    const messages = repo.listMessages(ctxOf(req).tenant, id, 500)
     return { analysis: await analyzer.analyze(messages) }
   })
 
-  // AI 分析：按客户（跨会话/账号聚合该客户的全部对话）
   app.post('/api/analyze/contact/:contactId', async (req, reply) => {
+    if (!requirePerm(req, reply, 'analyze:run')) return
     if (!analyzer) return reply.code(501).send({ error: 'AI 分析未配置（缺少 ANTHROPIC_API_KEY）' })
     const contactId = decodeURIComponent((req.params as { contactId: string }).contactId)
-    const messages = repo.messagesByContact(tenantOf(req), contactId)
+    const messages = repo.messagesByContact(ctxOf(req).tenant, contactId)
     return { analysis: await analyzer.analyze(messages) }
   })
 

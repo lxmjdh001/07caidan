@@ -49,6 +49,26 @@ export const messages = sqliteTable(
   ]
 )
 
+/** 管理后台用户（RBAC）：角色 + 可直接分配的权限列表 */
+export const adminUsers = sqliteTable('admin_users', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  tenant: text('tenant').notNull(),
+  username: text('username').notNull().unique(),
+  passwordHash: text('password_hash').notNull(),
+  role: text('role').notNull(),
+  /** JSON 字符串：权限 key 数组，覆盖/补充角色预设 */
+  permissions: text('permissions').notNull().default('[]'),
+  enabled: integer('enabled').notNull().default(1),
+  createdAt: integer('created_at').notNull()
+})
+
+/** 登录会话（DB 持久化，可撤销） */
+export const sessions = sqliteTable('admin_sessions', {
+  token: text('token').primaryKey(),
+  userId: integer('user_id').notNull(),
+  expiresAt: integer('expires_at').notNull()
+})
+
 export const media = sqliteTable(
   'media',
   {
