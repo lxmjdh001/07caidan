@@ -1,7 +1,8 @@
 import { readFile } from 'node:fs/promises'
 import { Api, TelegramClient } from 'telegram'
-import { NewMessage, type NewMessageEvent } from 'telegram/events'
-import { StringSession } from 'telegram/sessions'
+// GramJS 是 CJS 包且没有 exports 映射，ESM 下目录导入会被拒，必须写到具体文件
+import { NewMessage, type NewMessageEvent } from 'telegram/events/index.js'
+import { StringSession } from 'telegram/sessions/index.js'
 import type { ChannelStatus, UnifiedMessage } from '@shared/domain'
 import { ChannelAdapter, type OutboundMedia, type OutboundResult } from '../../core/channel-adapter'
 import { noopLogger, type Logger } from '../../core/logger'
