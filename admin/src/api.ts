@@ -91,6 +91,64 @@ export interface FanLibrary {
   createdAt: number
 }
 
+/** 计费相关类型，与 server/src/billing 保持一致 */
+export interface Plan {
+  id: string
+  name: string
+  priceCents: number
+  periodUnit: 'month' | 'quarter' | 'half_year' | 'year' | 'day'
+  periodCount: number
+  maxAccounts: number
+  enabled: boolean
+  sortOrder: number
+  createdAt: number
+}
+
+export interface PayChannel {
+  id: string
+  type: 'yipay' | 'paypal' | 'usdt' | 'mock'
+  name: string
+  enabled: boolean
+  config: Record<string, string>
+  feeRate: number
+  feeFixedCents: number
+  feePaidBy: 'merchant' | 'customer'
+  currency: string
+  sortOrder: number
+  createdAt: number
+}
+
+export interface ExRate {
+  currency: string
+  rate: number
+  decimals: number
+}
+
+export interface AiProvider {
+  id: string
+  type: 'openai' | 'anthropic' | 'openrouter' | 'openai_compatible'
+  name: string
+  baseUrl: string
+  apiKeyMasked: string
+  enabled: boolean
+  sortOrder: number
+  createdAt: number
+}
+
+export interface AiModelRow {
+  id: string
+  providerId: string
+  modelName: string
+  label: string
+  purposes: string[]
+  creditsPerMillionInput: number
+  creditsPerMillionOutput: number
+  creditsPerAudioSecond: number
+  minCredits: number
+  enabled: boolean
+  createdAt: number
+}
+
 export interface Me {
   username: string
   role: string
@@ -207,6 +265,114 @@ export class ApiClient {
 
   deleteLibrary(id: string): Promise<{ ok: boolean }> {
     return this.req(`/api/fan-libraries/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  // ── 计费管理（需 billing:manage）──
+  listPlans(): Promise<{ plans: Plan[] }> {
+    return this.req('/api/admin/plans')
+  }
+
+  createPlan(body: Partial<Plan>): Promise<{ plan: Plan }> {
+    return this.req('/api/admin/plans', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  updatePlan(id: string, body: Partial<Plan>): Promise<{ ok: boolean }> {
+    return this.req(`/api/admin/plans/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body)
+    })
+  }
+
+  listChannels(): Promise<{ channels: PayChannel[] }> {
+    return this.req('/api/admin/channels')
+  }
+
+  createChannel(body: Partial<PayChannel>): Promise<{ channel: PayChannel }> {
+    return this.req('/api/admin/channels', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  updateChannel(id: string, body: Partial<PayChannel>): Promise<{ ok: boolean }> {
+    return this.req(`/api/admin/channels/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body)
+    })
+  }
+
+  deleteChannel(id: string): Promise<{ ok: boolean }> {
+    return this.req(`/api/admin/channels/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  listRates(): Promise<{ rates: ExRate[] }> {
+    return this.req('/api/admin/rates')
+  }
+
+  setRate(currency: string, rate: number, decimals: number): Promise<{ ok: boolean }> {
+    return this.req(`/api/admin/rates/${encodeURIComponent(currency)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ rate, decimals })
+    })
+  }
+
+  deleteRate(currency: string): Promise<{ ok: boolean }> {
+    return this.req(`/api/admin/rates/${encodeURIComponent(currency)}`, { method: 'DELETE' })
+  }
+
+  listAiProviders(): Promise<{ providers: AiProvider[] }> {
+    return this.req('/api/admin/ai/providers')
+  }
+
+  createAiProvider(body: Partial<AiProvider> & { apiKey?: string }): Promise<{ provider: AiProvider }> {
+    return this.req('/api/admin/ai/providers', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  updateAiProvider(
+    id: string,
+    body: Partial<AiProvider> & { apiKey?: string }
+  ): Promise<{ ok: boolean }> {
+    return this.req(`/api/admin/ai/providers/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body)
+    })
+  }
+
+  deleteAiProvider(id: string): Promise<{ ok: boolean }> {
+    return this.req(`/api/admin/ai/providers/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  listAiModels(): Promise<{ models: AiModelRow[] }> {
+    return this.req('/api/admin/ai/models')
+  }
+
+  createAiModel(body: Partial<AiModelRow>): Promise<{ model: AiModelRow }> {
+    return this.req('/api/admin/ai/models', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  updateAiModel(id: string, body: Partial<AiModelRow>): Promise<{ ok: boolean }> {
+    return this.req(`/api/admin/ai/models/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body)
+    })
+  }
+
+  deleteAiModel(id: string): Promise<{ ok: boolean }> {
+    return this.req(`/api/admin/ai/models/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  billingSettings(): Promise<{ settings: { creditsPerUsd: number; autoTopUpCredits: boolean } }> {
+    return this.req('/api/admin/billing-settings')
+  }
+
+  updateBillingSettings(body: {
+    creditsPerUsd?: number
+    autoTopUpCredits?: boolean
+  }): Promise<{ settings: { creditsPerUsd: number; autoTopUpCredits: boolean } }> {
+    return this.req('/api/admin/billing-settings', { method: 'PUT', body: JSON.stringify(body) })
+  }
+
+  usageSummary(): Promise<{
+    summary: Array<{ modelId: string; purpose: string; calls: number; credits: number }>
+  }> {
+    return this.req('/api/admin/usage-summary')
   }
 
   // ── 用户管理（需 users:manage）──

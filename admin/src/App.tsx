@@ -5,6 +5,7 @@ import { ConversationList } from './components/ConversationList'
 import { ChatView } from './components/ChatView'
 import { AnalysisPanel } from './components/AnalysisPanel'
 import { UsersView } from './components/UsersView'
+import { BillingView } from './components/BillingView'
 import { CampaignsView } from './components/CampaignsView'
 import { LOCALES, useI18n, type Locale } from './i18n'
 
@@ -12,7 +13,7 @@ export function App(): React.JSX.Element {
   const { t, locale, setLocale } = useI18n()
   const [client, setClient] = useState<ApiClient | null>(null)
   const [me, setMe] = useState<Me | null>(null)
-  const [view, setView] = useState<'chats' | 'campaigns' | 'users'>('chats')
+  const [view, setView] = useState<'chats' | 'campaigns' | 'billing' | 'users'>('chats')
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
 
@@ -52,6 +53,7 @@ export function App(): React.JSX.Element {
   const canChats = me.permissions.includes('conversations:read')
   const canUsers = me.permissions.includes('users:manage')
   const canCampaigns = me.permissions.includes('campaigns:manage')
+  const canBilling = me.permissions.includes('billing:manage')
 
   return (
     <div className="layout">
@@ -74,6 +76,12 @@ export function App(): React.JSX.Element {
             >
               <ChartIcon />
               {t('nav.campaigns')}
+            </button>
+          )}
+          {canBilling && (
+            <button className={view === 'billing' ? 'on' : ''} onClick={() => setView('billing')}>
+              <CardIcon />
+              {t('nav.billing')}
             </button>
           )}
           {canUsers && (
@@ -110,6 +118,8 @@ export function App(): React.JSX.Element {
           <UsersView client={client} currentUser={me.username} />
         ) : view === 'campaigns' && canCampaigns ? (
           <CampaignsView client={client} />
+        ) : view === 'billing' && canBilling ? (
+          <BillingView client={client} />
         ) : (
           <div className="body">
             <ConversationList
@@ -145,6 +155,14 @@ function roleLabel(role: string, t: ReturnType<typeof useI18n>['t']): string {
   return known.includes(role) ? t(`role.${role}` as 'role.owner') : role
 }
 
+function CardIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+      <rect x="2" y="5" width="20" height="14" rx="2" />
+      <path d="M2 10h20" />
+    </svg>
+  )
+}
 function ChartIcon(): React.JSX.Element {
   return (
     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
