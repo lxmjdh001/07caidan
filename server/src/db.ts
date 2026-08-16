@@ -145,6 +145,36 @@ export function openDb(dbPath: string): Db {
       ref_type TEXT, ref_id TEXT, note TEXT, created_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_ledger_user ON ledger (tenant, user_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS payment_channels (
+      tenant TEXT NOT NULL, id TEXT NOT NULL, type TEXT NOT NULL, name TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1, config TEXT NOT NULL DEFAULT '{}',
+      fee_rate TEXT NOT NULL DEFAULT '0', fee_fixed_cents INTEGER NOT NULL DEFAULT 0,
+      fee_paid_by TEXT NOT NULL DEFAULT 'merchant',
+      currency TEXT NOT NULL DEFAULT 'USD',
+      sort_order INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, id)
+    );
+
+    CREATE TABLE IF NOT EXISTS exchange_rates (
+      tenant TEXT NOT NULL, currency TEXT NOT NULL, rate TEXT NOT NULL,
+      decimals INTEGER NOT NULL DEFAULT 2, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, currency)
+    );
+
+    CREATE TABLE IF NOT EXISTS orders (
+      tenant TEXT NOT NULL, id TEXT NOT NULL, user_id INTEGER NOT NULL,
+      kind TEXT NOT NULL, plan_id TEXT,
+      amount_cents INTEGER NOT NULL, fee_cents INTEGER NOT NULL DEFAULT 0,
+      payable_cents INTEGER NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'USD', locked_rate TEXT NOT NULL DEFAULT '1',
+      payable_local INTEGER NOT NULL DEFAULT 0,
+      channel_id TEXT, channel_type TEXT,
+      status TEXT NOT NULL DEFAULT 'pending', trade_no TEXT, paid_at INTEGER,
+      created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_orders_user ON orders (tenant, user_id, created_at);
   `)
 
   migrate(sqlite)

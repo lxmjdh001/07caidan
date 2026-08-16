@@ -288,6 +288,86 @@ export const ledger = sqliteTable(
   (t) => [index('idx_ledger_user').on(t.tenant, t.userId, t.createdAt)]
 )
 
+/** 支付通道配置。config 存各通道自己的密钥等，按 type 解释 */
+export const paymentChannels = sqliteTable(
+  'payment_channels',
+  {
+    tenant: text('tenant').notNull(),
+    id: text('id').notNull(),
+    /** yipay / paypal / usdt / mock */
+    type: text('type').notNull(),
+    name: text('name').notNull(),
+    enabled: integer('enabled').notNull().default(1),
+    /** JSON：网关地址、商户号、密钥、收款地址等 */
+    config: text('config').notNull().default('{}'),
+    /** 手续费率，0.024 = 2.4% */
+    feeRate: text('fee_rate').notNull().default('0'),
+    feeFixedCents: integer('fee_fixed_cents').notNull().default(0),
+    /** merchant = 商户承担；customer = 加在用户应付金额上 */
+    feePaidBy: text('fee_paid_by').notNull().default('merchant'),
+    /** 该通道收款币种；空 = 用美元 */
+    currency: text('currency').notNull().default('USD'),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: integer('created_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.id] })]
+)
+
+/** 汇率表：1 USD = rate 个目标币种 */
+export const exchangeRates = sqliteTable(
+  'exchange_rates',
+  {
+    tenant: text('tenant').notNull(),
+    currency: text('currency').notNull(),
+    /** 存字符串避免浮点在往返存取中失真 */
+    rate: text('rate').notNull(),
+    decimals: integer('decimals').notNull().default(2),
+    updatedAt: integer('updated_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.currency] })]
+)
+
+/**
+ * 支付订单。
+ * amountCents 是「用户想买到的价值」，payableCents 是「实际要付多少」，
+ * 两者之差就是客户承担的手续费。结算时按 amountCents 入账。
+ */
+export const orders = sqliteTable(
+  'orders',
+  {
+    tenant: text('tenant').notNull(),
+    /** 商户订单号，同时是给通道的 out_trade_no */
+    id: text('id').notNull(),
+    userId: integer('user_id').notNull(),
+    /** topup = 充值余额；plan = 购买套餐 */
+    kind: text('kind').notNull(),
+    planId: text('plan_id'),
+    /** 商品价值（美分 USD），结算时按这个入账 */
+    amountCents: integer('amount_cents').notNull(),
+    feeCents: integer('fee_cents').notNull().default(0),
+    /** 用户应付（美分 USD） */
+    payableCents: integer('payable_cents').notNull(),
+    /** 实际收款币种与锁定汇率 —— 汇率会变，必须下单时存下来 */
+    currency: text('currency').notNull().default('USD'),
+    lockedRate: text('locked_rate').notNull().default('1'),
+    /** 收款金额，目标币种最小单位 */
+    payableLocal: integer('payable_local').notNull().default(0),
+    channelId: text('channel_id'),
+    channelType: text('channel_type'),
+    /** pending / paid / failed / expired */
+    status: text('status').notNull().default('pending'),
+    /** 通道侧流水号，回调时写入 */
+    tradeNo: text('trade_no'),
+    paidAt: integer('paid_at'),
+    createdAt: integer('created_at').notNull(),
+    expiresAt: integer('expires_at').notNull()
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenant, t.id] }),
+    index('idx_orders_user').on(t.tenant, t.userId, t.createdAt)
+  ]
+)
+
 export const media = sqliteTable(
   'media',
   {
