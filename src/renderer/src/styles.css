@@ -394,6 +394,62 @@ body {
   white-space: nowrap;
 }
 
+.conversation-tags {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 1px 0;
+  min-width: 0;
+}
+
+.channel-tag {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 17px;
+  padding: 0 6px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.channel-tag.compact {
+  padding: 0 4px;
+}
+
+.channel-tag-label {
+  letter-spacing: 0.01em;
+}
+
+.account-tag {
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 17px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: var(--panel-alt);
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 17px;
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.account-tag-at {
+  opacity: 0.5;
+  flex: none;
+}
+
+.account-tag-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .conversation-time {
   flex: none;
   font-size: 11px;
@@ -512,9 +568,12 @@ body {
 }
 
 .chat-subtitle {
-  margin-top: 2px;
+  margin-top: 3px;
   font-size: 12px;
   color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .channel-chip {

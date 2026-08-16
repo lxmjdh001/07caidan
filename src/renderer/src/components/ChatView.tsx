@@ -6,6 +6,7 @@ import { LANGUAGES, languageLabel } from '@shared/langs'
 import { useI18n } from '../i18n'
 import { formatBubbleTime } from '../time'
 import { Avatar } from './Avatar'
+import { ChannelTag } from './ChannelTag'
 
 interface Props {
   conversation: Conversation | null
@@ -140,7 +141,7 @@ export function ChatView({
         <div className="chat-header-text">
           <div className="chat-title">{conversation.title}</div>
           <div className="chat-subtitle">
-            <span className="channel-chip">{t('channel.whatsapp')}</span>
+            <ChannelTag kind={conversation.channel} />
             {conversation.contactId && (
               <span className="contact-id">{conversation.contactId.replace(/^wa:/, '')}</span>
             )}

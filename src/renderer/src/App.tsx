@@ -280,6 +280,8 @@ export function App(): React.JSX.Element {
             conversations={visibleConversations}
             activeId={activeId}
             states={relevantStates}
+            accountLabels={accountLabels}
+            showSourceTags={activeAccountKey === null}
             onSelect={selectConversation}
           />
           <main className="content">

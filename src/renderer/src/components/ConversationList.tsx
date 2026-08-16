@@ -3,12 +3,17 @@ import type { ChannelState, Conversation } from '@shared/domain'
 import { useI18n } from '../i18n'
 import { formatListTime } from '../time'
 import { Avatar } from './Avatar'
+import { AccountTag, ChannelTag } from './ChannelTag'
 
 interface Props {
   conversations: Conversation[]
   activeId: string | null
   /** 当前视图相关的渠道状态（未连接的会显示横幅） */
   states: ChannelState[]
+  /** channel:accountId → 账号显示名 */
+  accountLabels: Record<string, string>
+  /** 聚合视图（全部消息）才显示来源标签 */
+  showSourceTags: boolean
   onSelect: (id: string) => void
 }
 
@@ -16,6 +21,8 @@ export function ConversationList({
   conversations,
   activeId,
   states,
+  accountLabels,
+  showSourceTags,
   onSelect
 }: Props): React.JSX.Element {
   const { t, locale } = useI18n()
@@ -80,6 +87,14 @@ export function ConversationList({
                     {formatListTime(c.lastMessageAt, locale, t('time.yesterday'))}
                   </span>
                 </span>
+                {showSourceTags && (
+                  <span className="conversation-tags">
+                    <ChannelTag kind={c.channel} />
+                    <AccountTag
+                      label={accountLabels[`${c.channel}:${c.accountId}`] ?? c.accountId}
+                    />
+                  </span>
+                )}
                 <span className="conversation-bottom">
                   <span className="conversation-preview">{c.lastMessagePreview}</span>
                   {c.unreadCount > 0 && <span className="unread-badge">{c.unreadCount}</span>}
