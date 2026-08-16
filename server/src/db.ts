@@ -106,5 +106,41 @@ export function openDb(dbPath: string): Db {
     CREATE INDEX IF NOT EXISTS idx_fan_entries_contact ON fan_library_entries (tenant, contact_id);
   `)
 
+  migrate(sqlite)
+
   return drizzle(sqlite, { schema })
+}
+
+/**
+ * 增量迁移：给已存在的表补新列。
+ *
+ * 为什么必须有这个：上面用的是 `CREATE TABLE IF NOT EXISTS`，它对**已经存在**的表
+ * 什么都不做 —— 新加的列在老库上永远不会出现，升级后一查就是
+ * "no such column"。全新库看不出问题（测试每次都建新库），只有升级才会炸。
+ *
+ * 加新列时在这里追加一行即可；SQLite 的 ADD COLUMN 是 O(1) 的元数据操作，
+ * 但要求新列有默认值或可空，因此不要在这里加 NOT NULL 且无默认值的列。
+ */
+function migrate(sqlite: BetterSqlite3.Database): void {
+  const columns = [
+    ['campaigns', 'account_labels', `TEXT NOT NULL DEFAULT '{}'`],
+    ['campaigns', 'dedup_account_ids', `TEXT NOT NULL DEFAULT '[]'`],
+    ['campaigns', 'tz_offset_minutes', 'INTEGER NOT NULL DEFAULT 480']
+  ] as const
+
+  for (const [table, column, definition] of columns) {
+    if (!tableExists(sqlite, table) || columnExists(sqlite, table, column)) continue
+    sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+  }
+}
+
+function tableExists(sqlite: BetterSqlite3.Database, table: string): boolean {
+  return !!sqlite
+    .prepare(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`)
+    .get(table)
+}
+
+function columnExists(sqlite: BetterSqlite3.Database, table: string, column: string): boolean {
+  const rows = sqlite.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>
+  return rows.some((r) => r.name === column)
 }
