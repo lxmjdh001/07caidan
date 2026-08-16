@@ -195,3 +195,64 @@ describe('fillDays', () => {
     assert.deepEqual(fillDays([], T0, T0 - 1000), [])
   })
 })
+
+describe('按投放来源拆分', () => {
+  test('按来源分组并按量降序', () => {
+    const s = compute([
+      lead({ contactId: 'wa:+1', sourceCode: 'fb01', sourceVia: 'ad' }),
+      lead({ contactId: 'wa:+2', sourceCode: 'fb01', sourceVia: 'ad' }),
+      lead({ contactId: 'wa:+3', sourceCode: 'tt02', sourceVia: 'code' })
+    ])
+    assert.deepEqual(
+      s.bySource.map((x) => [x.code, x.total, x.via]),
+      [
+        ['fb01', 2, 'ad'],
+        ['tt02', 1, 'code']
+      ]
+    )
+  })
+
+  test('未归因的客户归到空 code 且排最后', () => {
+    const s = compute([
+      lead({ contactId: 'wa:+1' }),
+      lead({ contactId: 'wa:+2' }),
+      lead({ contactId: 'wa:+3', sourceCode: 'fb01' })
+    ])
+    assert.equal(s.bySource[s.bySource.length - 1]!.code, '')
+    assert.equal(s.bySource[s.bySource.length - 1]!.total, 2)
+  })
+
+  test('各来源人数之和等于总数（未归因也算进去）', () => {
+    const s = compute([
+      lead({ contactId: 'wa:+1', sourceCode: 'a' }),
+      lead({ contactId: 'wa:+2' }),
+      lead({ contactId: 'wa:+3', sourceCode: 'b' })
+    ])
+    assert.equal(
+      s.bySource.reduce((n, x) => n + x.total, 0),
+      s.total
+    )
+  })
+
+  test('来源内部也区分新粉与重复', () => {
+    const s = compute(
+      [
+        lead({ contactId: 'wa:+1', sourceCode: 'fb01' }),
+        lead({ contactId: 'wa:+2', sourceCode: 'fb01' })
+      ],
+      { rules: { libraryIds: ['L1'] }, libraryContacts: new Set(['wa:+1']) }
+    )
+    assert.deepEqual(
+      s.bySource.map((x) => [x.code, x.fresh, x.duplicate]),
+      [['fb01', 1, 1]]
+    )
+  })
+
+  test('来源拆分里不含任何客户身份信息', () => {
+    const dumped = JSON.stringify(
+      compute([lead({ contactId: 'wa:+8613800138000', sourceCode: 'fb01' })]).bySource
+    )
+    assert.equal(dumped.includes('8613800138000'), false)
+    assert.equal(dumped.includes('contactId'), false)
+  })
+})

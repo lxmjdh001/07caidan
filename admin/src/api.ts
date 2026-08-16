@@ -66,6 +66,8 @@ export interface CampaignStats {
   duplicateBy: { library: number; timeRange: number }
   byAccount: Array<{ accountId: string; channel: string; label?: string } & Bucket>
   byDay: Array<{ date: string } & Bucket>
+  /** 按投放来源拆分；code 是广告 id 或追踪码，未归因的 code 为空 */
+  bySource: Array<{ code: string; via?: 'ad' | 'code' } & Bucket>
   response: { replied: number; replyRate: number; medianFirstReplySec: number | null }
   computedAt: number
 }

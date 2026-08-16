@@ -155,6 +155,25 @@
         )
       }
 
+      function sourceRows(rows) {
+        if (!rows.length) return '<p class="sub">暂无数据</p>'
+        return (
+          '<div class="scroll"><table><thead><tr><th>来源</th><th>归因方式</th>' +
+          '<th class="num">进线</th><th class="num">新粉</th><th class="num">重复</th>' +
+          '</tr></thead><tbody>' +
+          rows
+            .map(
+              (r) =>
+                '<tr><td>' + (r.code ? esc(r.code) : '<span class="sub">未归因</span>') +
+                '</td><td>' + (r.via === 'ad' ? '广告点击' : r.via === 'code' ? '追踪码' : '—') +
+                '</td><td class="num">' + r.total + '</td><td class="num">' + r.fresh +
+                '</td><td class="num">' + r.duplicate + '</td></tr>'
+            )
+            .join('') +
+          '</tbody></table></div>'
+        )
+      }
+
       function accountRows(rows) {
         if (!rows.length) return '<p class="sub">暂无数据</p>'
         return (
@@ -200,6 +219,7 @@
 
           '<section><h2>每日趋势</h2>' + trendBars(s.byDay) + '</section>' +
           '<section><h2>账号明细</h2>' + accountRows(s.byAccount) + '</section>' +
+          '<section><h2>投放来源</h2>' + sourceRows(s.bySource || []) + '</section>' +
 
           '<section><h2>客服响应</h2><div class="scroll"><table><tbody>' +
           '<tr><td>已回复客户</td><td class="num">' + s.response.replied + '</td></tr>' +

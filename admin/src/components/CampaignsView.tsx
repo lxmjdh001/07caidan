@@ -245,6 +245,36 @@ function CampaignDetail({
           </section>
 
           <section className="card">
+            <h3>投放来源</h3>
+            {stats.bySource.length === 0 ? (
+              <p className="muted small">暂无数据</p>
+            ) : (
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>来源</th>
+                    <th>归因方式</th>
+                    <th className="num">进线</th>
+                    <th className="num">新粉</th>
+                    <th className="num">重复</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.bySource.map((r) => (
+                    <tr key={r.code || '__none__'}>
+                      <td>{r.code || <span className="muted">未归因</span>}</td>
+                      <td>{r.via === 'ad' ? '广告点击' : r.via === 'code' ? '追踪码' : '—'}</td>
+                      <td className="num">{r.total}</td>
+                      <td className="num">{r.fresh}</td>
+                      <td className="num">{r.duplicate}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </section>
+
+          <section className="card">
             <h3>每日趋势</h3>
             <Trend days={stats.byDay} />
           </section>

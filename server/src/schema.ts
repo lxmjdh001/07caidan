@@ -15,6 +15,10 @@ export const conversations = sqliteTable(
     contactId: text('contact_id'),
     title: text('title').notNull(),
     isGroup: integer('is_group').notNull().default(0),
+    /** 投放来源标识（广告 id 或追踪码），客户端归因后同步上来 */
+    leadSourceCode: text('lead_source_code'),
+    /** 归因方式：ad = 平台广告上下文，code = 预填文案追踪码 */
+    leadSourceVia: text('lead_source_via'),
     lastMessageAt: integer('last_message_at').notNull().default(0),
     updatedAt: integer('updated_at').notNull()
   },

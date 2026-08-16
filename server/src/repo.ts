@@ -27,6 +27,8 @@ export class Repo {
             contactId: c.contactId ?? null,
             title: c.title,
             isGroup: c.isGroup ? 1 : 0,
+            leadSourceCode: c.leadSourceCode ?? null,
+            leadSourceVia: c.leadSourceVia ?? null,
             lastMessageAt: c.lastMessageAt,
             updatedAt: now
           })
@@ -36,6 +38,9 @@ export class Repo {
               contactId: sql`COALESCE(excluded.contact_id, ${conversations.contactId})`,
               title: sql`excluded.title`,
               isGroup: sql`excluded.is_group`,
+              // 来源只认第一次，后续同步不覆盖（客户端也是这个口径）
+              leadSourceCode: sql`COALESCE(${conversations.leadSourceCode}, excluded.lead_source_code)`,
+              leadSourceVia: sql`COALESCE(${conversations.leadSourceVia}, excluded.lead_source_via)`,
               lastMessageAt: sql`MAX(excluded.last_message_at, ${conversations.lastMessageAt})`,
               updatedAt: sql`excluded.updated_at`
             }
@@ -160,6 +165,8 @@ function toConversation(r: ConvRow): SyncConversation {
     contactId: r.contactId ?? undefined,
     title: r.title,
     isGroup: r.isGroup === 1,
+    leadSourceCode: r.leadSourceCode ?? undefined,
+    leadSourceVia: r.leadSourceVia ?? undefined,
     lastMessageAt: r.lastMessageAt
   }
 }

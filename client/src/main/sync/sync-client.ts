@@ -175,7 +175,10 @@ function mapConversation(c: Conversation): Record<string, unknown> {
     contactId: c.contactId,
     title: c.title,
     isGroup: c.isGroup,
-    lastMessageAt: c.lastMessageAt
+    lastMessageAt: c.lastMessageAt,
+    // 投放来源：后台按来源拆分工单统计要用；只传归因结果，不含任何客户信息
+    leadSourceCode: c.leadSource?.code,
+    leadSourceVia: c.leadSource?.via
   }
 }
 

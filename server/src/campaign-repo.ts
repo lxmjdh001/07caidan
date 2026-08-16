@@ -387,6 +387,8 @@ export class CampaignRepo {
           contactId: conversations.contactId,
           channel: conversations.channel,
           accountId: conversations.accountId,
+          sourceCode: conversations.leadSourceCode,
+          sourceVia: conversations.leadSourceVia,
           at: min(messages.timestamp)
         })
         .from(conversations)
@@ -409,7 +411,13 @@ export class CampaignRepo {
         )
         // 按 (客户, 账号) 分组，跨账号的归并放到 JS 里做，避免依赖
         // SQLite 特有的 bare-column 语义，将来换 PostgreSQL 不用改
-        .groupBy(conversations.contactId, conversations.channel, conversations.accountId)
+        .groupBy(
+          conversations.contactId,
+          conversations.channel,
+          conversations.accountId,
+          conversations.leadSourceCode,
+          conversations.leadSourceVia
+        )
         .all()
 
     const leads = new Map<string, LeadRow>()
@@ -421,6 +429,8 @@ export class CampaignRepo {
           contactId: r.contactId,
           channel: r.channel,
           accountId: r.accountId,
+          sourceCode: r.sourceCode ?? undefined,
+          sourceVia: r.sourceVia === 'ad' ? 'ad' : r.sourceVia === 'code' ? 'code' : undefined,
           firstAt: r.at
         })
       }

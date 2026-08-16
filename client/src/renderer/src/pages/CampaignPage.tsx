@@ -468,6 +468,40 @@ function CampaignDetail({
             </div>
           </div>
 
+          {stats.bySource.length > 0 && (
+            <section className="form-card">
+              <h3>{t('campaign.bySource')}</h3>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>{t('campaign.source')}</th>
+                    <th>{t('campaign.sourceVia')}</th>
+                    <th className="num">{t('campaign.total')}</th>
+                    <th className="num">{t('campaign.fresh')}</th>
+                    <th className="num">{t('campaign.duplicate')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {stats.bySource.map((r) => (
+                    <tr key={r.code || '__none__'}>
+                      <td>{r.code || t('campaign.noSource')}</td>
+                      <td>
+                        {r.via === 'ad'
+                          ? t('campaign.viaAd')
+                          : r.via === 'code'
+                            ? t('campaign.viaCode')
+                            : '—'}
+                      </td>
+                      <td className="num">{r.total}</td>
+                      <td className="num">{r.fresh}</td>
+                      <td className="num">{r.duplicate}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )}
+
           {stats.byAccount.length > 0 && (
             <section className="form-card">
               <h3>{t('campaign.byAccount')}</h3>

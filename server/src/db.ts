@@ -20,7 +20,9 @@ export function openDb(dbPath: string): Db {
     CREATE TABLE IF NOT EXISTS conversations (
       tenant TEXT NOT NULL, id TEXT NOT NULL, channel TEXT NOT NULL,
       account_id TEXT NOT NULL, contact_id TEXT, title TEXT NOT NULL,
-      is_group INTEGER NOT NULL DEFAULT 0, last_message_at INTEGER NOT NULL DEFAULT 0,
+      is_group INTEGER NOT NULL DEFAULT 0,
+      lead_source_code TEXT, lead_source_via TEXT,
+      last_message_at INTEGER NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL, PRIMARY KEY (tenant, id)
     );
     CREATE INDEX IF NOT EXISTS idx_conv_contact ON conversations (tenant, contact_id);
@@ -125,7 +127,9 @@ function migrate(sqlite: BetterSqlite3.Database): void {
   const columns = [
     ['campaigns', 'account_labels', `TEXT NOT NULL DEFAULT '{}'`],
     ['campaigns', 'dedup_account_ids', `TEXT NOT NULL DEFAULT '[]'`],
-    ['campaigns', 'tz_offset_minutes', 'INTEGER NOT NULL DEFAULT 480']
+    ['campaigns', 'tz_offset_minutes', 'INTEGER NOT NULL DEFAULT 480'],
+    ['conversations', 'lead_source_code', 'TEXT'],
+    ['conversations', 'lead_source_via', 'TEXT']
   ] as const
 
   for (const [table, column, definition] of columns) {

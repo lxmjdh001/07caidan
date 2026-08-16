@@ -113,7 +113,8 @@
 - [x] WhatsApp Click-to-WhatsApp 广告上下文（ctwaClid / sourceId / sourceUrl）
 - [x] 三平台通用 [ref:xxx] 追踪码（入口链接预填文案）
 - [x] 会话头部展示来源标签；首条入站消息识别一次后不再覆盖
-- [ ] 工单统计按来源拆分（把 leadSource 同步到后台并加入统计维度）
+- [x] 工单统计按来源拆分（leadSource 随同步上传，统计新增 bySource 维度，
+      客户端 / 管理后台 / 公开看板三处都已展示）
 - [ ] 客户端提供「生成带追踪码的入口链接」界面（目前只有函数，没有 UI）
 
 ## M6 — 产品化

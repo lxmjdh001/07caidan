@@ -249,7 +249,13 @@ export const zhCN = {
   'settings.notifyHint': '共用屏幕时建议关掉「显示消息内容」，只提示有新消息。点击通知会直接跳到该会话。',
   'chat.from': '来自',
   'chat.sourceAd': '广告点击带来（平台归因，最可靠）',
-  'chat.sourceCode': '入口链接预填文案中的追踪码'
+  'chat.sourceCode': '入口链接预填文案中的追踪码',
+  'campaign.bySource': '投放来源',
+  'campaign.source': '来源',
+  'campaign.sourceVia': '归因方式',
+  'campaign.noSource': '未归因',
+  'campaign.viaAd': '广告点击',
+  'campaign.viaCode': '追踪码'
 }
 
 export type MessageKey = keyof typeof zhCN

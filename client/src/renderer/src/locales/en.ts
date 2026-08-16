@@ -252,5 +252,11 @@ export const en: Record<MessageKey, string> = {
   'settings.notifyHint': 'On a shared screen, turn off content preview so notifications only say a message arrived. Clicking a notification jumps straight to that conversation.',
   'chat.from': 'from',
   'chat.sourceAd': 'Came from an ad click (platform attribution, most reliable)',
-  'chat.sourceCode': 'Tracking code in the prefilled entry-link message'
+  'chat.sourceCode': 'Tracking code in the prefilled entry-link message',
+  'campaign.bySource': 'By source',
+  'campaign.source': 'Source',
+  'campaign.sourceVia': 'Attribution',
+  'campaign.noSource': 'Unattributed',
+  'campaign.viaAd': 'Ad click',
+  'campaign.viaCode': 'Tracking code'
 }

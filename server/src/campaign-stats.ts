@@ -19,6 +19,10 @@ export interface LeadRow {
   firstAt: number
   /** 首次人工回复时间（毫秒）；没回复过则为空 */
   firstReplyAt?: number
+  /** 投放来源标识（广告 id 或追踪码）；未归因则为空 */
+  sourceCode?: string
+  /** 归因方式 */
+  sourceVia?: 'ad' | 'code'
 }
 
 /** 判重规则：命中任意一条即算重复（用户已确认取并集） */
@@ -50,6 +54,11 @@ export interface CampaignStats {
   byAccount: Array<{ accountId: string; channel: string; label?: string } & Bucket>
   /** 按天趋势（date 为 YYYY-MM-DD） */
   byDay: Array<{ date: string } & Bucket>
+  /**
+   * 按投放来源拆分。code 是广告 id 或追踪码 —— 是老板自己的投放标识，
+   * 不是客户信息，可以在公开看板展示。未归因的客户归到 code 为空的那一行。
+   */
+  bySource: Array<{ code: string; via?: 'ad' | 'code' } & Bucket>
   /** 客服响应表现 */
   response: {
     /** 有过回复的客户数 */
@@ -123,6 +132,7 @@ export function computeCampaignStats(input: ComputeInput): CampaignStats {
 
   const byAccount = new Map<string, { channel: string } & Bucket>()
   const byDay = new Map<string, Bucket>()
+  const bySource = new Map<string, { via?: 'ad' | 'code' } & Bucket>()
   let duplicate = 0
   let byLibraryCount = 0
   let byTimeCount = 0
@@ -158,6 +168,19 @@ export function computeCampaignStats(input: ComputeInput): CampaignStats {
     else day.fresh++
     byDay.set(key, day)
 
+    // 未归因的客户也要统计，否则各来源相加对不上总数
+    const sourceKey = lead.sourceCode ?? ''
+    const src = bySource.get(sourceKey) ?? {
+      via: lead.sourceVia,
+      total: 0,
+      duplicate: 0,
+      fresh: 0
+    }
+    src.total++
+    if (verdict.duplicate) src.duplicate++
+    else src.fresh++
+    bySource.set(sourceKey, src)
+
     if (lead.firstReplyAt !== undefined && lead.firstReplyAt >= lead.firstAt) {
       replied++
       replyDurations.push(Math.round((lead.firstReplyAt - lead.firstAt) / 1000))
@@ -186,6 +209,10 @@ export function computeCampaignStats(input: ComputeInput): CampaignStats {
     byDay: [...byDay.entries()]
       .map(([date, v]) => ({ date, ...v }))
       .sort((a, b) => a.date.localeCompare(b.date)),
+    bySource: [...bySource.entries()]
+      .map(([code, v]) => ({ code, via: v.via, total: v.total, duplicate: v.duplicate, fresh: v.fresh }))
+      // 量大的排前面；未归因（空 code）永远排最后，它不是一个"来源"
+      .sort((a, b) => (a.code === '' ? 1 : b.code === '' ? -1 : b.total - a.total)),
     response: {
       replied,
       replyRate: total === 0 ? 0 : Number((replied / total).toFixed(4)),

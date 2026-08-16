@@ -6,6 +6,10 @@ export interface SyncConversation {
   contactId?: string
   title: string
   isGroup: boolean
+  /** 投放来源标识（广告 id 或追踪码） */
+  leadSourceCode?: string
+  /** ad = 平台广告上下文，code = 预填文案追踪码 */
+  leadSourceVia?: string
   lastMessageAt: number
 }
 
