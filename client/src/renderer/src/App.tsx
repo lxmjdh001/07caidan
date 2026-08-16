@@ -4,12 +4,13 @@ import type { AppSettings } from '@shared/settings'
 import type { ChannelPluginInfo, OutboundPreview, TranslatorInfo } from '@shared/ipc'
 import { AccountList, type AccountRow } from './components/AccountList'
 import { AccountModal } from './components/AccountModal'
+import { CampaignPage } from './pages/CampaignPage'
+import { SettingsPage } from './pages/SettingsPage'
 import { ChannelPicker } from './components/ChannelPicker'
 import { ChatView } from './components/ChatView'
 import { ConversationList } from './components/ConversationList'
 import { QrPanel } from './components/QrPanel'
-import { SettingsModal } from './components/SettingsModal'
-import { I18nProvider, isLocale, type Locale } from './i18n'
+import { I18nProvider, localeDir, resolveLocale, type Locale } from './i18n'
 
 const api = window.omni
 
@@ -22,7 +23,8 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   const [activeAccountKey, setActiveAccountKey] = useState<string | null>(null)
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [translators, setTranslators] = useState<TranslatorInfo[]>([])
-  const [showSettings, setShowSettings] = useState(false)
+  /** 主视图：聊天 / 工单 / 设置。工单与设置做成整页，弹窗里放不下 */
+  const [view, setView] = useState<'chat' | 'campaigns' | 'settings'>('chat')
   /** 打开中的账号设置弹窗（channel key） */
   const [accountModalKey, setAccountModalKey] = useState<string | null>(null)
   const [plugins, setPlugins] = useState<ChannelPluginInfo[]>([])
@@ -179,7 +181,18 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
     [plugins]
   )
 
-  const locale: Locale = settings && isLocale(settings.locale) ? settings.locale : 'zh-CN'
+  // 未显式设置时按系统语言推断；navigator.language 在 Electron 渲染进程里就是系统语言
+  const locale: Locale = resolveLocale(settings?.locale, navigator.language)
+
+  // 主题与书写方向写到根节点：CSS 用 [data-theme] 覆盖令牌，dir 让整体布局镜像
+  useEffect(() => {
+    const root = document.documentElement
+    const theme = settings?.theme ?? 'system'
+    if (theme === 'system') root.removeAttribute('data-theme')
+    else root.setAttribute('data-theme', theme)
+    root.lang = locale
+    root.dir = localeDir(locale)
+  }, [settings?.theme, locale])
 
   // main 账号永远排最前，其余按 key
   const sortKeys = (a: string, b: string): number =>
@@ -194,6 +207,20 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
     })
     return labels
   }, [channels, settings])
+
+  /** 工单页需要的账号清单（key / 备注名 / 平台 / accountId） */
+  const accountOptions = useMemo(
+    () =>
+      Object.keys(channels)
+        .sort(sortKeys)
+        .map((key) => ({
+          key,
+          label: accountLabels[key] ?? key,
+          channel: key.split(':')[0] ?? '',
+          accountId: key.split(':').slice(1).join(':')
+        })),
+    [channels, accountLabels]
+  )
 
   /** 每账号未读聚合 */
   const unreadByAccount = useMemo(() => {
@@ -276,6 +303,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             totalUnread={totalUnread}
             activeKey={activeAccountKey}
             onSelect={(key) => {
+              setView('chat')
               selectAccount(key)
               if (key) {
                 const st = channels[key]
@@ -289,53 +317,57 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             }}
             onAccountSettings={(key) => setAccountModalKey(key)}
             onAddAccount={() => setShowPicker(true)}
-            onOpenSettings={() => setShowSettings(true)}
+            onOpenSettings={() => setView(view === 'settings' ? 'chat' : 'settings')}
+            onOpenCampaigns={() => setView(view === 'campaigns' ? 'chat' : 'campaigns')}
+            activeView={view}
           />
-          <ConversationList
-            conversations={visibleConversations}
-            activeId={activeId}
-            states={relevantStates}
-            accountLabels={accountLabels}
-            showSourceTags={activeAccountKey === null}
-            onSelect={selectConversation}
-          />
-          <main className="content">
-            {showQr ? (
-              <QrPanel
-                accountKey={activeAccountKey ?? undefined}
-                qrDataUrl={qrState?.qrDataUrl}
-                pairingCode={qrState?.pairingCode}
+
+          {view === 'campaigns' ? (
+            <CampaignPage accounts={accountOptions} />
+          ) : view === 'settings' && settings ? (
+            <SettingsPage
+              settings={settings}
+              translators={translators}
+              onSave={saveSettings}
+              onAccountLogout={async () => {
+                await api.authLogout()
+                onLogout?.()
+              }}
+            />
+          ) : (
+            <>
+              <ConversationList
+                conversations={visibleConversations}
+                activeId={activeId}
+                states={relevantStates}
+                accountLabels={accountLabels}
+                showSourceTags={activeAccountKey === null}
+                onSelect={selectConversation}
               />
-            ) : (
-              <ChatView
-                conversation={activeConversation}
-                messages={activeId ? messages[activeId] ?? [] : []}
-                connected={activeConvConnected}
-                knownFromOther={knownFromOther}
-                onSend={sendText}
-                onSendMedia={sendMediaFile}
-                onSetLang={setConvLang}
-                onPreview={previewOutbound}
-                confirmBeforeSend={settings?.translation.confirmBeforeSend ?? true}
-              />
-            )}
-          </main>
+              <main className="content">
+                {showQr ? (
+                  <QrPanel
+                    accountKey={activeAccountKey ?? undefined}
+                    qrDataUrl={qrState?.qrDataUrl}
+                    pairingCode={qrState?.pairingCode}
+                  />
+                ) : (
+                  <ChatView
+                    conversation={activeConversation}
+                    messages={activeId ? messages[activeId] ?? [] : []}
+                    connected={activeConvConnected}
+                    knownFromOther={knownFromOther}
+                    onSend={sendText}
+                    onSendMedia={sendMediaFile}
+                    onSetLang={setConvLang}
+                    onPreview={previewOutbound}
+                    confirmBeforeSend={settings?.translation.confirmBeforeSend ?? true}
+                  />
+                )}
+              </main>
+            </>
+          )}
         </div>
-        {showSettings && settings && (
-          <SettingsModal
-            settings={settings}
-            translators={translators}
-            onSave={async (patch) => {
-              await saveSettings(patch)
-              setShowSettings(false)
-            }}
-            onAccountLogout={async () => {
-              await api.authLogout()
-              onLogout?.()
-            }}
-            onClose={() => setShowSettings(false)}
-          />
-        )}
         {showPicker && (
           <ChannelPicker
             plugins={plugins}

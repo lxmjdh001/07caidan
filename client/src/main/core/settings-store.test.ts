@@ -20,7 +20,8 @@ afterEach(async () => {
 describe('SettingsStore', () => {
   it('首次运行返回默认值：免费引擎 + 入站翻译开启', () => {
     const s = store.get()
-    expect(s.locale).toBe('zh-CN')
+    // 默认跟随系统语言，而不是写死中文
+    expect(s.locale).toBe('auto')
     expect(s.translation.engine).toBe('google-free')
     expect(s.translation.inboundEnabled).toBe(true)
   })
@@ -61,6 +62,6 @@ describe('SettingsStore', () => {
   it('get 返回副本，外部修改不污染内部状态', () => {
     const s = store.get()
     s.locale = 'hacked'
-    expect(store.get().locale).toBe('zh-CN')
+    expect(store.get().locale).toBe('auto')
   })
 })

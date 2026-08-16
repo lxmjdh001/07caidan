@@ -3,6 +3,7 @@ import { IPC_METHODS, type OmniEvent, type OutboundPreview } from '@shared/ipc'
 import type { AppSettings } from '@shared/settings'
 import type { ClientAuth } from './auth/client-auth'
 import type { ChannelRegistry } from './channels/registry'
+import type { CampaignApi } from './campaigns/campaign-api'
 import type { ChannelManager } from './core/channel-manager'
 import type { MessageStore } from './core/message-store'
 import type { SettingsStore } from './core/settings-store'
@@ -15,6 +16,7 @@ export interface IpcDeps {
   auth: ClientAuth
   channels: ChannelRegistry
   translators: TranslatorRegistry
+  campaigns: CampaignApi
   /** 设置更新后的回调（重新装配翻译管道等） */
   onSettingsChanged: (settings: AppSettings) => void
   /** 主动推送事件到渲染进程 */
@@ -23,6 +25,25 @@ export interface IpcDeps {
   onAddAccount: (channel: string) => Promise<string>
   /** 删除账号 */
   onRemoveAccount: (key: string) => Promise<void>
+}
+
+/** 允许渲染进程调用的工单接口白名单 */
+const CAMPAIGN_METHODS: Record<string, true> = {
+  available: true,
+  listCampaigns: true,
+  createCampaign: true,
+  updateCampaign: true,
+  deleteCampaign: true,
+  campaignStats: true,
+  listLinks: true,
+  createLink: true,
+  revokeLink: true,
+  deleteLink: true,
+  listLibraries: true,
+  importLibrary: true,
+  exportLibrary: true,
+  appendEntries: true,
+  deleteLibrary: true
 }
 
 /** 渲染进程可调用的全部主进程能力，集中在此注册 */
@@ -46,6 +67,17 @@ export function registerIpc(deps: IpcDeps): void {
     manager.submitAuthInput(key, value)
   )
   ipcMain.handle(IPC_METHODS.logoutChannel, (_e, key: string) => manager.logout(key))
+
+  // 工单 / 重粉库：方法名 + 参数数组转发到后台客户端。
+  // 白名单校验，避免渲染进程随便点名调用对象上的任意属性。
+  ipcMain.handle(IPC_METHODS.campaignCall, async (_e, method: string, args: unknown[] = []) => {
+    const api = deps.campaigns as unknown as Record<string, unknown>
+    const fn = Object.prototype.hasOwnProperty.call(CAMPAIGN_METHODS, method)
+      ? api[method]
+      : undefined
+    if (typeof fn !== 'function') throw new Error(`未知的工单接口：${method}`)
+    return (fn as (...a: unknown[]) => Promise<unknown>).apply(api, args)
+  })
   ipcMain.handle(IPC_METHODS.addAccount, (_e, channel: string) => deps.onAddAccount(channel))
   ipcMain.handle(IPC_METHODS.removeAccount, (_e, key: string) => deps.onRemoveAccount(key))
 

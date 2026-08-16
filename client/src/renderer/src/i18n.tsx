@@ -1,295 +1,119 @@
 import { createContext, useContext, type ReactNode } from 'react'
+import { ar } from './locales/ar'
+import { en } from './locales/en'
+import { es } from './locales/es'
+import { id } from './locales/id'
+import { ja } from './locales/ja'
+import { ko } from './locales/ko'
+import { ms } from './locales/ms'
+import { ptBR } from './locales/pt-BR'
+import { th } from './locales/th'
+import { vi } from './locales/vi'
+import { zhCN, type MessageKey } from './locales/zh-CN'
+import { zhTW } from './locales/zh-TW'
+
+export type { MessageKey }
 
 /**
- * 轻量 i18n：字典 + Context。新增语言 = 在 dictionaries 加一个对象。
+ * 轻量 i18n：字典 + Context。
+ *
+ * 语言覆盖以跨境引流的主要目标市场为准：中文（简/繁）、英语、日语、韩语、
+ * 越南语、泰语、马来语、印尼语、西班牙语、葡萄牙语（巴西）、阿拉伯语。
+ *
+ * 新增语言 = locales/ 下加一个文件 + 在 dictionaries 与 LOCALES 各加一行。
+ * 字典类型是 Partial：缺的 key 自动回落英语，不会因为漏翻一句就编译不过。
  */
-const zhCN = {
-  'app.name': 'OmniChat',
-  'sidebar.title': '消息',
-  'sidebar.search': '搜索会话…',
-  'sidebar.empty': '暂无会话\n连接渠道后，新消息会出现在这里',
-  'chat.empty': '选择左侧会话开始聊天',
-  'chat.composer.placeholder': '输入消息，Enter 发送，Shift+Enter 换行',
-  'chat.send': '发送',
-  'chat.sendFailed': '发送失败',
-  'chat.original': '原文',
-  'chat.attach': '发送图片 / 视频 / 文件',
-  'chat.mediaDownloading': '下载中…',
-  'chat.knownContact': '已在其他账号联系过',
-  'chat.settings': '会话设置',
-  'chat.customerLang': '客户语言',
-  'chat.langAuto': '自动',
-  'chat.detected': '已检测到',
-  'chat.notDetected': '未检测到，回退默认',
-  'chat.translatedAs': '译文',
-  'chat.previewLabel': '发送预览',
-  'chat.confirmSend': '确认发送',
-  'channel.whatsapp': 'WhatsApp',
-  'channel.telegram': 'Telegram（即将支持）',
-  'channel.line': 'LINE（即将支持）',
-  'rail.allChats': '全部消息',
-  'rail.accounts': '账号',
-  'rail.addAccount': '添加 WhatsApp 账号',
-  'rail.searchAccounts': '搜索账号…',
-  'rail.noMatch': '无匹配账号',
-  'account.settings': '账号设置',
-  'account.label': '备注名',
-  'account.notLoggedIn': '未登录',
-  'account.device': '设备名',
-  'account.deviceAuto': '自动（各账号不同）',
-  'account.deviceHint': '「已关联的设备」中显示的名称，各账号自动隔离；修改后需重新登录生效',
-  'account.saveConnect': '保存并连接',
-  'account.advanced': '高级设置（一般不用改）',
-  'qr.tgHint': '手机 Telegram → 设置 → 设备 → 关联桌面设备，扫描上方二维码',
-  'picker.title': '选择要添加的平台',
-  'picker.qr': '扫码登录',
-  'picker.credentials': '填凭证',
-  'status.need_credentials': '待填写凭证',
-  'status.waiting_phone': '待输入手机号',
-  'status.waiting_code': '待输入验证码',
-  'status.waiting_password': '待输入两步密码',
-  'auth.tgPhone': '手机号',
-  'auth.tgPhoneHint': '含国家码，如 +8613800138000',
-  'auth.tgCode': '验证码',
-  'auth.tgCodeHint': 'Telegram 应用内或短信收到的验证码',
-  'auth.tgPassword': '两步验证密码',
-  'auth.tgPasswordHint': '你为该 Telegram 账号设置的二次验证密码',
-  'auth.tgSubmit': '提交',
-  'status.stopped': '未启动，点击图标连接',
-  'status.connecting': '连接中…',
-  'status.waiting_qr': '等待扫码',
-  'status.connected': '已连接',
-  'status.logged_out': '已退出登录，点击图标重新连接',
-  'status.error': '连接出错',
-  'qr.title': '连接 WhatsApp',
-  'qr.step1': '1. 打开手机 WhatsApp',
-  'qr.step2': '2. 进入 设置 → 已关联的设备 → 关联设备',
-  'qr.step3': '3. 扫描下方二维码',
-  'qr.waiting': '正在生成二维码…',
-  'qr.hint': '登录后消息将同步到此设备。连接完全在本机进行，凭证仅保存在本地。',
-  'qr.tabQr': '扫码登录',
-  'qr.tabPhone': '手机号登录',
-  'qr.phoneLabel': '手机号',
-  'qr.phoneHint': '含国家码，如 +8613800138000；将生成配对码在手机上输入',
-  'qr.getCode': '获取配对码',
-  'status.waiting_pairing_code': '待在手机输入配对码',
-  'pair.title': '在手机上输入配对码',
-  'pair.step1': '1. 打开手机 WhatsApp',
-  'pair.step2': '2. 设置 → 已关联的设备 → 关联设备 → 用手机号码关联',
-  'pair.step3': '3. 输入上方的配对码',
-  'pair.hint': '配对码有效期约几分钟，过期请重新获取。',
-  'connected.empty': '已连接。等待新消息，或在手机上打开一个会话即可在此同步。',
-  'settings.title': '设置',
-  'settings.general': '通用',
-  'settings.locale': '界面语言',
-  'settings.translation': '聊天翻译',
-  'settings.engine': '翻译引擎',
-  'settings.engine.hint': '默认使用免费引擎；也可配置自己的翻译接口',
-  'settings.inbound': '自动翻译收到的消息',
-  'settings.outbound': '发送时自动翻译成客户语言',
-  'settings.confirmBeforeSend': '发送前预览译文确认（关闭则直发）',
-  'settings.platform': '平台凭证',
-  'settings.tgApiId': 'Telegram API ID',
-  'settings.tgApiHash': 'Telegram API Hash',
-  'settings.tgApiHint': '登录 Telegram 普通账号必需，在 my.telegram.org 申请；可在单个账号里单独覆盖',
-  'settings.sync': '聊天记录后台同步',
-  'settings.syncMedia': '同时上传媒体文件（图片/语音/视频）',
-  'settings.syncHint': '登录账号后，聊天记录批量定时归档到后台（含译文），供查询与 AI 意向分析',
-  'auth.loginSub': '登录你的账号以管理各平台账号',
-  'auth.registerSub': '注册新账号',
-  'auth.serverUrl': '后台地址',
-  'auth.email': '邮箱',
-  'auth.password': '密码',
-  'auth.code': '邮箱验证码',
-  'auth.sendCode': '发送验证码',
-  'auth.codeResent': '已发送',
-  'auth.codeSent': '验证码已发送到邮箱，10 分钟内有效',
-  'auth.login': '登录',
-  'auth.register': '注册',
-  'auth.noAccount': '还没有账号？',
-  'auth.hasAccount': '已有账号？',
-  'auth.toRegister': '去注册',
-  'auth.toLogin': '去登录',
-  'auth.needEmail': '请先填写邮箱',
-  'auth.fillAll': '请填写完整',
-  'auth.failed': '操作失败',
-  'auth.logout': '退出账号',
-  'auth.logoutConfirm': '确定退出账号？退出后聊天记录将停止同步，需重新登录。',
-  'settings.displayLang': '我的本地语言（收到的消息译成）',
-  'settings.targetLangDefault': '全局默认客户语言（未识别到客户语言时使用）',
-  'settings.accountLang': '本账号默认客户语言（覆盖全局）',
-  'settings.followGlobal': '跟随全局',
-  'settings.deeplKey': 'DeepL API Key（:fx 结尾为免费版）',
-  'settings.gcKey': 'Google Cloud API Key',
-  'settings.llmBaseUrl': '接口地址（OpenAI 兼容）',
-  'settings.llmKey': 'API Key',
-  'settings.llmModel': '模型名称',
-  'settings.customUrl': '自定义接口地址',
-  'settings.customKey': 'API Key（可选）',
-  'settings.customHint': '协议：POST JSON {"text","target_lang"} → {"text","source_lang"?}',
-  'settings.account': '账号',
-  'settings.proxy': 'WhatsApp 代理（socks5:// 或 http://，留空走默认网络）',
-  'settings.proxyHint': '修改后下次重连生效',
-  'settings.logout': '退出登录',
-  'settings.logoutConfirm': '确定退出登录？本地凭证将被清除，需要重新扫码。',
-  'settings.removeAccount': '删除此账号',
-  'settings.removeConfirm': '删除账号？将退出登录并从列表移除（聊天记录保留）。',
-  'settings.save': '保存',
-  'settings.cancel': '取消',
-  'time.yesterday': '昨天'
-}
+export const dictionaries = {
+  'zh-CN': zhCN,
+  'zh-TW': zhTW,
+  en,
+  ja,
+  ko,
+  vi,
+  th,
+  ms,
+  id,
+  es,
+  'pt-BR': ptBR,
+  ar
+} as const
 
-const en: typeof zhCN = {
-  'app.name': 'OmniChat',
-  'sidebar.title': 'Chats',
-  'sidebar.search': 'Search chats…',
-  'sidebar.empty': 'No conversations yet\nNew messages will appear here once connected',
-  'chat.empty': 'Select a conversation to start',
-  'chat.composer.placeholder': 'Type a message. Enter to send, Shift+Enter for newline',
-  'chat.send': 'Send',
-  'chat.sendFailed': 'Failed to send',
-  'chat.original': 'Original',
-  'chat.attach': 'Send image / video / file',
-  'chat.mediaDownloading': 'downloading…',
-  'chat.knownContact': 'Known from another account',
-  'chat.settings': 'Conversation settings',
-  'chat.customerLang': 'Customer language',
-  'chat.langAuto': 'Auto',
-  'chat.detected': 'Detected',
-  'chat.notDetected': 'Not detected, using default',
-  'chat.translatedAs': 'Sent as',
-  'chat.previewLabel': 'Preview',
-  'chat.confirmSend': 'Confirm & send',
-  'channel.whatsapp': 'WhatsApp',
-  'channel.telegram': 'Telegram (coming soon)',
-  'channel.line': 'LINE (coming soon)',
-  'rail.allChats': 'All chats',
-  'rail.accounts': 'Accounts',
-  'rail.addAccount': 'Add WhatsApp account',
-  'rail.searchAccounts': 'Search accounts…',
-  'rail.noMatch': 'No matching account',
-  'account.settings': 'Account settings',
-  'account.label': 'Nickname',
-  'account.notLoggedIn': 'Not logged in',
-  'account.device': 'Device name',
-  'account.deviceAuto': 'Auto (unique per account)',
-  'account.deviceHint': 'Name shown in Linked Devices; isolated per account. Re-login to apply changes.',
-  'account.saveConnect': 'Save & connect',
-  'account.advanced': 'Advanced (rarely needed)',
-  'qr.tgHint': 'Telegram app → Settings → Devices → Link Desktop Device, then scan',
-  'picker.title': 'Choose a platform to add',
-  'picker.qr': 'QR login',
-  'picker.credentials': 'Credentials',
-  'status.need_credentials': 'Credentials required',
-  'status.waiting_phone': 'Awaiting phone number',
-  'status.waiting_code': 'Awaiting verification code',
-  'status.waiting_password': 'Awaiting 2FA password',
-  'auth.tgPhone': 'Phone number',
-  'auth.tgPhoneHint': 'Include country code, e.g. +14155550100',
-  'auth.tgCode': 'Verification code',
-  'auth.tgCodeHint': 'Code received in the Telegram app or by SMS',
-  'auth.tgPassword': 'Two-step password',
-  'auth.tgPasswordHint': 'The 2FA password set on this Telegram account',
-  'auth.tgSubmit': 'Submit',
-  'status.stopped': 'Stopped. Click the icon to connect',
-  'status.connecting': 'Connecting…',
-  'status.waiting_qr': 'Waiting for QR scan',
-  'status.connected': 'Connected',
-  'status.logged_out': 'Logged out. Click the icon to reconnect',
-  'status.error': 'Connection error',
-  'qr.title': 'Link WhatsApp',
-  'qr.step1': '1. Open WhatsApp on your phone',
-  'qr.step2': '2. Go to Settings → Linked Devices → Link a Device',
-  'qr.step3': '3. Scan the QR code below',
-  'qr.waiting': 'Generating QR code…',
-  'qr.hint': 'The connection runs entirely on this machine; credentials stay local.',
-  'qr.tabQr': 'Scan QR',
-  'qr.tabPhone': 'Phone number',
-  'qr.phoneLabel': 'Phone number',
-  'qr.phoneHint': 'Include country code; a pairing code will be generated to enter on your phone',
-  'qr.getCode': 'Get pairing code',
-  'status.waiting_pairing_code': 'Awaiting pairing code entry',
-  'pair.title': 'Enter this code on your phone',
-  'pair.step1': '1. Open WhatsApp on your phone',
-  'pair.step2': '2. Settings → Linked Devices → Link a Device → Link with phone number',
-  'pair.step3': '3. Enter the pairing code above',
-  'pair.hint': 'The code expires in a few minutes; request a new one if it does.',
-  'connected.empty': 'Connected. Waiting for new messages.',
-  'settings.title': 'Settings',
-  'settings.general': 'General',
-  'settings.locale': 'Language',
-  'settings.translation': 'Chat translation',
-  'settings.engine': 'Engine',
-  'settings.engine.hint': 'Free engine by default; you can plug in your own API',
-  'settings.inbound': 'Auto-translate incoming messages',
-  'settings.outbound': 'Auto-translate outgoing messages into customer language',
-  'settings.confirmBeforeSend': 'Preview translation before sending (off = send directly)',
-  'settings.platform': 'Platform credentials',
-  'settings.tgApiId': 'Telegram API ID',
-  'settings.tgApiHash': 'Telegram API Hash',
-  'settings.tgApiHint':
-    'Required for Telegram user accounts; get one at my.telegram.org. Can be overridden per account.',
-  'settings.sync': 'Backend sync',
-  'settings.syncMedia': 'Also upload media (images / audio / video)',
-  'settings.syncHint': 'After login, chat history is archived to the backend (with translations) for query & AI intent analysis',
-  'auth.loginSub': 'Sign in to manage your platform accounts',
-  'auth.registerSub': 'Create a new account',
-  'auth.serverUrl': 'Backend URL',
-  'auth.email': 'Email',
-  'auth.password': 'Password',
-  'auth.code': 'Verification code',
-  'auth.sendCode': 'Send code',
-  'auth.codeResent': 'Sent',
-  'auth.codeSent': 'Code sent to your email, valid for 10 minutes',
-  'auth.login': 'Sign in',
-  'auth.register': 'Register',
-  'auth.noAccount': "Don't have an account?",
-  'auth.hasAccount': 'Already have an account?',
-  'auth.toRegister': 'Register',
-  'auth.toLogin': 'Sign in',
-  'auth.needEmail': 'Enter your email first',
-  'auth.fillAll': 'Please fill in all fields',
-  'auth.failed': 'Failed',
-  'auth.logout': 'Sign out',
-  'auth.logoutConfirm': 'Sign out? Sync will stop and you will need to log in again.',
-  'settings.displayLang': 'My language (incoming translated into)',
-  'settings.targetLangDefault': 'Global default customer language (fallback)',
-  'settings.accountLang': 'Account default customer language (overrides global)',
-  'settings.followGlobal': 'Follow global',
-  'settings.deeplKey': 'DeepL API Key (ends with :fx for free tier)',
-  'settings.gcKey': 'Google Cloud API Key',
-  'settings.llmBaseUrl': 'Base URL (OpenAI-compatible)',
-  'settings.llmKey': 'API Key',
-  'settings.llmModel': 'Model',
-  'settings.customUrl': 'Custom endpoint URL',
-  'settings.customKey': 'API Key (optional)',
-  'settings.customHint': 'Contract: POST JSON {"text","target_lang"} → {"text","source_lang"?}',
-  'settings.account': 'Accounts',
-  'settings.proxy': 'WhatsApp proxy (socks5:// or http://, empty = direct)',
-  'settings.proxyHint': 'Applies on next reconnect',
-  'settings.logout': 'Log out',
-  'settings.logoutConfirm': 'Log out? Local credentials will be removed.',
-  'settings.removeAccount': 'Remove account',
-  'settings.removeConfirm': 'Remove this account? It will be logged out and removed (history kept).',
-  'settings.save': 'Save',
-  'settings.cancel': 'Cancel',
-  'time.yesterday': 'Yesterday'
-}
-
-export const dictionaries = { 'zh-CN': zhCN, en } as const
 export type Locale = keyof typeof dictionaries
-export type MessageKey = keyof typeof zhCN
+
+/** 文字方向；阿拉伯语等需要整体镜像布局 */
+export type Direction = 'ltr' | 'rtl'
+
+export interface LocaleMeta {
+  code: Locale
+  /** 用该语言自己的写法展示（用户在陌生界面里也能认出母语） */
+  nativeName: string
+  dir: Direction
+  /** 系统语言匹配用的前缀，如 zh-Hant / ja */
+  matches: string[]
+}
+
+export const LOCALES: LocaleMeta[] = [
+  { code: 'zh-CN', nativeName: '简体中文', dir: 'ltr', matches: ['zh-cn', 'zh-hans', 'zh-sg'] },
+  {
+    code: 'zh-TW',
+    nativeName: '繁體中文',
+    dir: 'ltr',
+    matches: ['zh-tw', 'zh-hk', 'zh-mo', 'zh-hant']
+  },
+  { code: 'en', nativeName: 'English', dir: 'ltr', matches: ['en'] },
+  { code: 'ja', nativeName: '日本語', dir: 'ltr', matches: ['ja'] },
+  { code: 'ko', nativeName: '한국어', dir: 'ltr', matches: ['ko'] },
+  { code: 'vi', nativeName: 'Tiếng Việt', dir: 'ltr', matches: ['vi'] },
+  { code: 'th', nativeName: 'ไทย', dir: 'ltr', matches: ['th'] },
+  { code: 'ms', nativeName: 'Bahasa Melayu', dir: 'ltr', matches: ['ms'] },
+  { code: 'id', nativeName: 'Bahasa Indonesia', dir: 'ltr', matches: ['id', 'in'] },
+  { code: 'es', nativeName: 'Español', dir: 'ltr', matches: ['es'] },
+  { code: 'pt-BR', nativeName: 'Português (Brasil)', dir: 'ltr', matches: ['pt'] },
+  { code: 'ar', nativeName: 'العربية', dir: 'rtl', matches: ['ar'] }
+]
 
 export function isLocale(v: string): v is Locale {
   return v in dictionaries
 }
 
+export function localeDir(locale: Locale): Direction {
+  return LOCALES.find((l) => l.code === locale)?.dir ?? 'ltr'
+}
+
+/**
+ * 把系统语言标签解析成受支持的界面语言。
+ *
+ * 匹配顺序：完整标签 → 已登记的匹配前缀 → 主语言子标签 → 英语。
+ * 中文必须先按 Hant/Hans 判，只看 "zh" 会把台港用户丢给简体。
+ */
+export function matchSystemLocale(systemLocale: string | undefined): Locale {
+  const tag = (systemLocale ?? '').toLowerCase().replace(/_/g, '-')
+  if (!tag) return 'en'
+  if (isLocale(tag)) return tag
+
+  for (const l of LOCALES) {
+    if (l.matches.some((m) => tag === m || tag.startsWith(`${m}-`))) return l.code
+  }
+  const primary = tag.split('-')[0] ?? ''
+  for (const l of LOCALES) {
+    if (l.matches.includes(primary)) return l.code
+  }
+  return 'en'
+}
+
+/** 解析最终界面语言：设置为 'auto' 或非法值时按系统语言推断 */
+export function resolveLocale(setting: string | undefined, systemLocale: string | undefined): Locale {
+  if (setting && setting !== 'auto' && isLocale(setting)) return setting
+  return matchSystemLocale(systemLocale)
+}
+
 interface I18n {
   locale: Locale
+  dir: Direction
   t: (key: MessageKey) => string
 }
 
-const I18nContext = createContext<I18n>({ locale: 'zh-CN', t: (k) => zhCN[k] })
+const I18nContext = createContext<I18n>({ locale: 'zh-CN', dir: 'ltr', t: (k) => zhCN[k] })
 
 export function I18nProvider({
   locale,
@@ -298,12 +122,11 @@ export function I18nProvider({
   locale: Locale
   children: ReactNode
 }): React.JSX.Element {
-  const dict = dictionaries[locale]
-  return (
-    <I18nContext.Provider value={{ locale, t: (key) => dict[key] ?? zhCN[key] }}>
-      {children}
-    </I18nContext.Provider>
-  )
+  const dict = dictionaries[locale] as Partial<Record<MessageKey, string>>
+  const dir = localeDir(locale)
+  // 未翻译的 key 回落英语而不是中文：英语的受众面更广
+  const t = (key: MessageKey): string => dict[key] ?? en[key] ?? zhCN[key]
+  return <I18nContext.Provider value={{ locale, dir, t }}>{children}</I18nContext.Provider>
 }
 
 export function useI18n(): I18n {

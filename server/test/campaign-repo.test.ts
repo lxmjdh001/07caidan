@@ -322,3 +322,37 @@ describe('统计（端到端）', () => {
     assert.equal(dumped.includes('contactId'), false)
   })
 })
+
+describe('时间判重的账号范围', () => {
+  test('限定账号：只有在指定账号上出现过才算重复', () => {
+    // wa:+1 的历史在 a8 上，wa:+2 的历史在 a9 上
+    seed({ accountId: 'a8', contactId: 'wa:+1', inAt: T0 - 10 * DAY, convId: 'h1' })
+    seed({ accountId: 'a9', contactId: 'wa:+2', inAt: T0 - 10 * DAY, convId: 'h2' })
+    // 两个人都在工单期内从 a1 进线
+    seed({ accountId: 'a1', contactId: 'wa:+1', inAt: T0 + 3600_000, convId: 'n1' })
+    seed({ accountId: 'a1', contactId: 'wa:+2', inAt: T0 + 3600_000, convId: 'n2' })
+
+    const c = makeCampaign({ dedupBeforeAt: T0, dedupAccountIds: ['a8'] })
+    const stats = campaigns.statsOf(T, c, {}, T0 + DAY)
+    assert.equal(stats.total, 2)
+    assert.equal(stats.duplicate, 1) // 只有 wa:+1 命中
+    assert.equal(stats.fresh, 1)
+  })
+
+  test('不限定账号（空数组）= 全部账号的历史都算', () => {
+    seed({ accountId: 'a8', contactId: 'wa:+1', inAt: T0 - 10 * DAY, convId: 'h1' })
+    seed({ accountId: 'a9', contactId: 'wa:+2', inAt: T0 - 10 * DAY, convId: 'h2' })
+    seed({ accountId: 'a1', contactId: 'wa:+1', inAt: T0 + 3600_000, convId: 'n1' })
+    seed({ accountId: 'a1', contactId: 'wa:+2', inAt: T0 + 3600_000, convId: 'n2' })
+
+    const c = makeCampaign({ dedupBeforeAt: T0, dedupAccountIds: [] })
+    assert.equal(campaigns.statsOf(T, c, {}, T0 + DAY).duplicate, 2)
+  })
+
+  test('限定的账号里没有该客户历史 → 不算重复', () => {
+    seed({ accountId: 'a8', contactId: 'wa:+1', inAt: T0 - 10 * DAY, convId: 'h1' })
+    seed({ accountId: 'a1', contactId: 'wa:+1', inAt: T0 + 3600_000, convId: 'n1' })
+    const c = makeCampaign({ dedupBeforeAt: T0, dedupAccountIds: ['a7'] })
+    assert.equal(campaigns.statsOf(T, c, {}, T0 + DAY).duplicate, 0)
+  })
+})

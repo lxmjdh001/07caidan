@@ -29,7 +29,8 @@ export const IPC_METHODS = {
   authSendCode: 'omni:authSendCode',
   authRegister: 'omni:authRegister',
   authLogin: 'omni:authLogin',
-  authLogout: 'omni:authLogout'
+  authLogout: 'omni:authLogout',
+  campaignCall: 'omni:campaignCall'
 } as const
 
 export type OmniEvent =
@@ -131,6 +132,12 @@ export interface OmniApi {
   authLogin(serverUrl: string, email: string, password: string): Promise<AuthResult>
   /** 退出登录 */
   authLogout(): Promise<void>
+  /**
+   * 工单 / 重粉库接口的统一入口。
+   * 走单个通道而不是给每个方法开一条 IPC —— 这些调用全是「转发到后台」，
+   * 逐个开通道只会让 preload 和 handler 长出十几段一模一样的样板代码。
+   */
+  campaign<T = unknown>(method: string, ...args: unknown[]): Promise<T>
   /** 订阅主进程推送，返回取消订阅函数 */
   onEvent(cb: (evt: OmniEvent) => void): () => void
 }

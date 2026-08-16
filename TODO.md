@@ -66,6 +66,37 @@
 - [ ] 媒体走对象存储（S3/MinIO）
 - [ ] 客户端自动更新（electron-updater）与审计/风控
 
+## M8 — 界面主题与多语言（打粉主战场覆盖）
+### 主题
+- [ ] 配色全部令牌化：现有 styles.css 里 39 处硬编码颜色收敛为 CSS 变量
+- [ ] 浅色 / 深色 / 跟随系统三态，默认跟随系统；设置页可切换
+- [ ] 深色下逐组件校对（气泡、标签、账号栏、弹窗、二维码底色需保持白底否则扫不出）
+### 多语言
+- [ ] 首次启动按系统语言自动选择界面语言（Electron app.getLocale），无匹配回落英语
+- [ ] 补齐打粉主要目标市场：日语 / 韩语 / 繁体中文（港台）/ 越南语 / 泰语 /
+      马来语 / 印尼语 / 西班牙语 / 葡萄牙语 / 阿拉伯语
+- [ ] 字典按语言拆文件（locales/<code>.ts），避免 i18n.tsx 膨胀到几千行
+- [ ] 语言元数据带书写方向（dir: ltr/rtl）与本地化自称（用母语显示语言名）
+### 书写方向（RTL）
+- [ ] 阿拉伯语等 RTL 语言：根节点设 dir，整体布局镜像
+- [ ] CSS 改用逻辑属性（margin-inline-start / padding-inline-end / inset-inline），
+      替换 left/right，否则 RTL 下侧边栏与气泡会错位
+- [ ] 消息气泡的收发方向、返回箭头、时间戳位置在 RTL 下需要单独校对
+
+## M7 — 白牌定制（贴牌打包）
+> 目标：同一份代码，构建时指定一个品牌配置即可产出不同名称/图标的客户端与后台。
+> 三端（client / server / admin）**共用同一份配置**，避免改名时漏掉某一端。
+- [ ] 品牌配置单一来源：仓库根 `branding/<brand>.json`（appName、shortName、logo/icon 路径、
+      主题色、公司名、官网、支持邮箱、协议链接），默认 `branding/default.json`
+- [ ] 构建时选择品牌：`BRAND=acme npm run build`，三端各自读取同一份 JSON
+- [ ] 客户端：窗口标题 / 关于页 / 托盘名 / 安装包名与图标（electron-builder productName、
+      icon、appId 从品牌配置注入），登录页 logo
+- [ ] 管理后台（admin/）：登录页与侧边栏 logo + 名称、浏览器标题、favicon、主题色
+- [ ] 后端：公开看板页（`/c/:token`）的名称与 logo、邮件模板署名与发件人显示名
+- [ ] logo 资源按品牌目录存放（`branding/<brand>/logo.svg`、`icon.icns`、`icon.ico`、`favicon`），
+      构建脚本按需拷贝，缺失时回落到默认并给出告警
+- [ ] 校验：CI 里对每个品牌跑一次构建，防止某端漏读配置导致上线才发现还叫旧名字
+
 ## M6 — 产品化
 - [ ] WhatsApp 多账号支持（模型已预留 accountId，UI 与生命周期管理待做）
 - [ ] 媒体消息收发（图片/语音/文件的下载展示与发送）

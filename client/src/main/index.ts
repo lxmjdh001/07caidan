@@ -6,6 +6,7 @@ import { JsonContactStore } from './core/contact-store'
 import { MediaStore } from './core/media-store'
 import { SyncClient } from './sync/sync-client'
 import { ClientAuth } from './auth/client-auth'
+import { CampaignApi } from './campaigns/campaign-api'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { whatsAppPlugin } from './channels/whatsapp'
 import { telegramBotPlugin } from './channels/telegram'
@@ -152,6 +153,8 @@ async function bootstrap(): Promise<void> {
   syncClient.start()
 
   const auth = new ClientAuth(settings, logger)
+  // 工单数据落后台（看板要能被团队公开访问），复用同步配置里的地址与登录令牌
+  const campaignApi = new CampaignApi(() => settings.get().sync, logger)
 
   registerIpc({
     manager,
@@ -160,6 +163,7 @@ async function bootstrap(): Promise<void> {
     auth,
     channels,
     translators: translatorRegistry,
+    campaigns: campaignApi,
     broadcast,
     onSettingsChanged: (updated) => {
       configurePipeline(pipeline, translatorRegistry, updated.translation)

@@ -61,9 +61,14 @@ export interface PlatformDefaults {
   telegramApiHash: string
 }
 
+/** 界面主题：跟随系统 / 强制浅色 / 强制深色 */
+export type ThemeMode = 'system' | 'light' | 'dark'
+
 export interface AppSettings {
-  /** 界面语言 */
+  /** 界面语言；'auto' = 跟随系统语言 */
   locale: string
+  /** 界面主题，默认跟随系统 */
+  theme: ThemeMode
   translation: TranslationConfig
   sync: SyncConfig
   platform: PlatformDefaults
@@ -76,7 +81,9 @@ export interface AppSettings {
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  locale: 'zh-CN',
+  // 默认跟随系统语言与系统深浅色，首次启动不需要用户先去设置里点一遍
+  locale: 'auto',
+  theme: 'system',
   translation: {
     engine: 'google-free',
     inboundEnabled: true,

@@ -29,6 +29,8 @@ export interface Campaign {
   endAt?: number
   dedupLibraryIds: string[]
   dedupBeforeAt?: number
+  /** 时间规则的统计范围；空 = 全部账号 */
+  dedupAccountIds: string[]
   tzOffsetMinutes: number
   createdBy?: string
   createdAt: number
@@ -63,6 +65,7 @@ export interface CampaignInput {
   endAt?: number
   dedupLibraryIds?: string[]
   dedupBeforeAt?: number
+  dedupAccountIds?: string[]
   tzOffsetMinutes?: number
 }
 
@@ -94,6 +97,7 @@ export class CampaignRepo {
       endAt: input.endAt ?? null,
       dedupLibraryIds: JSON.stringify(input.dedupLibraryIds ?? []),
       dedupBeforeAt: input.dedupBeforeAt ?? null,
+      dedupAccountIds: JSON.stringify(input.dedupAccountIds ?? []),
       tzOffsetMinutes: input.tzOffsetMinutes ?? 480,
       createdBy: createdBy ?? null,
       createdAt: now,
@@ -135,6 +139,9 @@ export class CampaignRepo {
       set.dedupLibraryIds = JSON.stringify(patch.dedupLibraryIds)
     }
     if (patch.dedupBeforeAt !== undefined) set.dedupBeforeAt = patch.dedupBeforeAt
+    if (patch.dedupAccountIds !== undefined) {
+      set.dedupAccountIds = JSON.stringify(patch.dedupAccountIds)
+    }
     if (patch.tzOffsetMinutes !== undefined) set.tzOffsetMinutes = patch.tzOffsetMinutes
     const res = this.db
       .update(campaigns)
@@ -430,10 +437,17 @@ export class CampaignRepo {
   }
 
   /**
-   * 每个客户在**全量数据**里的最早接触时间（不限工单账号与窗口），
-   * 用于「xx 时间之前出现过即算重复」这条规则。
+   * 每个客户的最早接触时间，用于「xx 时间之前出现过即算重复」这条规则。
+   *
+   * accountIds 为空时看全部账号的历史；给了就只看这些账号 —— 老板常常
+   * 想问「这批粉在我另外那几个老号上出现过没有」，而不是整个团队的全量。
+   * 不受工单时间窗限制：判的就是「窗口之前有没有出现过」。
    */
-  earliestEverAt(tenant: string, contactIds: string[]): Map<string, number> {
+  earliestEverAt(
+    tenant: string,
+    contactIds: string[],
+    accountIds: string[] = []
+  ): Map<string, number> {
     const out = new Map<string, number>()
     for (const batch of chunked(contactIds)) {
       const rows = this.db
@@ -447,7 +461,11 @@ export class CampaignRepo {
           )
         )
         .where(
-          and(eq(conversations.tenant, tenant), inArray(conversations.contactId, batch))
+          and(
+            eq(conversations.tenant, tenant),
+            inArray(conversations.contactId, batch),
+            ...(accountIds.length ? [inArray(conversations.accountId, accountIds)] : [])
+          )
         )
         .groupBy(conversations.contactId)
         .all()
@@ -483,7 +501,8 @@ export class CampaignRepo {
         rules.beforeAt !== undefined
           ? this.earliestEverAt(
               tenant,
-              leads.map((l) => l.contactId)
+              leads.map((l) => l.contactId),
+              campaign.dedupAccountIds
             )
           : new Map<string, number>(),
       accountLabels: labels,
@@ -511,6 +530,7 @@ function toCampaign(r: typeof campaigns.$inferSelect): Campaign {
     endAt: r.endAt ?? undefined,
     dedupLibraryIds: parseJsonArray(r.dedupLibraryIds),
     dedupBeforeAt: r.dedupBeforeAt ?? undefined,
+    dedupAccountIds: parseJsonArray(r.dedupAccountIds),
     tzOffsetMinutes: r.tzOffsetMinutes,
     createdBy: r.createdBy ?? undefined,
     createdAt: r.createdAt,

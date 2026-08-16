@@ -79,6 +79,7 @@ export function openDb(dbPath: string): Db {
       account_labels TEXT NOT NULL DEFAULT '{}',
       start_at INTEGER NOT NULL, end_at INTEGER,
       dedup_library_ids TEXT NOT NULL DEFAULT '[]', dedup_before_at INTEGER,
+      dedup_account_ids TEXT NOT NULL DEFAULT '[]',
       tz_offset_minutes INTEGER NOT NULL DEFAULT 480,
       created_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
       PRIMARY KEY (tenant, id)
