@@ -1,11 +1,15 @@
 import { createWriteStream } from 'node:fs'
 import { mkdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
+import { fileURLToPath } from 'node:url'
 import cors from '@fastify/cors'
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
 import { IntentAnalyzer } from './analyzer.ts'
 import { AuthRepo, type Principal } from './auth-repo.ts'
+import { CampaignRepo, type CampaignInput } from './campaign-repo.ts'
+import { isLibraryChannel, normalizeContactList } from './contact-id.ts'
 import { PERMISSIONS, ROLE_PRESETS, ROLES, type Permission } from './auth.ts'
 import { ClientAuthRepo } from './client-auth.ts'
 import type { ServerConfig } from './config.ts'
@@ -30,6 +34,7 @@ export function buildServer(config: ServerConfig): FastifyInstance {
   const auth = new AuthRepo(db)
   const clientAuth = new ClientAuthRepo(db)
   const lineRelay = new LineRelay(db)
+  const campaignRepo = new CampaignRepo(db)
   const mailer = createEmailSender(config)
   auth.bootstrap(config.adminTenant, config.adminUser, config.adminPassword)
   mkdirSync(config.mediaDir, { recursive: true })
@@ -50,6 +55,18 @@ export function buildServer(config: ServerConfig): FastifyInstance {
       done(err as Error)
     }
   })
+
+  const publicBase = (): string => config.publicUrl.replace(/\/$/, '')
+
+  /** 分享页 HTML（纯静态文件，首次读取后缓存） */
+  let dashboardHtml: string | null = null
+  const readDashboardHtml = async (): Promise<string> => {
+    if (dashboardHtml === null) {
+      const here = dirname(fileURLToPath(import.meta.url))
+      dashboardHtml = await readFile(join(here, '..', 'public', 'campaign.html'), 'utf8')
+    }
+    return dashboardHtml
+  }
 
   const bearer = (req: FastifyRequest): string | null => {
     const a = req.headers.authorization
@@ -343,6 +360,213 @@ export function buildServer(config: ServerConfig): FastifyInstance {
     const accountId = (req.query as { accountId?: string }).accountId
     if (!accountId) return reply.code(400).send({ error: 'accountId required' })
     return { events: lineRelay.pull(ctxOf(req).tenant, accountId) }
+  })
+
+  // ── 引流工单 / 分享链接 / 重粉库 ──
+  // 老板在客户端里操作（同步客户端令牌），管理后台也可管（需 campaigns:manage）
+  const requireCampaign = (req: FastifyRequest, reply: FastifyReply): boolean => {
+    const ctx = ctxOf(req)
+    if (ctx.isSyncClient) return true
+    return requirePerm(req, reply, 'campaigns:manage')
+  }
+
+  app.get('/api/campaigns', async (req, reply) => {
+    if (!requireCampaign(req, reply)) return
+    return { campaigns: campaignRepo.listCampaigns(ctxOf(req).tenant) }
+  })
+
+  app.post('/api/campaigns', async (req, reply) => {
+    if (!requireCampaign(req, reply)) return
+    const b = (req.body ?? {}) as Partial<CampaignInput>
+    if (!b.name?.trim()) return reply.code(400).send({ error: '工单名称必填' })
+    if (!Array.isArray(b.accountIds) || b.accountIds.length === 0) {
+      return reply.code(400).send({ error: '至少选择一个账号' })
+    }
+    if (typeof b.startAt !== 'number') return reply.code(400).send({ error: '开始时间必填' })
+    if (b.endAt !== undefined && b.endAt !== null && b.endAt <= b.startAt) {
+      return reply.code(400).send({ error: '结束时间必须晚于开始时间' })
+    }
+    const campaign = campaignRepo.createCampaign(
+      ctxOf(req).tenant,
+      {
+        name: b.name.trim(),
+        accountIds: b.accountIds,
+        accountLabels: b.accountLabels,
+        startAt: b.startAt,
+        endAt: b.endAt ?? undefined,
+        dedupLibraryIds: b.dedupLibraryIds ?? [],
+        dedupBeforeAt: b.dedupBeforeAt,
+        tzOffsetMinutes: b.tzOffsetMinutes
+      },
+      ctxOf(req).principal?.username
+    )
+    return { campaign }
+  })
+
+  app.patch('/api/campaigns/:id', async (req, reply) => {
+    if (!requireCampaign(req, reply)) return
+    const id = (req.params as { id: string }).id
+    const ok = campaignRepo.updateCampaign(
+      ctxOf(req).tenant,
+      id,
+      (req.body ?? {}) as Partial<CampaignInput>
+    )
+    return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
+  })
+
+  app.delete('/api/campaigns/:id', async (req, reply) => {
+    if (!requireCampaign(req, reply)) return
+    const id = (req.params as { id: string }).id
+    const ok = campaignRepo.deleteCampaign(ctxOf(req).tenant, id)
+    return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
+  })
+
+  /** 登录态下的统计预览（与公开看板同一份数据） */
+  app.get('/api/campaigns/:id/stats', async (req, reply) => {
+    if (!requireCampaign(req, reply)) return
+    const tenant = ctxOf(req).tenant
+    const campaign = campaignRepo.getCampaign(tenant, (req.params as { id: string }).id)
+    if (!campaign) return reply.code(404).send({ error: 'not found' })
+    return { campaign, stats: campaignRepo.statsOf(tenant, campaign) }
+  })
+
+  app.get('/api/campaigns/:id/links', async (req, reply) => {
+    if (!requireCampaign(req, reply)) return
+    const id = (req.params as { id: string }).id
+    return { links: campaignRepo.listLinks(ctxOf(req).tenant, id), publicBase: publicBase() }
+  })
+
+  app.post('/api/campaigns/:id/links', async (req, reply) => {
+    if (!requireCampaign(req, reply)) return
+    const tenant = ctxOf(req).tenant
+    const id = (req.params as { id: string }).id
+    if (!campaignRepo.getCampaign(tenant, id)) return reply.code(404).send({ error: 'not found' })
+    const b = (req.body ?? {}) as { label?: string; expiresAt?: number | null }
+    const link = campaignRepo.createLink(tenant, id, {
+      label: b.label,
+      // 不传或传 null = 永不过期
+      expiresAt: typeof b.expiresAt === 'number' ? b.expiresAt : undefined
+    })
+    return { link, url: `${publicBase()}/c/${link.token}` }
+  })
+
+  app.post('/api/campaigns/links/:token/revoke', async (req, reply) => {
+    if (!requireCampaign(req, reply)) return
+    const token = (req.params as { token: string }).token
+    const ok = campaignRepo.revokeLink(ctxOf(req).tenant, token)
+    return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
+  })
+
+  app.delete('/api/campaigns/links/:token', async (req, reply) => {
+    if (!requireCampaign(req, reply)) return
+    const token = (req.params as { token: string }).token
+    const ok = campaignRepo.deleteLink(ctxOf(req).tenant, token)
+    return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
+  })
+
+  // ── 重粉库 ──
+  app.get('/api/fan-libraries', async (req, reply) => {
+    if (!requireCampaign(req, reply)) return
+    return { libraries: campaignRepo.listLibraries(ctxOf(req).tenant) }
+  })
+
+  /** 导入外部名单：脏格式在这里归一化，问题行原样回报给用户 */
+  app.post('/api/fan-libraries/import', async (req, reply) => {
+    if (!requireCampaign(req, reply)) return
+    const b = (req.body ?? {}) as {
+      name?: string
+      channel?: string
+      contacts?: string | string[]
+      lineProvider?: string
+    }
+    if (!b.name?.trim()) return reply.code(400).send({ error: '库名称必填' })
+    if (!b.channel || !isLibraryChannel(b.channel)) {
+      return reply.code(400).send({ error: '平台不支持建库（仅 whatsapp/telegram/line）' })
+    }
+    if (!b.contacts) return reply.code(400).send({ error: '名单内容必填' })
+    const parsed = normalizeContactList(b.channel, b.contacts, { lineProvider: b.lineProvider })
+    if (parsed.contactIds.length === 0) {
+      return reply.code(400).send({ error: '没有解析出有效标识', detail: parsed })
+    }
+    const tenant = ctxOf(req).tenant
+    const library = campaignRepo.createLibrary(tenant, b.name.trim(), b.channel, 'import')
+    const added = campaignRepo.addEntries(tenant, library.id, parsed.contactIds)
+    return { library: { ...library, entryCount: added }, added, parsed }
+  })
+
+  /** 从系统历史数据导出成库 */
+  app.post('/api/fan-libraries/export', async (req, reply) => {
+    if (!requireCampaign(req, reply)) return
+    const b = (req.body ?? {}) as {
+      name?: string
+      channel?: string
+      accountIds?: string[]
+      from?: number
+      to?: number
+    }
+    if (!b.name?.trim()) return reply.code(400).send({ error: '库名称必填' })
+    if (!b.channel || !isLibraryChannel(b.channel)) {
+      return reply.code(400).send({ error: '平台不支持建库（仅 whatsapp/telegram/line）' })
+    }
+    const r = campaignRepo.exportToLibrary(ctxOf(req).tenant, b.name.trim(), b.channel, {
+      accountIds: b.accountIds,
+      from: b.from,
+      to: b.to
+    })
+    return r
+  })
+
+  /** 追加名单到已有库 */
+  app.post('/api/fan-libraries/:id/entries', async (req, reply) => {
+    if (!requireCampaign(req, reply)) return
+    const tenant = ctxOf(req).tenant
+    const id = (req.params as { id: string }).id
+    const library = campaignRepo.getLibrary(tenant, id)
+    if (!library) return reply.code(404).send({ error: 'not found' })
+    if (!isLibraryChannel(library.channel)) {
+      return reply.code(400).send({ error: '该库平台不支持导入' })
+    }
+    const b = (req.body ?? {}) as { contacts?: string | string[]; lineProvider?: string }
+    if (!b.contacts) return reply.code(400).send({ error: '名单内容必填' })
+    const parsed = normalizeContactList(library.channel, b.contacts, {
+      lineProvider: b.lineProvider
+    })
+    const added = campaignRepo.addEntries(tenant, id, parsed.contactIds)
+    return { added, parsed }
+  })
+
+  app.delete('/api/fan-libraries/:id', async (req, reply) => {
+    if (!requireCampaign(req, reply)) return
+    const ok = campaignRepo.deleteLibrary(ctxOf(req).tenant, (req.params as { id: string }).id)
+    return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
+  })
+
+  // ── 公开看板（无需登录，靠不可猜的令牌）──
+  // ⚠️ 这里只允许返回聚合数字。任何粉丝身份信息、聊天内容都不得出现。
+  app.get('/public/campaign/:token', async (req, reply) => {
+    const token = (req.params as { token: string }).token
+    const r = campaignRepo.resolveLink(token)
+    if (!r.ok) return reply.code(404).send({ error: r.reason })
+    const stats = campaignRepo.statsOf(r.tenant, r.campaign)
+    return {
+      campaign: {
+        name: r.campaign.name,
+        startAt: r.campaign.startAt,
+        endAt: r.campaign.endAt,
+        tzOffsetMinutes: r.campaign.tzOffsetMinutes,
+        // 判重口径要让看的人知道，但只给数量不给库内容
+        dedup: {
+          libraries: r.campaign.dedupLibraryIds.length,
+          beforeAt: r.campaign.dedupBeforeAt
+        }
+      },
+      stats
+    }
+  })
+
+  // 分享页本体：独立静态页，收件人打开一个 URL 就能看
+  app.get('/c/:token', async (_req, reply) => {
+    return reply.type('text/html; charset=utf-8').send(await readDashboardHtml())
   })
 
   // ── AI 分析（需 analyze:run）──

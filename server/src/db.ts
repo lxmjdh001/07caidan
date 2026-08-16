@@ -72,6 +72,37 @@ export function openDb(dbPath: string): Db {
       payload TEXT NOT NULL, created_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_line_events ON line_events (tenant, account_id);
+
+    CREATE TABLE IF NOT EXISTS campaigns (
+      tenant TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL,
+      account_ids TEXT NOT NULL DEFAULT '[]',
+      account_labels TEXT NOT NULL DEFAULT '{}',
+      start_at INTEGER NOT NULL, end_at INTEGER,
+      dedup_library_ids TEXT NOT NULL DEFAULT '[]', dedup_before_at INTEGER,
+      tz_offset_minutes INTEGER NOT NULL DEFAULT 480,
+      created_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, id)
+    );
+
+    CREATE TABLE IF NOT EXISTS campaign_links (
+      token TEXT PRIMARY KEY, tenant TEXT NOT NULL, campaign_id TEXT NOT NULL,
+      label TEXT, expires_at INTEGER, revoked INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_links_campaign ON campaign_links (tenant, campaign_id);
+
+    CREATE TABLE IF NOT EXISTS fan_libraries (
+      tenant TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL,
+      channel TEXT NOT NULL, source TEXT NOT NULL,
+      entry_count INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, id)
+    );
+
+    CREATE TABLE IF NOT EXISTS fan_library_entries (
+      tenant TEXT NOT NULL, library_id TEXT NOT NULL, contact_id TEXT NOT NULL,
+      added_at INTEGER NOT NULL, PRIMARY KEY (tenant, library_id, contact_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_fan_entries_contact ON fan_library_entries (tenant, contact_id);
   `)
 
   return drizzle(sqlite, { schema })

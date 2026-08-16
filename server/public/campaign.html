@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- 分享出去的看板不应该被搜索引擎收录 -->
+    <meta name="robots" content="noindex, nofollow" />
+    <title>引流看板</title>
+    <style>
+      :root {
+        --bg: #f5f6f8;
+        --card: #fff;
+        --text: #1c1e21;
+        --muted: #6b7280;
+        --line: #e5e7eb;
+        --accent: #2563eb;
+        --fresh: #16a34a;
+        --dup: #f59e0b;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #16181c;
+          --card: #1f2226;
+          --text: #e8eaed;
+          --muted: #9aa0a6;
+          --line: #2f333a;
+          --accent: #60a5fa;
+          --fresh: #4ade80;
+          --dup: #fbbf24;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 24px 16px 48px;
+        background: var(--bg);
+        color: var(--text);
+        font: 14px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+          'Microsoft YaHei', sans-serif;
+      }
+      .wrap { max-width: 960px; margin: 0 auto; }
+      header { margin-bottom: 20px; }
+      h1 { font-size: 22px; margin: 0 0 6px; }
+      .sub { color: var(--muted); font-size: 13px; }
+      .cards {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 12px;
+        margin-bottom: 20px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 16px;
+      }
+      .card .k { color: var(--muted); font-size: 12px; }
+      .card .v { font-size: 28px; font-weight: 600; margin-top: 4px; }
+      .card .v.fresh { color: var(--fresh); }
+      .card .v.dup { color: var(--dup); }
+      section {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      h2 { font-size: 15px; margin: 0 0 12px; }
+      .scroll { overflow-x: auto; }
+      table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 420px; }
+      th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+      th { color: var(--muted); font-weight: 500; }
+      td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+      .bars { display: flex; align-items: flex-end; gap: 4px; height: 120px; min-width: 300px; }
+      .bar-col { flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; min-width: 14px; }
+      .bar { border-radius: 2px 2px 0 0; }
+      .bar.fresh { background: var(--fresh); }
+      .bar.dup { background: var(--dup); }
+      .bar-x { margin-top: 6px; font-size: 10px; color: var(--muted); text-align: center; }
+      .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 10px; }
+      .dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
+      .dot.fresh { background: var(--fresh); }
+      .dot.dup { background: var(--dup); }
+      .note { color: var(--muted); font-size: 12px; margin-top: 20px; text-align: center; }
+      .msg { text-align: center; padding: 60px 20px; color: var(--muted); }
+      .msg strong { display: block; font-size: 18px; color: var(--text); margin-bottom: 8px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap" id="app">
+      <div class="msg">加载中…</div>
+    </div>
+
+    <script>
+      // 只读看板：拿分享令牌换一份聚合统计。
+      // 后端接口本身就不返回任何粉丝身份信息与聊天内容，这里也没有任何展示它们的代码。
+      const token = location.pathname.split('/').pop()
+      const app = document.getElementById('app')
+
+      const FAIL = {
+        not_found: ['链接无效', '这个分享链接不存在，或者对应的工单已被删除。'],
+        expired: ['链接已过期', '该分享链接已超过有效期，请向发起人索取新链接。'],
+        revoked: ['链接已停用', '发起人已手动停用该链接。']
+      }
+
+      function esc(s) {
+        return String(s ?? '').replace(/[&<>"']/g, (c) =>
+          ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
+        )
+      }
+
+      function fmtDate(ts, tz) {
+        if (ts === undefined || ts === null) return '—'
+        return new Date(ts + tz * 60000).toISOString().slice(0, 16).replace('T', ' ')
+      }
+
+      function fmtDuration(sec) {
+        if (sec === null || sec === undefined) return '—'
+        if (sec < 60) return sec + ' 秒'
+        if (sec < 3600) return Math.round(sec / 60) + ' 分钟'
+        return (sec / 3600).toFixed(1) + ' 小时'
+      }
+
+      function showFail(reason) {
+        const [title, body] = FAIL[reason] || ['无法访问', '请联系发起人。']
+        app.innerHTML =
+          '<div class="msg"><strong>' + esc(title) + '</strong>' + esc(body) + '</div>'
+      }
+
+      function trendBars(days) {
+        if (!days.length) return '<p class="sub">暂无数据</p>'
+        const max = Math.max(1, ...days.map((d) => d.total))
+        // 日期多的时候只标首尾和整周，避免 x 轴糊成一片
+        const cols = days
+          .map((d, i) => {
+            const fh = Math.round((d.fresh / max) * 100)
+            const dh = Math.round((d.duplicate / max) * 100)
+            const label =
+              days.length <= 10 || i === 0 || i === days.length - 1 || i % 7 === 0
+                ? d.date.slice(5)
+                : ''
+            return (
+              '<div class="bar-col" title="' +
+              esc(d.date) + '：新粉 ' + d.fresh + ' / 重复 ' + d.duplicate +
+              '"><div class="bar dup" style="height:' + dh + 'px"></div>' +
+              '<div class="bar fresh" style="height:' + fh + 'px"></div>' +
+              '<div class="bar-x">' + esc(label) + '</div></div>'
+            )
+          })
+          .join('')
+        return (
+          '<div class="scroll"><div class="bars">' + cols + '</div></div>' +
+          '<div class="legend"><span><i class="dot fresh"></i>新粉</span>' +
+          '<span><i class="dot dup"></i>重复</span></div>'
+        )
+      }
+
+      function accountRows(rows) {
+        if (!rows.length) return '<p class="sub">暂无数据</p>'
+        return (
+          '<div class="scroll"><table><thead><tr><th>账号</th><th>平台</th>' +
+          '<th class="num">进线</th><th class="num">新粉</th><th class="num">重复</th>' +
+          '</tr></thead><tbody>' +
+          rows
+            .map(
+              (a) =>
+                '<tr><td>' + esc(a.label || a.accountId) + '</td><td>' + esc(a.channel) +
+                '</td><td class="num">' + a.total + '</td><td class="num">' + a.fresh +
+                '</td><td class="num">' + a.duplicate + '</td></tr>'
+            )
+            .join('') +
+          '</tbody></table></div>'
+        )
+      }
+
+      function render(data) {
+        const c = data.campaign
+        const s = data.stats
+        const tz = c.tzOffsetMinutes ?? 480
+        const dedupNote =
+          c.dedup.libraries > 0 || c.dedup.beforeAt
+            ? '判重口径：' +
+              (c.dedup.libraries > 0 ? '重粉库 ' + c.dedup.libraries + ' 个' : '') +
+              (c.dedup.libraries > 0 && c.dedup.beforeAt ? ' + ' : '') +
+              (c.dedup.beforeAt ? fmtDate(c.dedup.beforeAt, tz) + ' 之前出现过' : '')
+            : '未设置判重规则，全部计为新粉'
+
+        app.innerHTML =
+          '<header><h1>' + esc(c.name) + '</h1><div class="sub">' +
+          fmtDate(c.startAt, tz) + ' 起 · ' +
+          (c.endAt ? '至 ' + fmtDate(c.endAt, tz) : '持续进行中') +
+          '</div><div class="sub">' + esc(dedupNote) + '</div></header>' +
+
+          '<div class="cards">' +
+          '<div class="card"><div class="k">进线总数</div><div class="v">' + s.total + '</div></div>' +
+          '<div class="card"><div class="k">新粉</div><div class="v fresh">' + s.fresh + '</div></div>' +
+          '<div class="card"><div class="k">重复</div><div class="v dup">' + s.duplicate + '</div></div>' +
+          '<div class="card"><div class="k">有效</div><div class="v">' + s.effective + '</div></div>' +
+          '</div>' +
+
+          '<section><h2>每日趋势</h2>' + trendBars(s.byDay) + '</section>' +
+          '<section><h2>账号明细</h2>' + accountRows(s.byAccount) + '</section>' +
+
+          '<section><h2>客服响应</h2><div class="scroll"><table><tbody>' +
+          '<tr><td>已回复客户</td><td class="num">' + s.response.replied + '</td></tr>' +
+          '<tr><td>回复率</td><td class="num">' +
+          Math.round(s.response.replyRate * 100) + '%</td></tr>' +
+          '<tr><td>首次响应中位数</td><td class="num">' +
+          fmtDuration(s.response.medianFirstReplySec) + '</td></tr>' +
+          '</tbody></table></div></section>' +
+
+          '<p class="note">本看板仅展示统计数据，不包含任何聊天内容与客户信息。' +
+          '更新于 ' + fmtDate(s.computedAt, tz) + '</p>'
+      }
+
+      fetch('/public/campaign/' + encodeURIComponent(token))
+        .then(async (res) => {
+          const body = await res.json().catch(() => ({}))
+          if (!res.ok) return showFail(body.error)
+          render(body)
+        })
+        .catch(() => showFail('not_found'))
+    </script>
+  </body>
+</html>

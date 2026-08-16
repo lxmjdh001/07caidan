@@ -110,6 +110,90 @@ export const lineEvents = sqliteTable('line_events', {
   createdAt: integer('created_at').notNull()
 }, (t) => [index('idx_line_events').on(t.tenant, t.accountId)])
 
+/**
+ * 工单（引流任务）：一组账号 + 起止时间 + 判重规则。
+ * 统计结果不落库，按需从 conversations/messages 现算（见 CampaignRepo）。
+ */
+export const campaigns = sqliteTable(
+  'campaigns',
+  {
+    tenant: text('tenant').notNull(),
+    id: text('id').notNull(),
+    name: text('name').notNull(),
+    /** JSON 字符串：参与账号 accountId 数组 */
+    accountIds: text('account_ids').notNull().default('[]'),
+    /** JSON 字符串：accountId → 备注名。账号是老板自己的，可在看板展示 */
+    accountLabels: text('account_labels').notNull().default('{}'),
+    startAt: integer('start_at').notNull(),
+    /** 空 = 持续进行 */
+    endAt: integer('end_at'),
+    /** JSON 字符串：选中的重粉库 id 数组 */
+    dedupLibraryIds: text('dedup_library_ids').notNull().default('[]'),
+    /** 该时间之前出现过即算重复；空 = 不启用时间规则 */
+    dedupBeforeAt: integer('dedup_before_at'),
+    /** 看板时区偏移（分钟），默认 UTC+8 */
+    tzOffsetMinutes: integer('tz_offset_minutes').notNull().default(480),
+    createdBy: text('created_by'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.id] })]
+)
+
+/** 工单的公开分享链接；一个工单可有多条，各自独立设置有效期 */
+export const campaignLinks = sqliteTable(
+  'campaign_links',
+  {
+    /** 分享令牌，同时是主键（公开 URL 里的那一段） */
+    token: text('token').primaryKey(),
+    tenant: text('tenant').notNull(),
+    campaignId: text('campaign_id').notNull(),
+    /** 备注（发给谁的） */
+    label: text('label'),
+    /** 空 = 永不过期 */
+    expiresAt: integer('expires_at'),
+    /** 手动失效，立即生效 */
+    revoked: integer('revoked').notNull().default(0),
+    createdAt: integer('created_at').notNull()
+  },
+  (t) => [index('idx_links_campaign').on(t.tenant, t.campaignId)]
+)
+
+/**
+ * 重粉库：一组历史客户标识。不同平台的库互相独立（channel 字段），
+ * 创建工单时只能选同平台的库。
+ */
+export const fanLibraries = sqliteTable(
+  'fan_libraries',
+  {
+    tenant: text('tenant').notNull(),
+    id: text('id').notNull(),
+    name: text('name').notNull(),
+    /** whatsapp / telegram / telegram_bot / line */
+    channel: text('channel').notNull(),
+    /** export=从系统历史数据导出，import=外部导入 */
+    source: text('source').notNull(),
+    /** 条目数（冗余，列表展示用） */
+    entryCount: integer('entry_count').notNull().default(0),
+    createdAt: integer('created_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.id] })]
+)
+
+export const fanLibraryEntries = sqliteTable(
+  'fan_library_entries',
+  {
+    tenant: text('tenant').notNull(),
+    libraryId: text('library_id').notNull(),
+    contactId: text('contact_id').notNull(),
+    addedAt: integer('added_at').notNull()
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenant, t.libraryId, t.contactId] }),
+    index('idx_fan_entries_contact').on(t.tenant, t.contactId)
+  ]
+)
+
 export const media = sqliteTable(
   'media',
   {
