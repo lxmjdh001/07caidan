@@ -20,27 +20,26 @@ function WhatsAppIcon(): React.JSX.Element {
 
 interface Props {
   channels: Record<string, ChannelState>
+  /** 账号显示名（备注名 > 登录名 > 序号），由 App 计算 */
+  labels: Record<string, string>
   /** null = 全部消息视图 */
   activeKey: string | null
   onSelect: (key: string | null) => void
+  onAccountSettings: (key: string) => void
   onAddAccount: () => void
   onOpenSettings: () => void
 }
 
-/** 账号显示名：登录名 > 自定义序号 */
-function accountLabel(state: ChannelState, index: number): string {
-  return state.selfName || `账号 ${index + 1}`
-}
-
 export function ChannelRail({
   channels,
+  labels,
   activeKey,
   onSelect,
+  onAccountSettings,
   onAddAccount,
   onOpenSettings
 }: Props): React.JSX.Element {
   const { t } = useI18n()
-  // 账号排序：main 永远在前，其余按 key 稳定排序
   const waAccounts = Object.entries(channels)
     .filter(([key]) => key.startsWith('whatsapp:'))
     .sort(([a], [b]) => {
@@ -60,23 +59,43 @@ export function ChannelRail({
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
           <path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.3 9 9 0 0 1-3.8-.8L3 20l1.1-5A8 8 0 0 1 3.5 11.5 8.4 8.4 0 0 1 12 3.2a8.4 8.4 0 0 1 9 8.3Z" />
         </svg>
+        <span className="rail-label">{t('rail.allChats')}</span>
       </button>
 
       <div className="rail-divider" />
 
-      {waAccounts.map(([key, state], i) => (
-        <button
-          type="button"
-          key={key}
-          className={`rail-item ${activeKey === key ? 'active' : ''}`}
-          title={`WhatsApp · ${accountLabel(state, i)} — ${t(`status.${state.status}` as 'status.stopped')}`}
-          onClick={() => onSelect(key)}
-        >
-          <WhatsAppIcon />
-          {waAccounts.length > 1 && <span className="rail-index">{i + 1}</span>}
-          <span className="status-dot" style={{ background: STATUS_COLOR[state.status] }} />
-        </button>
-      ))}
+      <div className="rail-accounts">
+        {waAccounts.map(([key, state]) => (
+          <div key={key} className={`rail-account ${activeKey === key ? 'active' : ''}`}>
+            <button
+              type="button"
+              className="rail-account-main"
+              title={`WhatsApp · ${labels[key] ?? key} — ${t(`status.${state.status}` as 'status.stopped')}`}
+              onClick={() => onSelect(key)}
+            >
+              <span className="rail-account-icon">
+                <WhatsAppIcon />
+                <span className="status-dot" style={{ background: STATUS_COLOR[state.status] }} />
+              </span>
+              <span className="rail-label">{labels[key] ?? key}</span>
+            </button>
+            <button
+              type="button"
+              className="rail-account-gear"
+              title={t('account.settings')}
+              onClick={(e) => {
+                e.stopPropagation()
+                onAccountSettings(key)
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                <circle cx="12" cy="12" r="3" />
+                <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1" />
+              </svg>
+            </button>
+          </div>
+        ))}
+      </div>
 
       <button
         type="button"
@@ -95,6 +114,7 @@ export function ChannelRail({
           <circle cx="12" cy="12" r="3" />
           <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1Z" />
         </svg>
+        <span className="rail-label">{t('settings.title')}</span>
       </button>
     </nav>
   )

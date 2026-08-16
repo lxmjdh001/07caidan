@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChannelState, Conversation, UnifiedMessage } from '@shared/domain'
 import type { AppSettings } from '@shared/settings'
 import type { OutboundPreview, TranslatorInfo } from '@shared/ipc'
+import { AccountModal } from './components/AccountModal'
 import { ChannelRail } from './components/ChannelRail'
 import { ChatView } from './components/ChatView'
 import { ConversationList } from './components/ConversationList'
@@ -21,6 +22,8 @@ export function App(): React.JSX.Element {
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [translators, setTranslators] = useState<TranslatorInfo[]>([])
   const [showSettings, setShowSettings] = useState(false)
+  /** 打开中的账号设置弹窗（channel key） */
+  const [accountModalKey, setAccountModalKey] = useState<string | null>(null)
   const activeIdRef = useRef<string | null>(null)
   activeIdRef.current = activeId
 
@@ -163,6 +166,19 @@ export function App(): React.JSX.Element {
 
   const locale: Locale = settings && isLocale(settings.locale) ? settings.locale : 'zh-CN'
 
+  /** 账号显示名：备注名 > 登录名 > 序号 */
+  const accountLabels = useMemo(() => {
+    const keys = Object.keys(channels)
+      .filter((k) => k.startsWith('whatsapp:'))
+      .sort((a, b) => (a === 'whatsapp:main' ? -1 : b === 'whatsapp:main' ? 1 : a.localeCompare(b)))
+    const labels: Record<string, string> = {}
+    keys.forEach((key, i) => {
+      labels[key] =
+        settings?.accounts[key]?.label || channels[key]?.selfName || `账号 ${i + 1}`
+    })
+    return labels
+  }, [channels, settings])
+
   const visibleConversations = useMemo(
     () =>
       activeAccountKey
@@ -213,6 +229,7 @@ export function App(): React.JSX.Element {
         <div className="app-body">
           <ChannelRail
             channels={channels}
+            labels={accountLabels}
             activeKey={activeAccountKey}
             onSelect={(key) => {
               selectAccount(key)
@@ -226,6 +243,7 @@ export function App(): React.JSX.Element {
                 }
               }
             }}
+            onAccountSettings={(key) => setAccountModalKey(key)}
             onAddAccount={() => void addAccount()}
             onOpenSettings={() => setShowSettings(true)}
           />
@@ -256,20 +274,30 @@ export function App(): React.JSX.Element {
         {showSettings && settings && (
           <SettingsModal
             settings={settings}
-            channels={channels}
             translators={translators}
             onSave={async (patch) => {
               await saveSettings(patch)
               setShowSettings(false)
             }}
-            onLogoutAccount={(key) => api.logoutChannel(key)}
-            onRemoveAccount={async (key) => {
+            onClose={() => setShowSettings(false)}
+          />
+        )}
+        {accountModalKey && settings && (
+          <AccountModal
+            accountKey={accountModalKey}
+            state={channels[accountModalKey]}
+            config={settings.accounts[accountModalKey] ?? {}}
+            onSave={async (key, config) => {
+              await saveSettings({ accounts: { [key]: config } })
+            }}
+            onLogout={(key) => api.logoutChannel(key)}
+            onRemove={async (key) => {
               await api.removeAccount(key)
               const updated = await api.getSettings()
               setSettings(updated)
               if (activeAccountKey === key) setActiveAccountKey(null)
             }}
-            onClose={() => setShowSettings(false)}
+            onClose={() => setAccountModalKey(null)}
           />
         )}
       </div>
