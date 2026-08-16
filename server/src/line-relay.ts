@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, inArray, sql } from 'drizzle-orm'
 import type { Db } from './db.ts'
 import { lineAccounts, lineEvents } from './schema.ts'
 
@@ -52,6 +52,45 @@ export class LineRelay {
         .values({ tenant, accountId, payload: JSON.stringify(ev), createdAt: now })
         .run()
     }
+  }
+
+  /**
+   * 一次拉取本租户**全部账号**的待处理事件，按账号分组返回。
+   *
+   * 为什么要有它：客户端此前每个 LINE 账号各开一个 5 秒定时器单独拉，
+   * 1000 个账号就是 200 req/s 的空轮询。改成客户端整机一个定时器
+   * 调这里，请求量与账号数解耦（1000 账号 = 0.2 req/s）。
+   */
+  pullAll(tenant: string, limit = 500): Record<string, unknown[]> {
+    const rows = this.db
+      .select()
+      .from(lineEvents)
+      .where(eq(lineEvents.tenant, tenant))
+      .orderBy(asc(lineEvents.id))
+      .limit(limit)
+      .all()
+    if (rows.length === 0) return {}
+    this.db
+      .delete(lineEvents)
+      .where(inArray(lineEvents.id, rows.map((r) => r.id)))
+      .run()
+    const out: Record<string, unknown[]> = {}
+    for (const r of rows) {
+      ;(out[r.accountId] ??= []).push(JSON.parse(r.payload))
+    }
+    return out
+  }
+
+  /**
+   * 清理超龄事件。客户端长期离线时队列会无限堆积 ——
+   * 三天没人拉的事件已经没有时效价值，直接丢弃。
+   */
+  pruneStale(tenant: string, maxAgeMs = 3 * 86_400_000, now = Date.now()): number {
+    const res = this.db
+      .delete(lineEvents)
+      .where(and(eq(lineEvents.tenant, tenant), sql`${lineEvents.createdAt} < ${now - maxAgeMs}`))
+      .run()
+    return res.changes
   }
 
   /** 拉取并清空某账号的待处理事件 */

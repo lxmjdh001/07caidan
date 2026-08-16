@@ -397,7 +397,13 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     return { ok: true }
   })
 
-  // 客户端拉取待处理事件
+  // 客户端整机批量拉取（推荐）：一次拿到全部账号的事件
+  app.get('/api/line/pull-all', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    return { events: lineRelay.pullAll(ctxOf(req).tenant) }
+  })
+
+  // 客户端拉取待处理事件（旧接口，保留兼容单账号调试）
   app.get('/api/line/pull', async (req, reply) => {
     if (!requireSync(req, reply)) return
     const accountId = (req.query as { accountId?: string }).accountId

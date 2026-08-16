@@ -9,6 +9,7 @@ import {
   mapLineEvent,
   type LineEvent
 } from './mapper'
+import type { LinePollCoordinator } from './poll-coordinator'
 
 export interface LineCreds {
   channelAccessToken?: string
@@ -24,9 +25,9 @@ export interface LineAdapterOptions {
   /** 后台中转地址与令牌（收信必需：LINE 只支持公网 Webhook） */
   getBackend: () => { url?: string; token?: string }
   saveMedia?: (data: Buffer, ext: string) => Promise<string>
+  /** 整机共享的事件轮询协调器；所有 LINE 账号共用一个定时器 */
+  poller: LinePollCoordinator
 }
-
-const PULL_INTERVAL_MS = 5000
 
 /**
  * LINE 渠道适配器。
@@ -43,10 +44,10 @@ export class LineAdapter extends ChannelAdapter {
   private readonly getCreds: () => LineCreds
   private readonly getBackend: () => { url?: string; token?: string }
   private readonly saveMedia?: (data: Buffer, ext: string) => Promise<string>
+  private readonly poller: LinePollCoordinator
 
   private status: ChannelStatus = 'stopped'
   private stopping = false
-  private timer: ReturnType<typeof setInterval> | undefined
 
   constructor(opts: LineAdapterOptions) {
     super()
@@ -55,6 +56,7 @@ export class LineAdapter extends ChannelAdapter {
     this.getCreds = opts.getCreds
     this.getBackend = opts.getBackend
     this.saveMedia = opts.saveMedia
+    this.poller = opts.poller
   }
 
   async start(): Promise<void> {
@@ -81,7 +83,10 @@ export class LineAdapter extends ChannelAdapter {
         detail: webhookUrl ? `Webhook: ${webhookUrl}（填到 LINE 后台）` : undefined
       })
       this.log.info('已注册到后台中转', { webhookUrl })
-      this.timer = setInterval(() => void this.pull(), PULL_INTERVAL_MS)
+      // 事件由整机共享的协调器统一拉取后分发到这里
+      this.poller.register(this.accountId, (events: unknown[]) => {
+        this.handleEvents(events as LineEvent[])
+      })
     } catch (err) {
       this.setState('error', { detail: err instanceof Error ? err.message : String(err) })
     }
@@ -89,8 +94,7 @@ export class LineAdapter extends ChannelAdapter {
 
   async stop(): Promise<void> {
     this.stopping = true
-    if (this.timer) clearInterval(this.timer)
-    this.timer = undefined
+    this.poller.unregister(this.accountId)
     this.setState('stopped')
   }
 
@@ -109,27 +113,20 @@ export class LineAdapter extends ChannelAdapter {
     return {}
   }
 
-  /** 从后台拉取本账号的待处理 Webhook 事件 */
-  private async pull(): Promise<void> {
+  /** 协调器分发来的事件批 */
+  private handleEvents(events: LineEvent[]): void {
     if (this.stopping) return
-    try {
-      const data = (await this.backendGet(`/api/line/pull?accountId=${this.accountId}`)) as {
-        events?: LineEvent[]
+    for (const ev of events) {
+      const mapped = mapLineEvent(ev, this.accountId)
+      if (!mapped) continue
+      this.emit('message', mapped.message)
+      this.emit('conversation', {
+        externalChatId: lineChatId(ev.source),
+        isGroup: isLineGroup(ev.source)
+      })
+      if (mapped.messageId && this.saveMedia && mapped.message.body.type === 'media') {
+        void this.fetchContent(mapped.messageId, mapped.message)
       }
-      for (const ev of data.events ?? []) {
-        const mapped = mapLineEvent(ev, this.accountId)
-        if (!mapped) continue
-        this.emit('message', mapped.message)
-        this.emit('conversation', {
-          externalChatId: lineChatId(ev.source),
-          isGroup: isLineGroup(ev.source)
-        })
-        if (mapped.messageId && this.saveMedia && mapped.message.body.type === 'media') {
-          void this.fetchContent(mapped.messageId, mapped.message)
-        }
-      }
-    } catch (err) {
-      this.log.debug('拉取 LINE 事件失败', { err: String(err) })
     }
   }
 
@@ -170,16 +167,6 @@ export class LineAdapter extends ChannelAdapter {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(15_000)
-    })
-    if (!res.ok) throw new Error(`后台 ${path} HTTP ${res.status}`)
-    return res.json()
-  }
-
-  private async backendGet(path: string): Promise<unknown> {
-    const { url, token } = this.getBackend()
-    const res = await fetch(`${url!.replace(/\/$/, '')}${path}`, {
-      headers: { authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(15_000)
     })
     if (!res.ok) throw new Error(`后台 ${path} HTTP ${res.status}`)
