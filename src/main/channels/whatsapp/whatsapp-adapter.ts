@@ -138,6 +138,8 @@ export class WhatsAppAdapter extends ChannelAdapter {
       const meta = await this.sock.groupMetadata(externalChatId).catch(() => undefined)
       return meta?.subject || undefined
     }
+    // 官方机器人会话
+    if (externalChatId.endsWith('@bot')) return 'Meta AI'
     // LID（隐私隐藏 ID）：映射回真实手机号，与手机端显示一致
     if (externalChatId.endsWith('@lid')) {
       const pn = await this.sock.signalRepository?.lidMapping
@@ -280,8 +282,11 @@ export class WhatsAppAdapter extends ChannelAdapter {
         count: messages.length,
         items: messages.map((m) => ({
           jid: m.key?.remoteJid,
+          jidAlt: (m.key as { remoteJidAlt?: string }).remoteJidAlt,
+          participant: m.key?.participant,
           fromMe: m.key?.fromMe,
           id: m.key?.id,
+          pushName: m.pushName,
           stub: (m as { messageStubType?: number }).messageStubType,
           contentKeys: m.message ? Object.keys(m.message) : null
         }))

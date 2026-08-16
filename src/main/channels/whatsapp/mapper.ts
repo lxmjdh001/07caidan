@@ -141,8 +141,17 @@ export function extractBody(message: Record<string, unknown> | null | undefined)
   return { type: 'unsupported', description: keys[0] ?? 'unknown' }
 }
 
+/** Meta AI 等官方机器人身份：participant 以 @bot 结尾 */
+export function isBotParticipant(participant: string | null | undefined): boolean {
+  return !!participant?.endsWith('@bot')
+}
+
 /**
  * 返回 null 表示应忽略（状态广播、协议消息、无会话 ID 等）。
+ *
+ * Meta AI 特殊处理：WhatsApp 把 AI 对话挂在自己 jid 的会话下，
+ * 靠 key.participant（@bot 结尾）区分。这里把 bot 消息拆分到以
+ * bot jid 为标识的独立会话，方向记为入站。
  */
 export function mapWaMessage(raw: WaRawMessage, accountId: string): UnifiedMessage | null {
   const jid = raw.key.remoteJid
@@ -151,15 +160,23 @@ export function mapWaMessage(raw: WaRawMessage, accountId: string): UnifiedMessa
   const body = extractBody(raw.message)
   if (!body) return null
 
-  const direction = raw.key.fromMe ? 'out' : 'in'
+  const participant = raw.key.participant ?? undefined
+  const isBot = isBotParticipant(participant)
+  const chatJid = isBot ? participant! : jid
+  const direction = isBot ? 'in' : raw.key.fromMe ? 'out' : 'in'
+
   return {
     id: randomUUID(),
     externalId: raw.key.id ?? undefined,
     channel: 'whatsapp',
     accountId,
-    conversationId: conversationId('whatsapp', accountId, jid),
+    conversationId: conversationId('whatsapp', accountId, chatJid),
     direction,
-    authorName: direction === 'in' ? raw.pushName ?? undefined : undefined,
+    authorName: isBot
+      ? raw.pushName || 'Meta AI'
+      : direction === 'in'
+        ? raw.pushName ?? undefined
+        : undefined,
     body,
     timestamp: tsToMillis(raw.messageTimestamp, Date.now()),
     // 手机端同步过来的自己发的消息视为已发送

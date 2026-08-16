@@ -146,6 +146,46 @@ describe('tsToMillis', () => {
   })
 })
 
+describe('Meta AI (bot) 消息', () => {
+  it('participant 为 @bot 时拆分到独立会话且方向为入站', () => {
+    const msg = mapWaMessage(
+      raw({
+        key: {
+          remoteJid: '37254100094@s.whatsapp.net',
+          fromMe: true,
+          id: 'BOT1',
+          participant: '13135550002@bot'
+        },
+        pushName: 'Meta AI',
+        message: { extendedTextMessage: { text: 'AI 回复' } }
+      }),
+      'main'
+    )
+    expect(msg).toMatchObject({
+      conversationId: 'whatsapp:main:13135550002@bot',
+      direction: 'in',
+      authorName: 'Meta AI',
+      body: { type: 'text', text: 'AI 回复' }
+    })
+  })
+
+  it('群消息的 participant（非 @bot）不受影响', () => {
+    const msg = mapWaMessage(
+      raw({
+        key: {
+          remoteJid: '123-456@g.us',
+          fromMe: false,
+          id: 'G1',
+          participant: '999@s.whatsapp.net'
+        }
+      }),
+      'main'
+    )
+    expect(msg?.conversationId).toBe('whatsapp:main:123-456@g.us')
+    expect(msg?.direction).toBe('in')
+  })
+})
+
 describe('mediaFileLength', () => {
   it('number / string / Long 风格与包裹消息', () => {
     expect(mediaFileLength({ imageMessage: { fileLength: 1234 } })).toBe(1234)
