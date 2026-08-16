@@ -19,6 +19,8 @@ export class ChannelManager {
   private readonly states = new Map<string, ChannelState>()
   /** 已尝试拉取头像的会话（避免重复请求，无论成败本次运行只试一次） */
   private readonly avatarAttempted = new Set<string>()
+  /** 已尝试解析标题的会话 */
+  private readonly titleAttempted = new Set<string>()
 
   constructor(
     private readonly store: MessageStore,
@@ -48,6 +50,7 @@ export class ChannelManager {
           for (const conv of list) {
             if (conv.channel === adapter.kind && conv.accountId === adapter.accountId) {
               this.ensureAvatar(conv)
+              this.ensureTitle(conv)
             }
           }
         })
@@ -168,6 +171,7 @@ export class ChannelManager {
     const { conversation } = await this.store.recordMessage(msg)
     this.broadcast({ type: 'message:new', message: msg, conversation })
     this.ensureAvatar(conversation)
+    this.ensureTitle(conversation)
     return msg
   }
 
@@ -180,6 +184,7 @@ export class ChannelManager {
       if (duplicated) return
       this.broadcast({ type: 'message:new', message: msg, conversation })
       this.ensureAvatar(conversation)
+      this.ensureTitle(conversation)
     } catch (err) {
       this.logger.error('入站消息处理失败', err)
     }
@@ -200,6 +205,25 @@ export class ChannelManager {
         if (updated) this.broadcast({ type: 'conversation:updated', conversation: updated })
       } catch (err) {
         this.logger.debug(`拉取头像失败 ${conv.id}`, err)
+      }
+    })()
+  }
+
+  /** 标题仍是原始平台 ID 时，让适配器解析一次真实显示名（群名/备注） */
+  private ensureTitle(conv: { id: string; title: string; externalChatId: string }): void {
+    if (conv.title !== conv.externalChatId || this.titleAttempted.has(conv.id)) return
+    this.titleAttempted.add(conv.id)
+    void (async () => {
+      const { channel, accountId, externalChatId } = parseConversationId(conv.id)
+      const adapter = this.adapters.get(`${channel}:${accountId}`)
+      if (!adapter?.fetchTitle) return
+      try {
+        const title = await adapter.fetchTitle(externalChatId)
+        if (!title) return
+        const updated = await this.store.patchConversation({ id: conv.id, title })
+        if (updated) this.broadcast({ type: 'conversation:updated', conversation: updated })
+      } catch (err) {
+        this.logger.debug(`解析会话标题失败 ${conv.id}`, err)
       }
     })()
   }

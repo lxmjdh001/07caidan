@@ -59,6 +59,8 @@ export abstract class ChannelAdapter extends TypedEmitter<AdapterEvents> {
   sendMedia?(externalChatId: string, media: OutboundMedia): Promise<OutboundResult>
   /** 拉取会话头像并存入媒体库，返回 mediaId；无头像返回 undefined（可选能力） */
   fetchAvatar?(externalChatId: string): Promise<string | undefined>
+  /** 主动解析会话显示名（群名/备注等），解析不到返回 undefined（可选能力） */
+  fetchTitle?(externalChatId: string): Promise<string | undefined>
 
   protected makeState(partial: Omit<ChannelState, 'kind' | 'accountId'>): ChannelState {
     return { kind: this.kind, accountId: this.accountId, ...partial }

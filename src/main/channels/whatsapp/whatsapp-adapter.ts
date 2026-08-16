@@ -131,6 +131,23 @@ export class WhatsAppAdapter extends ChannelAdapter {
     return { externalId: result?.key?.id ?? undefined }
   }
 
+  override async fetchTitle(externalChatId: string): Promise<string | undefined> {
+    if (!this.sock || this.status !== 'connected') return undefined
+    // 群聊：拉群元数据取群名
+    if (isGroupJid(externalChatId)) {
+      const meta = await this.sock.groupMetadata(externalChatId).catch(() => undefined)
+      return meta?.subject || undefined
+    }
+    // 自己的会话（Message Yourself）
+    const selfJid = this.sock.user?.id?.split(':')[0]
+    if (selfJid && externalChatId.startsWith(`${selfJid}@`)) {
+      const name = this.sock.user?.name
+      return name ? `${name}（我）` : '我'
+    }
+    // 普通联系人没有公开的"取名"接口，靠 pushName / 通讯录同步事件
+    return undefined
+  }
+
   override async fetchAvatar(externalChatId: string): Promise<string | undefined> {
     if (!this.sock || this.status !== 'connected' || !this.saveMedia) return undefined
     // 无头像/无权限查看时 profilePictureUrl 会抛错，视为无头像
@@ -277,17 +294,20 @@ export class WhatsAppAdapter extends ChannelAdapter {
       }
     })
 
-    // 联系人/会话元数据 → 修正会话标题
-    sock.ev.on('contacts.upsert', (contacts) => {
+    // 联系人/会话元数据 → 修正会话标题（upsert 与 update 都要接）
+    const emitContacts = (
+      contacts: Array<{ id?: string | null; name?: string | null; notify?: string | null }>
+    ): void => {
       for (const c of contacts) {
         const title = c.name || c.notify
         if (c.id && title && !isGroupJid(c.id)) {
           this.emit('conversation', { externalChatId: c.id, title, isGroup: false })
         }
       }
-    })
-
-    sock.ev.on('chats.upsert', (chats) => {
+    }
+    const emitChats = (
+      chats: Array<{ id?: string | null; name?: string | null }>
+    ): void => {
       for (const c of chats) {
         if (!c.id) continue
         this.emit('conversation', {
@@ -296,6 +316,16 @@ export class WhatsAppAdapter extends ChannelAdapter {
           isGroup: isGroupJid(c.id)
         })
       }
+    }
+
+    sock.ev.on('contacts.upsert', emitContacts)
+    sock.ev.on('contacts.update', (updates) => emitContacts(updates as never))
+    sock.ev.on('chats.upsert', emitChats)
+    // 配对后的初始同步：通讯录与历史会话名从这里来
+    sock.ev.on('messaging-history.set', ({ contacts, chats }) => {
+      this.log.info('收到历史同步', { contacts: contacts?.length ?? 0, chats: chats?.length ?? 0 })
+      if (contacts) emitContacts(contacts)
+      if (chats) emitChats(chats as never)
     })
   }
 

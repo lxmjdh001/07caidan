@@ -227,6 +227,21 @@ describe('ChannelManager', () => {
     expect(evt).toBeDefined()
   })
 
+  it('标题仍是平台 ID 时自动解析（fetchTitle），已有标题的不再解析', async () => {
+    adapter.fetchTitle = vi.fn(async () => '测试群')
+    adapter.fakeIncoming({ authorName: undefined })
+    await flushAsync()
+
+    expect(adapter.fetchTitle).toHaveBeenCalledWith('42@s.whatsapp.net')
+    const convs = await store.listConversations()
+    expect(convs[0]?.title).toBe('测试群')
+
+    // 已有标题的新消息不会再次触发解析
+    adapter.fakeIncoming({ id: 'x2', authorName: undefined })
+    await flushAsync()
+    expect(adapter.fetchTitle).toHaveBeenCalledTimes(1)
+  })
+
   it('头像拉取失败不影响消息流程', async () => {
     adapter.fetchAvatar = vi.fn(async () => {
       throw new Error('404')
