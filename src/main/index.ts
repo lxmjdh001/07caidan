@@ -91,7 +91,10 @@ async function bootstrap(): Promise<void> {
       channels.get('whatsapp').createAdapter(accountId, {
         dataDir: join(userData, 'channels', 'whatsapp'),
         logger,
-        getAccountConfig: () => settings.accountConfig(key),
+        getAccountConfig: () => {
+          const cfg = settings.accountConfig(key)
+          return { proxyUrl: cfg.proxyUrl, deviceLabel: cfg.deviceLabel }
+        },
         saveMedia: (data, ext) => media.save(data, ext)
       })
     )

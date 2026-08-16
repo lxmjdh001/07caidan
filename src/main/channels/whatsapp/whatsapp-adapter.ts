@@ -1,6 +1,5 @@
 import { rm } from 'node:fs/promises'
 import {
-  Browsers,
   DisconnectReason,
   downloadMediaMessage,
   fetchLatestBaileysVersion,
@@ -17,6 +16,7 @@ import { ChannelAdapter, type OutboundMedia, type OutboundResult } from '../../c
 import { noopLogger, type Logger } from '../../core/logger'
 import { extFromMime } from '../../core/mime'
 import { createProxyAgent } from '../../core/proxy'
+import { deviceIdentity } from './device-identity'
 import { isGroupJid, mapWaMessage, mediaFileLength, type WaRawMessage } from './mapper'
 
 export interface WhatsAppAdapterOptions {
@@ -31,6 +31,8 @@ export interface WhatsAppAdapterOptions {
   getProxyUrl?: () => string | undefined
   /** 保存下载的媒体，返回 mediaId（由核心层 MediaStore 提供） */
   saveMedia?: (data: Buffer, ext: string) => Promise<string>
+  /** 自定义设备名（Linked Devices 里显示）；留空则按账号自动派生 */
+  getDeviceLabel?: () => string | undefined
 }
 
 const RECONNECT_BASE_MS = 3_000
@@ -61,6 +63,7 @@ export class WhatsAppAdapter extends ChannelAdapter {
 
   private readonly getProxyUrl: () => string | undefined
   private readonly saveMedia?: (data: Buffer, ext: string) => Promise<string>
+  private readonly getDeviceLabel: () => string | undefined
 
   constructor(opts: WhatsAppAdapterOptions) {
     super()
@@ -68,6 +71,7 @@ export class WhatsAppAdapter extends ChannelAdapter {
     this.authDir = opts.authDir
     this.getProxyUrl = opts.getProxyUrl ?? (() => undefined)
     this.saveMedia = opts.saveMedia
+    this.getDeviceLabel = opts.getDeviceLabel ?? (() => undefined)
     this.log = (opts.logger ?? noopLogger).child(`whatsapp:${opts.accountId}`)
   }
 
@@ -238,6 +242,10 @@ export class WhatsAppAdapter extends ChannelAdapter {
     const agent = createProxyAgent(proxyUrl)
     if (agent) this.log.info('使用代理连接', { proxy: proxyUrl?.replace(/\/\/.*@/, '//***@') })
 
+    // 按账号隔离设备名（Linked Devices 里各不相同，避免多账号被关联）
+    const browser = deviceIdentity(this.accountId, this.getDeviceLabel())
+    this.log.debug('设备标识', { browser })
+
     const sock = makeWASocket({
       version,
       auth: {
@@ -247,7 +255,7 @@ export class WhatsAppAdapter extends ChannelAdapter {
       agent,
       fetchAgent: agent,
       logger: this.waLogger,
-      browser: Browsers.macOS('Desktop'),
+      browser,
       markOnlineOnConnect: false,
       syncFullHistory: false,
       generateHighQualityLinkPreview: false,

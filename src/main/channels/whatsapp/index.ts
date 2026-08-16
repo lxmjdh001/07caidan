@@ -11,6 +11,7 @@ export const whatsAppPlugin: ChannelPlugin = {
       authDir: join(ctx.dataDir, 'auth', accountId),
       logger: ctx.logger,
       getProxyUrl: () => ctx.getAccountConfig().proxyUrl,
+      getDeviceLabel: () => ctx.getAccountConfig().deviceLabel,
       saveMedia: ctx.saveMedia
     })
   }

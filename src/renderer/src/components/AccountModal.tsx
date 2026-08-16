@@ -28,6 +28,7 @@ export function AccountModal({
   const [label, setLabel] = useState(config.label ?? '')
   const [defaultLang, setDefaultLang] = useState(config.defaultLang ?? '')
   const [proxyUrl, setProxyUrl] = useState(config.proxyUrl ?? '')
+  const [deviceLabel, setDeviceLabel] = useState(config.deviceLabel ?? '')
   const [saving, setSaving] = useState(false)
 
   const save = async (): Promise<void> => {
@@ -36,7 +37,8 @@ export function AccountModal({
       await onSave(accountKey, {
         label: label.trim() || undefined,
         defaultLang: defaultLang || undefined,
-        proxyUrl: proxyUrl.trim() || undefined
+        proxyUrl: proxyUrl.trim() || undefined,
+        deviceLabel: deviceLabel.trim() || undefined
       })
       onClose()
     } finally {
@@ -90,6 +92,17 @@ export function AccountModal({
           />
         </label>
         <p className="field-hint">{t('settings.proxyHint')}</p>
+
+        <label className="field">
+          <span>{t('account.device')}</span>
+          <input
+            type="text"
+            value={deviceLabel}
+            placeholder={t('account.deviceAuto')}
+            onChange={(e) => setDeviceLabel(e.target.value)}
+          />
+        </label>
+        <p className="field-hint">{t('account.deviceHint')}</p>
 
         <div className="account-actions">
           <button

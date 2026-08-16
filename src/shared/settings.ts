@@ -27,6 +27,12 @@ export interface AccountConfig {
   defaultLang?: string
   /** 显示名（默认用登录后的账号名） */
   label?: string
+  /**
+   * 自定义设备名（WhatsApp「已关联的设备」里显示的浏览器名）。
+   * 留空则按账号自动派生一个稳定且各账号不同的设备标识，用于多账号防关联。
+   * 改动后需重新登录该账号才会以新设备名重新配对。
+   */
+  deviceLabel?: string
 }
 
 export interface AppSettings {
