@@ -389,6 +389,7 @@ export const zhCN = {
   'team.perm.settings_manage': '全局设置',
   'team.perm.team_manage': '团队管理',
   'sup.title': '帮助与反馈',
+  'sup.liveChat': '在线客服',
   'sup.new': '提交问题',
   'sup.subject': '问题标题',
   'sup.desc': '问题描述（越详细越好：做了什么操作、看到什么现象）',

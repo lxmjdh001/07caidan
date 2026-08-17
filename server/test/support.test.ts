@@ -19,7 +19,8 @@ function cfg(dbPath: string): ServerConfig {
     tokens: ['dev-token'], anthropicApiKey: undefined, analysisModel: 'x',
     adminUser: 'admin', adminPassword: 'admin', adminTenant: 'dev-token',
     requireEmailVerify: false, clientTenant: 'dev-token', smtp: undefined,
-    publicUrl: 'http://localhost:8787', updatesDir: join(dir, 'updates')
+    publicUrl: 'http://localhost:8787', updatesDir: join(dir, 'updates'),
+    crispWebsiteId: undefined
   }
 }
 

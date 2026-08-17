@@ -52,6 +52,8 @@ const api: OmniApi = {
   listTranslators: () => ipcRenderer.invoke(IPC_METHODS.listTranslators),
   authState: () => ipcRenderer.invoke(IPC_METHODS.authState),
   authRefresh: () => ipcRenderer.invoke(IPC_METHODS.authRefresh),
+  crispAvailable: () => ipcRenderer.invoke(IPC_METHODS.crispAvailable),
+  crispOpen: () => ipcRenderer.invoke(IPC_METHODS.crispOpen),
   authConfig: (serverUrl: string) => ipcRenderer.invoke(IPC_METHODS.authConfig, serverUrl),
   authSendCode: (serverUrl: string, email: string) =>
     ipcRenderer.invoke(IPC_METHODS.authSendCode, serverUrl, email),

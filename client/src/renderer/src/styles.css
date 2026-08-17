@@ -2178,3 +2178,7 @@ body {
   font-size: 13px;
   cursor: pointer;
 }
+
+.crisp-btn {
+  margin-inline-start: auto;
+}

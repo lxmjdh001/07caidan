@@ -214,13 +214,15 @@
 - [x] 后台「支持工单」页（open 置顶、状态圆点、图文回复）+ support:manage 权限
 - [x] 贴图走 media 通道；新增带鉴权的媒体下载路由（img 转对象 URL 展示）
 
-## M20 — Crisp 在线客服（用户已确认要做）
-- [ ] 可行性结论：Electron 可集成 —— 独立 BrowserWindow 加载本地 HTML，
-      内嵌 Crisp 官方 widget 脚本（该窗口不受主窗口 CSP 限制）
-- [ ] 后台 /api/client/config 下发 crispWebsiteId（运营方配置一次）
-- [ ] 自定义数据随会话注入：邮箱、套餐名与到期时间、余额、软件版本、
-      系统类型与版本、设备 ID —— 客服一眼看到用户画像
-- [ ] 客户端入口（帮助页内"在线客服"按钮）；未配置 websiteId 时隐藏
+## M20 — Crisp 在线客服 ✅
+- [x] 独立 BrowserWindow + 本地生成 HTML 挂官方 widget（sandbox，无 Node 能力；
+      不进主窗口，避开 CSP 与遮挡）
+- [x] Website ID 由后台 /api/client/config 下发（OMNI_CRISP_WEBSITE_ID）；
+      未配置则帮助页不显示「在线客服」入口
+- [x] session:data 注入：套餐名/到期日/余额/软件版本/系统/设备指纹/角色 +
+      user:email；账单信息尽力而为（客服子账号无 billing:manage 时跳过）
+- [x] Website ID 格式校验 + JSON 序列化防脚本注入；单测覆盖
+
 
 ## M21 — 客户端 RBAC（老板/客服分权，子账号模型）✅
 > 核心原则：**界面隐藏只是体验，服务端校验才是安全**。

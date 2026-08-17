@@ -29,7 +29,8 @@ function makeConfig(dbPath: string): ServerConfig {
     clientTenant: TOKEN,
     smtp: undefined,
     publicUrl: 'http://localhost:8787',
-    updatesDir: join(dir, 'updates')
+    updatesDir: join(dir, 'updates'),
+    crispWebsiteId: undefined
   }
 }
 

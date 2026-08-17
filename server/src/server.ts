@@ -264,7 +264,11 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
 
   // ── 客户端用户（桌面端账号）──
   // 客户端启动时拉取：是否需要邮箱验证（决定注册界面是否显示发送验证码）
-  app.get('/api/client/config', async () => ({ requireEmailVerify: config.requireEmailVerify }))
+  app.get('/api/client/config', async () => ({
+    requireEmailVerify: config.requireEmailVerify,
+    // Crisp Website ID 本身即公开信息（网页上人人可见），下发给客户端无风险
+    crispWebsiteId: config.crispWebsiteId
+  }))
 
   app.post('/api/client/send-code', async (req, reply) => {
     if (!config.requireEmailVerify) return reply.code(400).send({ error: '后台未开启邮箱验证' })

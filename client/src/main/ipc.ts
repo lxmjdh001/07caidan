@@ -1,9 +1,11 @@
-import { BrowserWindow, dialog, ipcMain } from 'electron'
+import { BrowserWindow, app, dialog, ipcMain } from 'electron'
 import { IPC_METHODS, type OmniEvent, type OutboundPreview } from '@shared/ipc'
 import type { AppSettings } from '@shared/settings'
 import type { ClientAuth } from './auth/client-auth'
 import type { ChannelRegistry } from './channels/registry'
 import type { BillingApi } from './billing/billing-api'
+import { openCrispWindow } from './core/crisp'
+import { deviceId, osInfo } from './core/device-id'
 import type { CampaignApi } from './campaigns/campaign-api'
 import type { MediaStore } from './core/media-store'
 import type { Notifier } from './core/notifier'
@@ -217,6 +219,62 @@ export function registerIpc(deps: IpcDeps): void {
   const { auth } = deps
   ipcMain.handle(IPC_METHODS.authState, () => auth.state())
   ipcMain.handle(IPC_METHODS.authRefresh, () => auth.refreshPermissions())
+
+  // ── Crisp 在线客服（M20）──
+  /** Website ID 由后台下发；缓存 10 分钟，避免每次打开支持页都打一次网络 */
+  let crispCache: { id: string | undefined; at: number } | null = null
+  const crispWebsiteId = async (): Promise<string | undefined> => {
+    const sync = deps.settings.get().sync
+    if (!sync.serverUrl) return undefined
+    if (crispCache && Date.now() - crispCache.at < 10 * 60_000) return crispCache.id
+    try {
+      const res = await fetch(`${sync.serverUrl.replace(/\/$/, '')}/api/client/config`, {
+        signal: AbortSignal.timeout(10_000)
+      })
+      const data = (await res.json().catch(() => ({}))) as { crispWebsiteId?: string }
+      crispCache = { id: data.crispWebsiteId || undefined, at: Date.now() }
+      return crispCache.id
+    } catch {
+      return crispCache?.id
+    }
+  }
+
+  ipcMain.handle(IPC_METHODS.crispAvailable, async () => (await crispWebsiteId()) !== undefined)
+
+  ipcMain.handle(IPC_METHODS.crispOpen, async () => {
+    const id = await crispWebsiteId()
+    if (!id) return { ok: false, error: '在线客服未配置' }
+    const sync = deps.settings.get().sync
+    // 会话数据尽力而为：拿不到账单信息也照样开窗
+    const data: Array<[string, string]> = [
+      ['app_version', app.getVersion()],
+      ['os', `${osInfo().osType} ${osInfo().osVersion}`],
+      ['device_id', deviceId()],
+      ['role', sync.role ?? '']
+    ]
+    try {
+      const me = (await deps.billingApi.me()) as {
+        balance?: number
+        plan?: { name?: string } | null
+        subscription?: { expiresAt?: number; status?: string } | null
+      }
+      if (me.plan?.name) data.push(['plan', me.plan.name])
+      if (me.subscription?.expiresAt) {
+        data.push(['plan_expires', new Date(me.subscription.expiresAt).toISOString().slice(0, 10)])
+      }
+      if (typeof me.balance === 'number') {
+        data.push(['balance_usd', (me.balance / 100).toFixed(2)])
+      }
+    } catch {
+      // 客服子账号无 billing:manage 或未登录：跳过套餐信息
+    }
+    try {
+      await openCrispWindow(id, { email: sync.email || undefined, data })
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: String(err) }
+    }
+  })
   ipcMain.handle(IPC_METHODS.authConfig, (_e, url: string) => auth.config(url))
   ipcMain.handle(IPC_METHODS.authSendCode, (_e, url: string, email: string) =>
     auth.sendCode(url, email)

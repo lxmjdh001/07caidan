@@ -32,6 +32,8 @@ export interface ServerConfig {
   publicUrl: string
   /** 客户端自动更新产物目录（latest*.yml + 安装包）；发布 = 把文件拷进来 */
   updatesDir: string
+  /** Crisp 在线客服 Website ID；未配置则客户端隐藏在线客服入口 */
+  crispWebsiteId: string | undefined
 }
 
 export function loadConfig(): ServerConfig {
@@ -66,6 +68,7 @@ export function loadConfig(): ServerConfig {
     publicUrl:
       process.env.OMNI_PUBLIC_URL ||
       `http://localhost:${Number(process.env.PORT || 8787)}`,
-    updatesDir: process.env.OMNI_UPDATES_DIR || join(dataDir, 'updates')
+    updatesDir: process.env.OMNI_UPDATES_DIR || join(dataDir, 'updates'),
+    crispWebsiteId: process.env.OMNI_CRISP_WEBSITE_ID || undefined
   }
 }

@@ -29,6 +29,8 @@ export const IPC_METHODS = {
   listTranslators: 'omni:listTranslators',
   authState: 'omni:authState',
   authRefresh: 'omni:authRefresh',
+  crispAvailable: 'omni:crispAvailable',
+  crispOpen: 'omni:crispOpen',
   authConfig: 'omni:authConfig',
   authSendCode: 'omni:authSendCode',
   authRegister: 'omni:authRegister',
@@ -157,6 +159,10 @@ export interface OmniApi {
   authState(): Promise<AuthState>
   /** 刷新角色与权限（启动时调用；会话失效时顺带清理登录态） */
   authRefresh(): Promise<AuthState>
+  /** 在线客服（Crisp）是否已在后台配置 */
+  crispAvailable(): Promise<boolean>
+  /** 打开在线客服窗口（带套餐/版本/设备等会话数据） */
+  crispOpen(): Promise<{ ok: boolean; error?: string }>
   /** 拉取后台配置（是否需要邮箱验证），决定注册界面是否显示发送验证码 */
   authConfig(serverUrl: string): Promise<{ requireEmailVerify: boolean } | { error: string }>
   /** 发送邮箱验证码 */

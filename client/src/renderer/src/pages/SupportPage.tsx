@@ -50,6 +50,11 @@ export function SupportPage(): React.JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Msg[]>([])
   const [err, setErr] = useState('')
+  const [crisp, setCrisp] = useState(false)
+
+  useEffect(() => {
+    void api.crispAvailable().then(setCrisp)
+  }, [])
   const [creating, setCreating] = useState(false)
 
   const [title, setTitle] = useState('')
@@ -111,6 +116,19 @@ export function SupportPage(): React.JSX.Element {
     <div className="page">
       <header className="page-header">
         <h1>{t('sup.title')}</h1>
+        {crisp && (
+          <button
+            type="button"
+            className="primary-btn crisp-btn"
+            onClick={() => {
+              void api.crispOpen().then((r) => {
+                if (!r.ok) setErr(r.error ?? t('auth.failed'))
+              })
+            }}
+          >
+            {t('sup.liveChat')}
+          </button>
+        )}
       </header>
       <div className="page-body">
         {err && <p className="auth-err">{err}</p>}

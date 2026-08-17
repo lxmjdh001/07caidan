@@ -391,6 +391,7 @@ export const en: Record<MessageKey, string> = {
   'team.perm.settings_manage': 'Global settings',
   'team.perm.team_manage': 'Team management',
   'sup.title': 'Help & Feedback',
+  'sup.liveChat': 'Live chat',
   'sup.new': 'Submit an issue',
   'sup.subject': 'Subject',
   'sup.desc': 'Describe the issue (what you did, what you saw)',
