@@ -216,38 +216,46 @@ export function SettingsPage({
               </label>
               <p className="field-hint">{t('settings.notifyHint')}</p>
 
-              <h3 style={{ marginTop: 22 }}>{t('settings.autoReply')}</h3>
-              <label className="field checkbox">
-                <input type="checkbox" checked={arOn} onChange={(e) => setArOn(e.target.checked)} />
-                <span>{t('settings.autoReplyEnabled')}</span>
-              </label>
-              <label className="field">
-                <span>{t('settings.autoReplyPrompt')}</span>
-                <textarea
-                  rows={4}
-                  value={arPrompt}
-                  onChange={(e) => setArPrompt(e.target.value)}
-                />
-              </label>
-              <label className="field">
-                <span>{t('settings.autoReplyCooldown')}</span>
-                <input
-                  type="text"
-                  value={arCooldown}
-                  onChange={(e) => setArCooldown(e.target.value)}
-                  style={{ maxWidth: 90 }}
-                />
-              </label>
-              <label className="field">
-                <span>{t('settings.handoffKeywords')}</span>
-                <input
-                  type="text"
-                  value={arHandoff}
-                  onChange={(e) => setArHandoff(e.target.value)}
-                />
-              </label>
-              <p className="field-hint">{t('settings.handoffHint')}</p>
-              <p className="field-hint">{t('settings.autoReplyHint')}</p>
+              {canManageSettings && (
+                <>
+                  <h3 style={{ marginTop: 22 }}>{t('settings.autoReply')}</h3>
+                  <label className="field checkbox">
+                    <input
+                      type="checkbox"
+                      checked={arOn}
+                      onChange={(e) => setArOn(e.target.checked)}
+                    />
+                    <span>{t('settings.autoReplyEnabled')}</span>
+                  </label>
+                  <label className="field">
+                    <span>{t('settings.autoReplyPrompt')}</span>
+                    <textarea
+                      rows={4}
+                      value={arPrompt}
+                      onChange={(e) => setArPrompt(e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>{t('settings.autoReplyCooldown')}</span>
+                    <input
+                      type="text"
+                      value={arCooldown}
+                      onChange={(e) => setArCooldown(e.target.value)}
+                      style={{ maxWidth: 90 }}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>{t('settings.handoffKeywords')}</span>
+                    <input
+                      type="text"
+                      value={arHandoff}
+                      onChange={(e) => setArHandoff(e.target.value)}
+                    />
+                  </label>
+                  <p className="field-hint">{t('settings.handoffHint')}</p>
+                  <p className="field-hint">{t('settings.autoReplyHint')}</p>
+                </>
+              )}
 
               <h3 style={{ marginTop: 22 }}>{t('settings.about')}</h3>
               <div className="about-row">

@@ -182,8 +182,10 @@ export function BillingPage(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
+    // 切换页签就重新拉取：支付/补单发生在页面外（后台标记、支付回调），
+    // 用户切回概览必须立刻看到新余额和套餐，而不是上次的缓存
     void load()
-  }, [load])
+  }, [load, tab])
 
   const TABS: Array<{ id: Tab; label: string }> = [
     { id: 'overview', label: t('bill.overview') },
