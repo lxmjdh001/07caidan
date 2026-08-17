@@ -6,6 +6,7 @@ import { AccountList, type AccountRow } from './components/AccountList'
 import { AccountModal } from './components/AccountModal'
 import { NoticeModal, useNotices } from './components/NoticeModal'
 import { BillingPage } from './pages/BillingPage'
+import { TeamPage } from './pages/TeamPage'
 import { SupportPage } from './pages/SupportPage'
 import { CampaignPage } from './pages/CampaignPage'
 import { SettingsPage } from './pages/SettingsPage'
@@ -28,7 +29,14 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [translators, setTranslators] = useState<TranslatorInfo[]>([])
   /** 主视图：聊天 / 工单 / 设置。工单与设置做成整页，弹窗里放不下 */
-  const [view, setView] = useState<'chat' | 'campaigns' | 'billing' | 'support' | 'settings'>('chat')
+  const [view, setView] = useState<
+    'chat' | 'campaigns' | 'billing' | 'support' | 'settings' | 'team'
+  >('chat')
+  /**
+   * 客户端 RBAC：undefined = 旧后台/未登录（不限制，兼容静态令牌），
+   * 数组 = 服务端下发的有效权限。界面按此显隐；真正的强制在服务端。
+   */
+  const [permissions, setPermissions] = useState<string[] | undefined>(undefined)
   /** 打开中的账号设置弹窗（channel key） */
   const [accountModalKey, setAccountModalKey] = useState<string | null>(null)
   const [plugins, setPlugins] = useState<ChannelPluginInfo[]>([])
@@ -45,6 +53,12 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   }, [])
 
   useEffect(() => {
+    // 先用本地缓存的权限秒开界面，再向后台刷新（角色被老板改过时生效）
+    void api.authState().then((st) => setPermissions(st.permissions))
+    void api.authRefresh().then((st) => {
+      setPermissions(st.permissions)
+      if (!st.authenticated) onLogout?.()
+    })
     void api.listChannels().then((list) => {
       setChannels(Object.fromEntries(list.map((s) => [`${s.kind}:${s.accountId}`, s])))
     })
@@ -308,6 +322,9 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   const showQr =
     qrState?.status === 'waiting_qr' || qrState?.status === 'waiting_pairing_code'
 
+  const can = (perm: string): boolean =>
+    permissions === undefined || permissions.includes(perm)
+
   return (
     <I18nProvider locale={locale}>
       <div className={`app platform-${api.platform}`}>
@@ -338,19 +355,28 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             onOpenCampaigns={() => setView(view === 'campaigns' ? 'chat' : 'campaigns')}
             onOpenBilling={() => setView(view === 'billing' ? 'chat' : 'billing')}
             onOpenSupport={() => setView(view === 'support' ? 'chat' : 'support')}
+            onOpenTeam={() => setView(view === 'team' ? 'chat' : 'team')}
             activeView={view}
+            showCampaigns={can('campaigns:manage')}
+            showBilling={can('billing:manage')}
+            showTeam={permissions !== undefined && permissions.includes('team:manage')}
+            allowAddAccount={can('accounts:manage')}
+            allowAccountSettings={can('accounts:manage')}
           />
 
           {view === 'campaigns' ? (
             <CampaignPage accounts={accountOptions} />
           ) : view === 'billing' ? (
             <BillingPage />
+          ) : view === 'team' ? (
+            <TeamPage />
           ) : view === 'support' ? (
             <SupportPage />
           ) : view === 'settings' && settings ? (
             <SettingsPage
               settings={settings}
               translators={translators}
+              canManageSettings={can('settings:manage')}
               onSave={saveSettings}
               onAccountLogout={async () => {
                 await api.authLogout()

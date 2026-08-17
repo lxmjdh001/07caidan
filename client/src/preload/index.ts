@@ -51,6 +51,7 @@ const api: OmniApi = {
     ipcRenderer.invoke(IPC_METHODS.updateSettings, patch),
   listTranslators: () => ipcRenderer.invoke(IPC_METHODS.listTranslators),
   authState: () => ipcRenderer.invoke(IPC_METHODS.authState),
+  authRefresh: () => ipcRenderer.invoke(IPC_METHODS.authRefresh),
   authConfig: (serverUrl: string) => ipcRenderer.invoke(IPC_METHODS.authConfig, serverUrl),
   authSendCode: (serverUrl: string, email: string) =>
     ipcRenderer.invoke(IPC_METHODS.authSendCode, serverUrl, email),

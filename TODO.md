@@ -222,16 +222,23 @@
       系统类型与版本、设备 ID —— 客服一眼看到用户画像
 - [ ] 客户端入口（帮助页内"在线客服"按钮）；未配置 websiteId 时隐藏
 
-## M21 — 客户端 RBAC（老板/客服分权）
-> 设计见下轮实现；核心原则：**界面隐藏只是体验，服务端校验才是安全**。
-- [ ] clientUsers 加 role + permissions（沿用后台 RBAC 模型：预设 ∪ 直接分配）
-- [ ] 客户端权限点：campaigns:manage / billing:manage / accounts:manage /
-      settings:manage；聊天为基础能力人人可用
-- [ ] 预设：boss（全部）/ agent（仅聊天）
-- [ ] 角色由后台管理创建：后台新增「客户端用户」管理页（建号/角色/权限/
-      停用/重置密码）；自助注册默认 agent，首个用户 boss
-- [ ] 登录响应携带权限；客户端按权限渲染底部导航/设置页签/账号增删按钮
-- [ ] 服务端强制：客户端令牌访问工单/计费/推广链接接口时校验对应权限
+## M21 — 客户端 RBAC（老板/客服分权，子账号模型）✅
+> 核心原则：**界面隐藏只是体验，服务端校验才是安全**。
+> 定案：客服是老板的**子账号**（ownerId），不是同级用户 ——
+> 套餐/余额/积分消耗一律记在老板头上（billingUserId = ownerId ?? 自己）。
+- [x] clientUsers 加 ownerId/role/permissions/enabled + client_roles 表（含增量迁移）
+- [x] 客户端权限点：campaigns:manage / billing:manage / accounts:manage /
+      settings:manage / team:manage；聊天为基础能力人人可用
+- [x] 预设：boss（全部）/ agent（仅聊天）；自助注册即 boss
+- [x] 角色由老板在客户端「团队管理」创建：委派 ⊆ 校验（不能分配超出自己
+      的权限）；不允许建同级 boss；在用角色不可删
+- [x] 子账号生命周期：停用/改密即吊销会话；停用后不能登录
+- [x] 登录响应携带 role+permissions；/api/me/permissions 启动刷新
+- [x] 服务端强制：工单/重粉库需 campaigns:manage；钱包/订单/订阅需
+      billing:manage；AI 运行时（翻译/ASR/自动回复）客服可用、扣老板积分
+- [x] 客户端：底部导航/设置页签/添加账号/账号齿轮按权限显隐；团队管理页
+      （成员建停改密 + 自定义角色勾选权限）
+- [x] 测试：15 条 HTTP 集成测试（委派收敛/会话吊销/跨老板隔离/静态令牌兼容）
 
 ## M19 — 客户端日志上报
 - [ ] 客户端硬件指纹设备 ID（machineId 派生，不含隐私原文）

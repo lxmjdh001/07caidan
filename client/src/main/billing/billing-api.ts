@@ -110,6 +110,34 @@ export class BillingApi {
     }
   }
 
+  // ── 团队管理（老板建客服子账号）──
+  listTeamMembers(): Promise<unknown> {
+    return this.request('GET', '/api/team/members')
+  }
+
+  createTeamMember(body: { email: string; password: string; role: string }): Promise<unknown> {
+    return this.request('POST', '/api/team/members', body)
+  }
+
+  updateTeamMember(
+    id: number,
+    body: { role?: string; enabled?: boolean; password?: string }
+  ): Promise<unknown> {
+    return this.request('PATCH', `/api/team/members/${id}`, body)
+  }
+
+  listTeamRoles(): Promise<unknown> {
+    return this.request('GET', '/api/team/roles')
+  }
+
+  createTeamRole(body: { name: string; permissions: string[] }): Promise<unknown> {
+    return this.request('POST', '/api/team/roles', body)
+  }
+
+  deleteTeamRole(id: string): Promise<unknown> {
+    return this.request('DELETE', `/api/team/roles/${encodeURIComponent(id)}`)
+  }
+
   /** 未读通知（公告 + 个人通知，如到期提醒） */
   listNotices(): Promise<unknown> {
     return this.request('GET', '/api/notices')

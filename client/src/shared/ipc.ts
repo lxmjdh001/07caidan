@@ -28,6 +28,7 @@ export const IPC_METHODS = {
   updateSettings: 'omni:updateSettings',
   listTranslators: 'omni:listTranslators',
   authState: 'omni:authState',
+  authRefresh: 'omni:authRefresh',
   authConfig: 'omni:authConfig',
   authSendCode: 'omni:authSendCode',
   authRegister: 'omni:authRegister',
@@ -80,6 +81,10 @@ export interface AuthState {
   email?: string
   /** 后台地址（可编辑，记住上次） */
   serverUrl: string
+  /** 角色：boss / agent / 自定义角色 id */
+  role?: string
+  /** 有效权限（见 server 端 CLIENT_PERMISSIONS） */
+  permissions?: string[]
 }
 
 export interface AuthResult {
@@ -150,6 +155,8 @@ export interface OmniApi {
   listTranslators(): Promise<TranslatorInfo[]>
   /** 当前登录状态（token 存在即已登录） */
   authState(): Promise<AuthState>
+  /** 刷新角色与权限（启动时调用；会话失效时顺带清理登录态） */
+  authRefresh(): Promise<AuthState>
   /** 拉取后台配置（是否需要邮箱验证），决定注册界面是否显示发送验证码 */
   authConfig(serverUrl: string): Promise<{ requireEmailVerify: boolean } | { error: string }>
   /** 发送邮箱验证码 */

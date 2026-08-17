@@ -9,6 +9,8 @@ interface Props {
   translators: TranslatorInfo[]
   onSave: (patch: Partial<AppSettings>) => Promise<void>
   onAccountLogout: () => Promise<void>
+  /** settings:manage 权限；无权限时只保留通用（主题/语言）与账号页 */
+  canManageSettings: boolean
 }
 
 /** 设置分类；后续新增设置直接加 tab，不必再往一个长表单里塞 */
@@ -39,7 +41,8 @@ export function SettingsPage({
   settings,
   translators,
   onSave,
-  onAccountLogout
+  onAccountLogout,
+  canManageSettings
 }: Props): React.JSX.Element {
   const { t } = useI18n()
   const tr = settings.translation
@@ -119,12 +122,17 @@ export function SettingsPage({
     }
   }
 
-  const TABS: Array<{ id: Tab; label: string }> = [
-    { id: 'general', label: t('settings.general') },
-    { id: 'translation', label: t('settings.translation') },
-    { id: 'platform', label: t('settings.platform') },
-    { id: 'backend', label: t('settings.account') }
-  ]
+  const TABS: Array<{ id: Tab; label: string }> = canManageSettings
+    ? [
+        { id: 'general', label: t('settings.general') },
+        { id: 'translation', label: t('settings.translation') },
+        { id: 'platform', label: t('settings.platform') },
+        { id: 'backend', label: t('settings.account') }
+      ]
+    : [
+        { id: 'general', label: t('settings.general') },
+        { id: 'backend', label: t('settings.account') }
+      ]
 
   return (
     <div className="page">
@@ -280,7 +288,7 @@ export function SettingsPage({
             </section>
           )}
 
-          {tab === 'translation' && (
+          {tab === 'translation' && canManageSettings && (
             <section className="form-card">
               <h3>{t('settings.translation')}</h3>
               <label className="field">
@@ -399,7 +407,7 @@ export function SettingsPage({
             </section>
           )}
 
-          {tab === 'platform' && (
+          {tab === 'platform' && canManageSettings && (
             <section className="form-card">
               <h3>{t('settings.platform')}</h3>
               <label className="field">

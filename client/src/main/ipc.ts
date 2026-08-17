@@ -75,7 +75,13 @@ const BILLING_METHODS: Record<string, true> = {
   replyTicket: true,
   closeTicket: true,
   uploadTicketImage: true,
-  fetchMedia: true
+  fetchMedia: true,
+  listTeamMembers: true,
+  createTeamMember: true,
+  updateTeamMember: true,
+  listTeamRoles: true,
+  createTeamRole: true,
+  deleteTeamRole: true
 }
 
 /** 渲染进程可调用的全部主进程能力，集中在此注册 */
@@ -210,6 +216,7 @@ export function registerIpc(deps: IpcDeps): void {
 
   const { auth } = deps
   ipcMain.handle(IPC_METHODS.authState, () => auth.state())
+  ipcMain.handle(IPC_METHODS.authRefresh, () => auth.refreshPermissions())
   ipcMain.handle(IPC_METHODS.authConfig, (_e, url: string) => auth.config(url))
   ipcMain.handle(IPC_METHODS.authSendCode, (_e, url: string, email: string) =>
     auth.sendCode(url, email)

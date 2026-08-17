@@ -52,6 +52,10 @@ export interface SyncConfig {
   email: string
   /** 是否同时上传媒体文件 */
   uploadMedia: boolean
+  /** 登录账号角色（boss / agent / 自定义角色 id） */
+  role?: string
+  /** 登录账号的有效权限（服务端下发；界面按此显隐，真正的强制在服务端） */
+  permissions?: string[]
 }
 
 /** AI 自动回复（全局开关 + 话术；按会话再开一层，两层都开才生效） */

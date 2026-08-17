@@ -23,6 +23,10 @@ export interface BillingRouteDeps {
   ctxOf: (req: FastifyRequest) => {
     tenant: string
     clientUserId?: number
+    /** 计费主体：子账号消耗老板的套餐/余额（ownerId ?? 自己） */
+    billingUserId?: number
+    /** 客户端用户有效权限；静态令牌为 undefined（视为全权限） */
+    clientPermissions?: string[]
     principal?: { permissions: string[] }
   }
   requirePerm: (req: FastifyRequest, reply: FastifyReply, perm: string) => boolean
@@ -49,14 +53,26 @@ const PERIOD_UNITS: PeriodUnit[] = ['month', 'quarter', 'half_year', 'year', 'da
 export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDeps): void {
   const { billing, orders, channels, ai, aiClient, ctxOf, requirePerm, publicBase } = deps
 
-  /** 客户端用户守卫：必须是邮箱登录的桌面端用户（静态同步令牌没有身份，不能有钱包） */
-  const requireClientUser = (req: FastifyRequest, reply: FastifyReply): number | null => {
-    const id = ctxOf(req).clientUserId
-    if (id === undefined) {
+  /**
+   * 客户端用户守卫：必须是邮箱登录的桌面端用户（静态同步令牌没有身份，不能有钱包）。
+   * 返回的是「计费主体」—— 子账号（客服）消耗的是老板的套餐/余额/积分。
+   * perm 传入时还要求该客户端用户具备对应权限（子账号 RBAC）。
+   */
+  const requireClientUser = (
+    req: FastifyRequest,
+    reply: FastifyReply,
+    perm?: string
+  ): number | null => {
+    const ctx = ctxOf(req)
+    if (ctx.clientUserId === undefined) {
       void reply.code(403).send({ error: '需要客户端账号登录（静态令牌无余额体系）' })
       return null
     }
-    return id
+    if (perm && ctx.clientPermissions !== undefined && !ctx.clientPermissions.includes(perm)) {
+      void reply.code(403).send({ error: 'forbidden', need: perm })
+      return null
+    }
+    return ctx.billingUserId ?? ctx.clientUserId
   }
 
   // ══════════ 管理后台 ══════════
@@ -273,7 +289,7 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
   })
 
   app.get('/api/billing/me', async (req, reply) => {
-    const userId = requireClientUser(req, reply)
+    const userId = requireClientUser(req, reply, 'billing:manage')
     if (userId === null) return
     const tenant = ctxOf(req).tenant
     const sub = billing.getSubscription(tenant, userId)
@@ -287,13 +303,13 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
   })
 
   app.get('/api/billing/ledger', async (req, reply) => {
-    const userId = requireClientUser(req, reply)
+    const userId = requireClientUser(req, reply, 'billing:manage')
     if (userId === null) return
     return { ledger: billing.listLedger(ctxOf(req).tenant, userId) }
   })
 
   app.get('/api/billing/orders', async (req, reply) => {
-    const userId = requireClientUser(req, reply)
+    const userId = requireClientUser(req, reply, 'billing:manage')
     if (userId === null) return
     return { orders: orders.listByUser(ctxOf(req).tenant, userId) }
   })
@@ -304,7 +320,7 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
    * 折算多出来的部分会留在余额里，用户看流水能看懂每一步。
    */
   app.post('/api/billing/orders', async (req, reply) => {
-    const userId = requireClientUser(req, reply)
+    const userId = requireClientUser(req, reply, 'billing:manage')
     if (userId === null) return
     const tenant = ctxOf(req).tenant
     const b = (req.body ?? {}) as { kind?: string; amountCents?: number; planId?: string; channelId?: string }
@@ -363,7 +379,7 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
 
   /** 用余额订阅/升降级套餐（不经支付通道） */
   app.post('/api/billing/subscribe', async (req, reply) => {
-    const userId = requireClientUser(req, reply)
+    const userId = requireClientUser(req, reply, 'billing:manage')
     if (userId === null) return
     const b = (req.body ?? {}) as { planId?: string }
     if (!b.planId) return reply.code(400).send({ error: 'planId 必填' })
@@ -381,7 +397,7 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
   })
 
   app.post('/api/billing/auto-renew', async (req, reply) => {
-    const userId = requireClientUser(req, reply)
+    const userId = requireClientUser(req, reply, 'billing:manage')
     if (userId === null) return
     const on = Boolean((req.body as { on?: boolean } | undefined)?.on)
     const ok = billing.setAutoRenew(ctxOf(req).tenant, userId, on)
@@ -389,7 +405,7 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
   })
 
   app.post('/api/billing/exchange-credits', async (req, reply) => {
-    const userId = requireClientUser(req, reply)
+    const userId = requireClientUser(req, reply, 'billing:manage')
     if (userId === null) return
     const tenant = ctxOf(req).tenant
     const cents = Math.round(Number((req.body as { cents?: number } | undefined)?.cents ?? 0))
@@ -619,7 +635,7 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
   })
 
   app.get('/api/billing/usage', async (req, reply) => {
-    const userId = requireClientUser(req, reply)
+    const userId = requireClientUser(req, reply, 'billing:manage')
     if (userId === null) return
     return { usage: ai.listUsage(ctxOf(req).tenant, userId) }
   })

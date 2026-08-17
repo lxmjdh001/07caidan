@@ -43,8 +43,15 @@ interface Props {
   onOpenCampaigns: () => void
   onOpenBilling: () => void
   onOpenSupport: () => void
+  onOpenTeam: () => void
   /** 当前主视图，用于底部导航高亮 */
-  activeView: 'chat' | 'campaigns' | 'billing' | 'support' | 'settings'
+  activeView: 'chat' | 'campaigns' | 'billing' | 'support' | 'settings' | 'team'
+  /** 客户端 RBAC：无权限的入口整个隐藏（服务端另有强制） */
+  showCampaigns: boolean
+  showBilling: boolean
+  showTeam: boolean
+  allowAddAccount: boolean
+  allowAccountSettings: boolean
 }
 
 export function AccountList({
@@ -58,7 +65,13 @@ export function AccountList({
   onOpenCampaigns,
   onOpenBilling,
   onOpenSupport,
-  activeView
+  onOpenTeam,
+  activeView,
+  showCampaigns,
+  showBilling,
+  showTeam,
+  allowAddAccount,
+  allowAccountSettings
 }: Props): React.JSX.Element {
   const { t } = useI18n()
   const [query, setQuery] = useState('')
@@ -76,6 +89,7 @@ export function AccountList({
       <header className="account-list-header">
         <span className="account-list-title">{t('rail.accounts')}</span>
         <span className="account-list-count">{accounts.length}</span>
+        {allowAddAccount && (
         <button
           type="button"
           className="icon-btn"
@@ -86,6 +100,7 @@ export function AccountList({
             <path d="M12 5v14M5 12h14" />
           </svg>
         </button>
+        )}
       </header>
 
       {accounts.length > 6 && (
@@ -138,6 +153,7 @@ export function AccountList({
               </span>
             </span>
             <UnreadBadge count={a.unread} />
+            {allowAccountSettings && (
             <button
               type="button"
               className="account-row-gear"
@@ -152,6 +168,7 @@ export function AccountList({
                 <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1" />
               </svg>
             </button>
+            )}
           </div>
         ))}
 
@@ -162,6 +179,7 @@ export function AccountList({
 
       {/* 固定在底部：工单与全局设置不随账号列表滚动，账号再多也点得到 */}
       <footer className="account-list-footer">
+        {showCampaigns && (
         <button
           type="button"
           className={`rail-nav ${activeView === 'campaigns' ? 'active' : ''}`}
@@ -173,6 +191,8 @@ export function AccountList({
           </svg>
           <span>{t('campaign.title')}</span>
         </button>
+        )}
+        {showBilling && (
         <button
           type="button"
           className={`rail-nav ${activeView === 'billing' ? 'active' : ''}`}
@@ -184,6 +204,21 @@ export function AccountList({
           </svg>
           <span>{t('bill.title')}</span>
         </button>
+        )}
+        {showTeam && (
+        <button
+          type="button"
+          className={`rail-nav ${activeView === 'team' ? 'active' : ''}`}
+          onClick={onOpenTeam}
+        >
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+            <path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+            <circle cx="9.5" cy="7.5" r="3.5" />
+            <path d="M22 21v-2a4 4 0 0 0-3-3.87M15.5 4.13a3.5 3.5 0 0 1 0 6.74" />
+          </svg>
+          <span>{t('team.title')}</span>
+        </button>
+        )}
         <button
           type="button"
           className={`rail-nav ${activeView === 'support' ? 'active' : ''}`}

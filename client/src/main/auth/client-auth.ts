@@ -23,8 +23,41 @@ export class ClientAuth {
     return {
       authenticated: !!sync.token && !!sync.serverUrl,
       email: this.email,
-      serverUrl: sync.serverUrl
+      serverUrl: sync.serverUrl,
+      role: sync.role,
+      permissions: sync.permissions
     }
+  }
+
+  /**
+   * 启动/回前台时刷新权限：老板改了客服的角色，客服下次拉取立即生效。
+   * 拿不到就沿用本地缓存（离线也能开界面；服务端才是真正的强制点）。
+   */
+  async refreshPermissions(): Promise<AuthState> {
+    const sync = this.settings.get().sync
+    if (sync.token && sync.serverUrl) {
+      try {
+        const res = await fetch(`${clean(sync.serverUrl)}/api/me/permissions`, {
+          headers: { authorization: `Bearer ${sync.token}` },
+          signal: AbortSignal.timeout(10_000)
+        })
+        if (res.ok) {
+          const data = (await res.json()) as { role?: string; permissions?: string[] }
+          await this.settings.update({
+            sync: { ...sync, role: data.role, permissions: data.permissions }
+          })
+        } else if (res.status === 401) {
+          // 会话被吊销（例如子账号被停用）：清掉本地登录态
+          this.email = undefined
+          await this.settings.update({
+            sync: { ...sync, token: '', email: '', enabled: false }
+          })
+        }
+      } catch {
+        // 离线：保留缓存
+      }
+    }
+    return this.state()
   }
 
   async config(serverUrl: string): Promise<{ requireEmailVerify: boolean } | { error: string }> {
@@ -94,10 +127,19 @@ export class ClientAuth {
     if (!r.ok) return r
     const token = (r as { token?: string }).token
     if (!token) return { ok: false, error: '后台未返回令牌' }
+    const user = (r as { user?: { role?: string; permissions?: string[] } }).user
     this.email = email
     const sync = this.settings.get().sync
     await this.settings.update({
-      sync: { ...sync, serverUrl: clean(serverUrl), token, email, enabled: true }
+      sync: {
+        ...sync,
+        serverUrl: clean(serverUrl),
+        token,
+        email,
+        enabled: true,
+        role: user?.role,
+        permissions: user?.permissions
+      }
     })
     this.log.info('客户端账号登录成功', { email })
     return { ok: true }
@@ -107,7 +149,7 @@ export class ClientAuth {
     serverUrl: string,
     path: string,
     body: Record<string, unknown>
-  ): Promise<AuthResult & { token?: string }> {
+  ): Promise<AuthResult & { token?: string; user?: { role?: string; permissions?: string[] } }> {
     try {
       const res = await fetch(`${clean(serverUrl)}${path}`, {
         method: 'POST',
@@ -115,9 +157,13 @@ export class ClientAuth {
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(15_000)
       })
-      const data = (await res.json().catch(() => ({}))) as { error?: string; token?: string }
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string
+        token?: string
+        user?: { role?: string; permissions?: string[] }
+      }
       if (!res.ok) return { ok: false, error: data.error || `HTTP ${res.status}` }
-      return { ok: true, token: data.token }
+      return { ok: true, token: data.token, user: data.user }
     } catch (err) {
       return { ok: false, error: `无法连接后台：${String(err)}` }
     }

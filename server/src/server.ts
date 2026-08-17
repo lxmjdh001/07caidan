@@ -18,7 +18,8 @@ import { OrderRepo } from './billing/order-repo.ts'
 import { CampaignRepo, type CampaignInput } from './campaign-repo.ts'
 import { isLibraryChannel, normalizeContactList } from './contact-id.ts'
 import { PERMISSIONS, ROLE_PRESETS, ROLES, type Permission } from './auth.ts'
-import { ClientAuthRepo } from './client-auth.ts'
+import { ClientAuthRepo, type ClientUser } from './client-auth.ts'
+import { CLIENT_PERMISSIONS } from './client-rbac.ts'
 import type { ServerConfig } from './config.ts'
 import { openDb } from './db.ts'
 import { createEmailSender } from './email.ts'
@@ -40,6 +41,12 @@ interface ReqCtx {
   isSyncClient?: boolean
   /** 客户端用户 id（邮箱登录的桌面端用户才有；静态令牌没有） */
   clientUserId?: number
+  /** 客户端用户的有效权限（老板全量；子账号 = 角色权限） */
+  clientPermissions?: string[]
+  /** 计费主体：子账号消耗老板的套餐/余额，所以是 ownerId ?? 自己 */
+  billingUserId?: number
+  /** 完整客户端用户（团队管理接口需要老板的权限集做委派校验） */
+  clientUser?: ClientUser
 }
 
 export interface ServerOverrides {
@@ -125,7 +132,10 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
         ;(req as unknown as { ctx?: ReqCtx }).ctx = {
           tenant: clientUser.tenant,
           isSyncClient: true,
-          clientUserId: clientUser.id
+          clientUserId: clientUser.id,
+          clientPermissions: clientUser.permissions,
+          billingUserId: clientUser.ownerId ?? clientUser.id,
+          clientUser
         }
         return
       }
@@ -143,6 +153,20 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   const requirePerm = (req: FastifyRequest, reply: FastifyReply, perm: Permission): boolean => {
     const ctx = ctxOf(req)
     if (!ctx.principal || !ctx.principal.permissions.includes(perm)) {
+      void reply.code(403).send({ error: 'forbidden', need: perm })
+      return false
+    }
+    return true
+  }
+
+  /**
+   * 客户端权限守卫（子账号 RBAC）。
+   * 静态同步令牌视为全权限（开发/自托管场景）；
+   * 邮箱登录的客户端用户按其有效权限判定 —— 界面隐藏只是体验，这里才是安全。
+   */
+  const requireClientPerm = (req: FastifyRequest, reply: FastifyReply, perm: string): boolean => {
+    const ctx = ctxOf(req)
+    if (ctx.clientPermissions !== undefined && !ctx.clientPermissions.includes(perm)) {
       void reply.code(403).send({ error: 'forbidden', need: perm })
       return false
     }
@@ -299,7 +323,15 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
       config.requireEmailVerify
     )
     if (!r.ok) return reply.code(400).send({ error: r.error })
-    return { token: r.token, user: { email: r.user.email, verified: r.user.verified } }
+    return {
+      token: r.token,
+      user: {
+        email: r.user.email,
+        verified: r.user.verified,
+        role: r.user.role,
+        permissions: r.user.permissions
+      }
+    }
   })
 
   app.post('/api/client/login', async (req, reply) => {
@@ -307,13 +339,98 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (!b.email || !b.password) return reply.code(400).send({ error: '邮箱和密码必填' })
     const r = clientAuth.login(b.email, b.password)
     if (!r) return reply.code(401).send({ error: '邮箱或密码错误' })
-    return { token: r.token, user: { email: r.user.email, verified: r.user.verified } }
+    return {
+      token: r.token,
+      user: {
+        email: r.user.email,
+        verified: r.user.verified,
+        role: r.user.role,
+        permissions: r.user.permissions
+      }
+    }
   })
 
   app.post('/api/client/logout', async (req) => {
     const token = bearer(req)
     if (token) clientAuth.logout(token)
     return { ok: true }
+  })
+
+  // ══════════ 团队管理（老板 → 客服子账号；M21 客户端 RBAC）══════════
+
+  /** 团队接口守卫：必须是邮箱登录的客户端用户且具备 team:manage */
+  const requireTeamOwner = (req: FastifyRequest, reply: FastifyReply): ClientUser | null => {
+    const ctx = ctxOf(req)
+    if (!ctx.clientUser) {
+      void reply.code(403).send({ error: '需要客户端账号登录' })
+      return null
+    }
+    if (!ctx.clientUser.permissions.includes('team:manage')) {
+      void reply.code(403).send({ error: 'forbidden', need: 'team:manage' })
+      return null
+    }
+    return ctx.clientUser
+  }
+
+  app.get('/api/team/members', async (req, reply) => {
+    const owner = requireTeamOwner(req, reply)
+    if (!owner) return
+    return { members: clientAuth.listMembers(owner) }
+  })
+
+  app.post('/api/team/members', async (req, reply) => {
+    const owner = requireTeamOwner(req, reply)
+    if (!owner) return
+    const b = (req.body ?? {}) as { email?: string; password?: string; role?: string }
+    if (!b.email || !b.password) return reply.code(400).send({ error: '邮箱和密码必填' })
+    const r = clientAuth.createMember(owner, b.email, b.password, b.role ?? 'agent')
+    if (!r.ok) return reply.code(400).send({ error: r.error })
+    return { member: r.member }
+  })
+
+  app.patch('/api/team/members/:id', async (req, reply) => {
+    const owner = requireTeamOwner(req, reply)
+    if (!owner) return
+    const id = Number((req.params as { id: string }).id)
+    const b = (req.body ?? {}) as { role?: string; enabled?: boolean; password?: string }
+    const r = clientAuth.updateMember(owner, id, b)
+    if (!r.ok) return reply.code(400).send({ error: r.error })
+    return { ok: true }
+  })
+
+  app.get('/api/team/roles', async (req, reply) => {
+    const owner = requireTeamOwner(req, reply)
+    if (!owner) return
+    return { roles: clientAuth.listRoles(owner), permissions: CLIENT_PERMISSIONS }
+  })
+
+  app.post('/api/team/roles', async (req, reply) => {
+    const owner = requireTeamOwner(req, reply)
+    if (!owner) return
+    const b = (req.body ?? {}) as { name?: string; permissions?: string[] }
+    if (!b.name?.trim()) return reply.code(400).send({ error: '角色名称必填' })
+    const r = clientAuth.createRole(owner, b.name.trim(), b.permissions ?? [])
+    if (!r.ok) return reply.code(400).send({ error: r.error })
+    return { role: r.role }
+  })
+
+  app.delete('/api/team/roles/:id', async (req, reply) => {
+    const owner = requireTeamOwner(req, reply)
+    if (!owner) return
+    const r = clientAuth.deleteRole(owner, (req.params as { id: string }).id)
+    if (!r.ok) return reply.code(400).send({ error: r.error ?? 'not_found' })
+    return { ok: true }
+  })
+
+  /** 客户端启动时拉自己的身份与权限（会话仍有效时刷新权限用） */
+  app.get('/api/me/permissions', async (req, reply) => {
+    const ctx = ctxOf(req)
+    if (!ctx.clientUser) return reply.code(403).send({ error: '需要客户端账号登录' })
+    return {
+      email: ctx.clientUser.email,
+      role: ctx.clientUser.role,
+      permissions: ctx.clientUser.permissions
+    }
   })
 
   // ── 管理员认证 ──
@@ -525,7 +642,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   // 老板在客户端里操作（同步客户端令牌），管理后台也可管（需 campaigns:manage）
   const requireCampaign = (req: FastifyRequest, reply: FastifyReply): boolean => {
     const ctx = ctxOf(req)
-    if (ctx.isSyncClient) return true
+    if (ctx.isSyncClient) return requireClientPerm(req, reply, 'campaigns:manage')
     return requirePerm(req, reply, 'campaigns:manage')
   }
 
@@ -796,7 +913,8 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (ctx.clientUserId === undefined) {
       return reply.code(403).send({ error: '需要客户端账号登录' })
     }
-    const sub = billingRepo.getSubscription(ctx.tenant, ctx.clientUserId)
+    // 套餐定向公告按计费主体判定：客服跟老板的套餐走
+    const sub = billingRepo.getSubscription(ctx.tenant, ctx.billingUserId ?? ctx.clientUserId)
     const registeredAt = clientAuth.registeredAt(ctx.clientUserId) ?? Date.now()
     const profile = {
       userId: ctx.clientUserId,

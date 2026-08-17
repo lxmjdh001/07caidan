@@ -73,15 +73,40 @@ export const sessions = sqliteTable('admin_sessions', {
   expiresAt: integer('expires_at').notNull()
 })
 
-/** 客户端用户（桌面端登录账号，邮箱+密码，绑定其数据租户） */
+/**
+ * 客户端用户（桌面端登录账号）。
+ * ownerId 为空 = 老板（主账号）；有值 = 该老板的子账号（客服）。
+ * 子账号没有自己的余额与订阅，配额与计费一律归属 owner。
+ */
 export const clientUsers = sqliteTable('client_users', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   tenant: text('tenant').notNull(),
   email: text('email').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   verified: integer('verified').notNull().default(0),
+  /** 归属的老板用户 id；空 = 自己就是老板 */
+  ownerId: integer('owner_id'),
+  /** 角色名（boss / agent / 老板自定义角色的 id） */
+  role: text('role').notNull().default('boss'),
+  /** JSON：直接分配的权限点（在角色之外补充） */
+  permissions: text('permissions').notNull().default('[]'),
+  enabled: integer('enabled').notNull().default(1),
   createdAt: integer('created_at').notNull()
 })
+
+/** 老板自定义角色：一组权限的命名打包，只能含老板自己拥有的权限 */
+export const clientRoles = sqliteTable(
+  'client_roles',
+  {
+    tenant: text('tenant').notNull(),
+    id: text('id').notNull(),
+    ownerId: integer('owner_id').notNull(),
+    name: text('name').notNull(),
+    permissions: text('permissions').notNull().default('[]'),
+    createdAt: integer('created_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.id] })]
+)
 
 /** 客户端登录会话（token 同时作为同步凭证） */
 export const clientSessions = sqliteTable('client_sessions', {

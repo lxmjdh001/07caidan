@@ -2127,3 +2127,54 @@ body {
 .sup-reply-row { display: flex; gap: 10px; align-items: flex-end; max-width: 720px; }
 .sup-reply-row textarea { flex: 1; border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; background: var(--panel-alt); color: var(--text); font-family: inherit; font-size: 13px; }
 .sup-reply-actions { display: flex; flex-direction: column; gap: 6px; }
+
+/* ── 团队管理 ── */
+.team-member-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.team-member-row:last-of-type {
+  border-bottom: none;
+}
+.team-member-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.team-member-email {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.team-member-perms {
+  font-size: 12px;
+  color: var(--muted);
+}
+.team-disabled-tag {
+  margin-inline-start: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+.team-perm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 6px 12px;
+  margin: 8px 0 12px;
+}
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}

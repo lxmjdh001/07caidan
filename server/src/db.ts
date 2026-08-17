@@ -56,7 +56,17 @@ export function openDb(dbPath: string): Db {
     CREATE TABLE IF NOT EXISTS client_users (
       id INTEGER PRIMARY KEY AUTOINCREMENT, tenant TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL,
-      verified INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL
+      verified INTEGER NOT NULL DEFAULT 0,
+      owner_id INTEGER, role TEXT NOT NULL DEFAULT 'boss',
+      permissions TEXT NOT NULL DEFAULT '[]',
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS client_roles (
+      tenant TEXT NOT NULL, id TEXT NOT NULL, owner_id INTEGER NOT NULL,
+      name TEXT NOT NULL, permissions TEXT NOT NULL DEFAULT '[]',
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, id)
     );
     CREATE TABLE IF NOT EXISTS client_sessions (
       token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL
@@ -284,7 +294,11 @@ function migrate(sqlite: BetterSqlite3.Database): void {
     ['campaigns', 'dedup_account_ids', `TEXT NOT NULL DEFAULT '[]'`],
     ['campaigns', 'tz_offset_minutes', 'INTEGER NOT NULL DEFAULT 480'],
     ['conversations', 'lead_source_code', 'TEXT'],
-    ['conversations', 'lead_source_via', 'TEXT']
+    ['conversations', 'lead_source_via', 'TEXT'],
+    ['client_users', 'owner_id', 'INTEGER'],
+    ['client_users', 'role', "TEXT NOT NULL DEFAULT 'boss'"],
+    ['client_users', 'permissions', "TEXT NOT NULL DEFAULT '[]'"],
+    ['client_users', 'enabled', 'INTEGER NOT NULL DEFAULT 1']
   ] as const
 
   for (const [table, column, definition] of columns) {
