@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { errText } from '../errors'
 import { useI18n } from '../i18n'
 
 const api = window.omni
@@ -53,7 +54,7 @@ export function TeamPage(): React.JSX.Element {
       setAllPerms(r.permissions)
       setErr('')
     } catch (e) {
-      setErr(String((e as Error).message ?? e))
+      setErr(errText(e))
     }
   }, [])
 
@@ -68,7 +69,7 @@ export function TeamPage(): React.JSX.Element {
       await fn()
       await reload()
     } catch (e) {
-      setErr(String((e as Error).message ?? e))
+      setErr(errText(e))
     } finally {
       setBusy(false)
     }

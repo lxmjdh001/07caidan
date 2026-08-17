@@ -851,7 +851,10 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (!b.contacts) return reply.code(400).send({ error: '名单内容必填' })
     const parsed = normalizeContactList(b.channel, b.contacts, { lineProvider: b.lineProvider })
     if (parsed.contactIds.length === 0) {
-      return reply.code(400).send({ error: '没有解析出有效标识', detail: parsed })
+      // 把具体原因带给用户，否则只看到"没解析出"根本不知道该怎么改
+      const why = parsed.errors.slice(0, 3).join('；')
+      const more = parsed.errors.length > 3 ? ` 等 ${parsed.errors.length} 行` : ''
+      return reply.code(400).send({ error: `没有解析出有效标识：${why}${more}`, detail: parsed })
     }
     const tenant = ctxOf(req).tenant
     const library = campaignRepo.createLibrary(tenant, b.name.trim(), b.channel, 'import')

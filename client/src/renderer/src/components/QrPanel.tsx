@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { errText } from '../errors'
 import { useI18n } from '../i18n'
 
 const api = window.omni
@@ -29,7 +30,7 @@ export function QrPanel({ accountKey, qrDataUrl, pairingCode }: Props): React.JS
     try {
       await api.submitAuthInput(accountKey, phone)
     } catch (e) {
-      setErr((e as Error).message)
+      setErr(errText(e))
     } finally {
       setBusy(false)
     }

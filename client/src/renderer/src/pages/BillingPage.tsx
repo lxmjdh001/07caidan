@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { errText } from '../errors'
 import { useI18n } from '../i18n'
 
 const api = window.omni
@@ -87,7 +88,7 @@ export function BillingPage(): React.JSX.Element {
     try {
       setMe(await api.billing<Me>('me'))
     } catch (e) {
-      setErr((e as Error).message)
+      setErr(errText(e))
     }
   }, [])
 
@@ -208,7 +209,7 @@ function Overview({ me, onChanged }: { me: Me | null; onChanged: () => Promise<v
                 setMsg(t('bill.exchanged'))
                 await onChanged()
               } catch (e) {
-                setMsg((e as Error).message)
+                setMsg(errText(e))
               } finally {
                 setBusy(false)
               }
@@ -266,7 +267,7 @@ function PlansTab({ me, onChanged }: { me: Me | null; onChanged: () => Promise<v
                     await api.billing('subscribe', p.id)
                     await onChanged()
                   } catch (e) {
-                    setMsg((e as Error).message)
+                    setMsg(errText(e))
                   } finally {
                     setBusy('')
                   }
@@ -359,7 +360,7 @@ function TopupTab({ onChanged }: { onChanged: () => Promise<void> }): React.JSX.
                   setPayment(r.payment)
                   await onChanged()
                 } catch (e) {
-                  setErr((e as Error).message)
+                  setErr(errText(e))
                 } finally {
                   setBusy(false)
                 }

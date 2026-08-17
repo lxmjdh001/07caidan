@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { errText } from '../errors'
 import type { Campaign, CampaignLink, CampaignStats, FanLibrary } from '@shared/campaign'
 import { LIBRARY_CHANNELS } from '@shared/campaign'
 import {
@@ -61,7 +62,7 @@ export function CampaignPage({ accounts }: Props): React.JSX.Element {
       setCampaigns(c)
       setLibraries(l)
     } catch (e) {
-      setErr((e as Error).message)
+      setErr(errText(e))
     } finally {
       setLoading(false)
     }
@@ -260,7 +261,7 @@ function CampaignForm({
       })
       await onCreated()
     } catch (e) {
-      setErr((e as Error).message)
+      setErr(errText(e))
     } finally {
       setBusy(false)
     }
@@ -422,7 +423,7 @@ function CampaignDetail({
       setLinks(l.links)
       setPublicBase(l.publicBase)
     } catch (e) {
-      setErr((e as Error).message)
+      setErr(errText(e))
     }
   }, [campaign.id])
 
@@ -581,7 +582,7 @@ function CampaignDetail({
               setExpiresAt('')
               await refresh()
             } catch (e) {
-              setErr((e as Error).message)
+              setErr(errText(e))
             } finally {
               setBusy(false)
             }
@@ -724,7 +725,7 @@ function LibraryPanel({
       setContacts('')
       await onChanged()
     } catch (e) {
-      setErr((e as Error).message)
+      setErr(errText(e))
     } finally {
       setBusy(false)
     }

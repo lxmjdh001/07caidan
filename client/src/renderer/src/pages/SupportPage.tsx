@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { errText } from '../errors'
 import { useI18n } from '../i18n'
 
 const api = window.omni
@@ -69,7 +70,7 @@ export function SupportPage(): React.JSX.Element {
       const r = await api.billing<{ tickets: Ticket[] }>('listTickets')
       setTickets(r.tickets)
     } catch (e) {
-      setErr((e as Error).message)
+      setErr(errText(e))
     }
   }, [])
 
@@ -101,7 +102,7 @@ export function SupportPage(): React.JSX.Element {
         const mediaId = await api.billing<string>('uploadTicketImage', buf, file.type || 'image/png')
         setTo(mediaId)
       } catch (e) {
-        setErr((e as Error).message)
+        setErr(errText(e))
       } finally {
         setBusy(false)
       }
@@ -172,7 +173,7 @@ export function SupportPage(): React.JSX.Element {
                       setCreating(false)
                       await load()
                     } catch (e) {
-                      setErr((e as Error).message)
+                      setErr(errText(e))
                     } finally {
                       setBusy(false)
                     }
