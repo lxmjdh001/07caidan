@@ -230,6 +230,8 @@ export const vi: Partial<Record<MessageKey, string>> = {
   'form.days30ago': '30 ngày trước',
   'form.days90ago': '90 ngày trước',
   'form.clear': 'Không đặt',
+  'form.tomorrow': 'Ngày mai',
+  'form.days3': 'Sau 3 ngày',
   'form.days7': 'Sau 7 ngày',
   'form.days30': 'Sau 30 ngày',
   'settings.localeAuto': 'Theo hệ thống',

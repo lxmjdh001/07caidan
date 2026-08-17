@@ -230,6 +230,8 @@ export const ko: Partial<Record<MessageKey, string>> = {
   'form.days30ago': '30일 전',
   'form.days90ago': '90일 전',
   'form.clear': '설정 안 함',
+  'form.tomorrow': '내일',
+  'form.days3': '3일 후',
   'form.days7': '7일 후',
   'form.days30': '30일 후',
   'settings.localeAuto': '시스템 설정 따르기',

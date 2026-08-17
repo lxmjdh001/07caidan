@@ -230,6 +230,8 @@ export const ja: Partial<Record<MessageKey, string>> = {
   'form.days30ago': '30 日前',
   'form.days90ago': '90 日前',
   'form.clear': '設定しない',
+  'form.tomorrow': '明日',
+  'form.days3': '3日後',
   'form.days7': '7 日後',
   'form.days30': '30 日後',
   'settings.localeAuto': 'システムに従う',

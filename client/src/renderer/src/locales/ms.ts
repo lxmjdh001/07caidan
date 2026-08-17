@@ -230,6 +230,8 @@ export const ms: Partial<Record<MessageKey, string>> = {
   'form.days30ago': '30 hari lalu',
   'form.days90ago': '90 hari lalu',
   'form.clear': 'Tidak ditetapkan',
+  'form.tomorrow': 'Esok',
+  'form.days3': 'Dalam 3 hari',
   'form.days7': '7 hari lagi',
   'form.days30': '30 hari lagi',
   'settings.localeAuto': 'Ikut sistem',

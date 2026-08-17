@@ -229,6 +229,8 @@ export const zhTW: Partial<Record<MessageKey, string>> = {
   'form.days30ago': '30 天前',
   'form.days90ago': '90 天前',
   'form.clear': '不設定',
+  'form.tomorrow': '明天',
+  'form.days3': '3 天後',
   'form.days7': '7 天後',
   'form.days30': '30 天後',
   'settings.localeAuto': '跟隨系統',

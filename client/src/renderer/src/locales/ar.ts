@@ -233,6 +233,8 @@ export const ar: Partial<Record<MessageKey, string>> = {
   'form.days30ago': 'قبل ٣٠ يومًا',
   'form.days90ago': 'قبل ٩٠ يومًا',
   'form.clear': 'بدون تحديد',
+  'form.tomorrow': 'غدًا',
+  'form.days3': 'بعد 3 أيام',
   'form.days7': 'بعد ٧ أيام',
   'form.days30': 'بعد ٣٠ يومًا',
   'settings.localeAuto': 'اتّباع النظام',

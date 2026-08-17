@@ -230,6 +230,8 @@ export const th: Partial<Record<MessageKey, string>> = {
   'form.days30ago': '30 วันก่อน',
   'form.days90ago': '90 วันก่อน',
   'form.clear': 'ไม่กำหนด',
+  'form.tomorrow': 'พรุ่งนี้',
+  'form.days3': 'อีก 3 วัน',
   'form.days7': 'อีก 7 วัน',
   'form.days30': 'อีก 30 วัน',
   'settings.localeAuto': 'ตามระบบ',

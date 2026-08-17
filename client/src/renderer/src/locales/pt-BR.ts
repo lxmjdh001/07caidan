@@ -230,6 +230,8 @@ export const ptBR: Partial<Record<MessageKey, string>> = {
   'form.days30ago': '30 dias atrás',
   'form.days90ago': '90 dias atrás',
   'form.clear': 'Não definir',
+  'form.tomorrow': 'Amanhã',
+  'form.days3': 'Em 3 dias',
   'form.days7': 'Em 7 dias',
   'form.days30': 'Em 30 dias',
   'settings.localeAuto': 'Seguir o sistema',

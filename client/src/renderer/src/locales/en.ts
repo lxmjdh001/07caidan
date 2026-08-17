@@ -218,6 +218,8 @@ export const en: Record<MessageKey, string> = {
   'form.days30ago': '30 days ago',
   'form.days90ago': '90 days ago',
   'form.clear': 'None',
+  'form.tomorrow': 'Tomorrow',
+  'form.days3': 'In 3 days',
   'form.days7': 'In 7 days',
   'form.days30': 'In 30 days',
   // Settings additions

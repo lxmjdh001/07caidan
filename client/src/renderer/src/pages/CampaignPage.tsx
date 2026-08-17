@@ -222,6 +222,8 @@ function CampaignForm({
   ]
   const endPresets: DatePreset[] = [
     { label: t('form.clear'), value: () => undefined },
+    { label: t('form.tomorrow'), value: () => startOfDay(2) },
+    { label: t('form.days3'), value: () => startOfDay(4) },
     { label: t('form.days7'), value: () => startOfDay(8) },
     { label: t('form.days30'), value: () => startOfDay(31) }
   ]
