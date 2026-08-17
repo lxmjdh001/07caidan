@@ -73,6 +73,7 @@ export function CampaignPage({ accounts }: Props): React.JSX.Element {
   }, [load])
 
   const detail = detailId ? campaigns.find((c) => c.id === detailId) : undefined
+  const [editing, setEditing] = useState<Campaign | null>(null)
 
   return (
     <div className="page">
@@ -86,6 +87,7 @@ export function CampaignPage({ accounts }: Props): React.JSX.Element {
               setTab('campaigns')
               setDetailId(null)
               setCreating(false)
+              setEditing(null)
             }}
           >
             {t('campaign.tabCampaigns')}
@@ -113,11 +115,23 @@ export function CampaignPage({ accounts }: Props): React.JSX.Element {
 
         {!loading && tab === 'campaigns' && (
           <>
-            {detail ? (
+            {editing ? (
+              <CampaignForm
+                accounts={accounts}
+                libraries={libraries}
+                editing={editing}
+                onCancel={() => setEditing(null)}
+                onCreated={async () => {
+                  setEditing(null)
+                  await load()
+                }}
+              />
+            ) : detail ? (
               <CampaignDetail
                 campaign={detail}
                 onBack={() => setDetailId(null)}
                 onChanged={load}
+                onEdit={() => setEditing(detail)}
               />
             ) : creating ? (
               <CampaignForm
@@ -175,36 +189,55 @@ export function CampaignPage({ accounts }: Props): React.JSX.Element {
   )
 }
 
-/** 新建工单 */
+/** 新建 / 编辑工单（传 editing 即编辑模式，字段预填） */
 function CampaignForm({
   accounts,
   libraries,
+  editing,
   onCancel,
   onCreated
 }: {
   accounts: AccountOption[]
   libraries: FanLibrary[]
+  editing?: Campaign
   onCancel: () => void
   onCreated: () => Promise<void>
 }): React.JSX.Element {
   const { t } = useI18n()
-  const [name, setName] = useState('')
-  const [picked, setPicked] = useState<string[]>([])
-  const [startAt, setStartAt] = useState(toLocalInput(startOfDay()))
-  const [endAt, setEndAt] = useState('')
-  const [libIds, setLibIds] = useState<string[]>([])
-  const [beforeAt, setBeforeAt] = useState('')
+  // 编辑时按 accountId 反查本机账号 key；已不在本机的账号用 gone: 前缀保留可选
+  const keyOf = (accountId: string): string =>
+    accounts.find((a) => a.accountId === accountId)?.key ?? `gone:${accountId}`
+  const [name, setName] = useState(editing?.name ?? '')
+  const [picked, setPicked] = useState<string[]>(editing ? editing.accountIds.map(keyOf) : [])
+  const [startAt, setStartAt] = useState(toLocalInput(editing?.startAt ?? startOfDay()))
+  const [endAt, setEndAt] = useState(editing?.endAt ? toLocalInput(editing.endAt) : '')
+  const [libIds, setLibIds] = useState<string[]>(editing?.dedupLibraryIds ?? [])
+  const [beforeAt, setBeforeAt] = useState(
+    editing?.dedupBeforeAt ? toLocalInput(editing.dedupBeforeAt) : ''
+  )
   /** 时间规则的统计账号；空 = 全部账号 */
-  const [dedupAccounts, setDedupAccounts] = useState<string[]>([])
-  const [dedupScope, setDedupScope] = useState<'all' | 'pick'>('all')
+  const [dedupAccounts, setDedupAccounts] = useState<string[]>(
+    editing ? editing.dedupAccountIds.map(keyOf) : []
+  )
+  const [dedupScope, setDedupScope] = useState<'all' | 'pick'>(
+    editing && editing.dedupAccountIds.length > 0 ? 'pick' : 'all'
+  )
+  /** 投放来源码，空格/逗号分隔；空 = 全部来源 */
+  const [sources, setSources] = useState((editing?.sourceCodes ?? []).join(' '))
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
-  const accountOptions = accounts.map((a) => ({
-    value: a.key,
-    label: a.label,
-    sub: a.channel
-  }))
+  const accountOptions = [
+    ...accounts.map((a) => ({ value: a.key, label: a.label, sub: a.channel })),
+    // 工单里存过、但本机已删掉的账号：仍然展示，让老板能保留或移除
+    ...(editing?.accountIds ?? [])
+      .filter((id) => !accounts.some((a) => a.accountId === id))
+      .map((id) => ({
+        value: `gone:${id}`,
+        label: editing?.accountLabels[id] ?? id,
+        sub: t('campaign.removedAccount')
+      }))
+  ]
 
   // 判重库按平台隔离：标识体系不同，跨平台选了也永远不会命中
   const pickedChannels = new Set(
@@ -245,11 +278,17 @@ function CampaignForm({
     if (end !== undefined && end <= start) return setErr(t('campaign.errEnd'))
     setBusy(true)
     try {
-      const chosen = accounts.filter((a) => picked.includes(a.key))
-      await api.campaign('createCampaign', {
+      // gone: 前缀 = 本机已删的账号，accountId 与备注名从工单原数据取
+      const toAccountId = (key: string): string =>
+        key.startsWith('gone:') ? key.slice(5) : (accounts.find((a) => a.key === key)?.accountId ?? key)
+      const labelOf = (key: string): string =>
+        key.startsWith('gone:')
+          ? (editing?.accountLabels[key.slice(5)] ?? key.slice(5))
+          : (accounts.find((a) => a.key === key)?.label ?? key)
+      const payload = {
         name: name.trim(),
-        accountIds: chosen.map((a) => a.accountId),
-        accountLabels: Object.fromEntries(chosen.map((a) => [a.accountId, a.label])),
+        accountIds: picked.map(toAccountId),
+        accountLabels: Object.fromEntries(picked.map((k) => [toAccountId(k), labelOf(k)])),
         startAt: start,
         endAt: end,
         // 只提交与所选账号同平台的库，避免改过账号后留下永不命中的脏规则
@@ -258,9 +297,16 @@ function CampaignForm({
         dedupAccountIds:
           dedupScope === 'all'
             ? []
-            : accounts.filter((a) => dedupAccounts.includes(a.key)).map((a) => a.accountId),
+            : dedupAccounts.map(toAccountId),
+        sourceCodes: sources.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean),
         tzOffsetMinutes: -new Date().getTimezoneOffset()
-      })
+      }
+      if (editing) {
+        // 编辑时结束时间清空要显式传 null，不能靠 undefined（会被当成"不改"）
+        await api.campaign('updateCampaign', editing.id, { ...payload, endAt: end ?? null })
+      } else {
+        await api.campaign('createCampaign', payload)
+      }
       await onCreated()
     } catch (e) {
       setErr(errText(e))
@@ -275,7 +321,7 @@ function CampaignForm({
         <button type="button" className="ghost-btn" onClick={onCancel}>
           ← {t('campaign.back')}
         </button>
-        <strong>{t('campaign.create')}</strong>
+        <strong>{editing ? t('campaign.edit') : t('campaign.create')}</strong>
       </div>
 
       <section className="form-card">
@@ -313,6 +359,17 @@ function CampaignForm({
             onChange={setEndAt}
           />
         </div>
+
+        <label className="field">
+          <span>{t('campaign.sources')}</span>
+          <input
+            type="text"
+            value={sources}
+            placeholder="ad-001 promo2026"
+            onChange={(e) => setSources(e.target.value)}
+          />
+          <span className="field-hint">{t('campaign.sourcesHint')}</span>
+        </label>
       </section>
 
       <section className="form-card">
@@ -387,7 +444,7 @@ function CampaignForm({
           {t('settings.cancel')}
         </button>
         <button type="button" className="primary-btn" disabled={busy} onClick={() => void submit()}>
-          {t('campaign.create')}
+          {editing ? t('campaign.save') : t('campaign.create')}
         </button>
       </div>
     </div>
@@ -398,11 +455,13 @@ function CampaignForm({
 function CampaignDetail({
   campaign,
   onBack,
-  onChanged
+  onChanged,
+  onEdit
 }: {
   campaign: Campaign
   onBack: () => void
   onChanged: () => Promise<void>
+  onEdit: () => void
 }): React.JSX.Element {
   const { t } = useI18n()
   const [stats, setStats] = useState<CampaignStats | null>(null)
@@ -446,6 +505,9 @@ function CampaignDetail({
           ← {t('campaign.back')}
         </button>
         <strong>{campaign.name}</strong>
+        <button type="button" className="ghost-btn" onClick={onEdit}>
+          {t('campaign.edit')}
+        </button>
         <button
           type="button"
           className="danger-btn"

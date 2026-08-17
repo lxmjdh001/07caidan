@@ -31,6 +31,8 @@ export interface Campaign {
   dedupBeforeAt?: number
   /** 时间规则的统计范围；空 = 全部账号 */
   dedupAccountIds: string[]
+  /** 只统计这些投放来源码；空 = 全部来源 */
+  sourceCodes: string[]
   tzOffsetMinutes: number
   createdBy?: string
   createdAt: number
@@ -66,6 +68,7 @@ export interface CampaignInput {
   dedupLibraryIds?: string[]
   dedupBeforeAt?: number
   dedupAccountIds?: string[]
+  sourceCodes?: string[]
   tzOffsetMinutes?: number
 }
 
@@ -98,6 +101,7 @@ export class CampaignRepo {
       dedupLibraryIds: JSON.stringify(input.dedupLibraryIds ?? []),
       dedupBeforeAt: input.dedupBeforeAt ?? null,
       dedupAccountIds: JSON.stringify(input.dedupAccountIds ?? []),
+      sourceCodes: JSON.stringify(input.sourceCodes ?? []),
       tzOffsetMinutes: input.tzOffsetMinutes ?? 480,
       createdBy: createdBy ?? null,
       createdAt: now,
@@ -142,6 +146,7 @@ export class CampaignRepo {
     if (patch.dedupAccountIds !== undefined) {
       set.dedupAccountIds = JSON.stringify(patch.dedupAccountIds)
     }
+    if (patch.sourceCodes !== undefined) set.sourceCodes = JSON.stringify(patch.sourceCodes)
     if (patch.tzOffsetMinutes !== undefined) set.tzOffsetMinutes = patch.tzOffsetMinutes
     const res = this.db
       .update(campaigns)
@@ -443,7 +448,11 @@ export class CampaignRepo {
       if (lead.firstReplyAt === undefined || r.at < lead.firstReplyAt) lead.firstReplyAt = r.at
     }
 
-    return [...leads.values()]
+    // 投放来源筛选：工单只统计指定来源码的进线（空 = 全部来源）
+    const all = [...leads.values()]
+    if (campaign.sourceCodes.length === 0) return all
+    const wanted = new Set(campaign.sourceCodes)
+    return all.filter((l) => l.sourceCode !== undefined && wanted.has(l.sourceCode))
   }
 
   /**
@@ -541,6 +550,7 @@ function toCampaign(r: typeof campaigns.$inferSelect): Campaign {
     dedupLibraryIds: parseJsonArray(r.dedupLibraryIds),
     dedupBeforeAt: r.dedupBeforeAt ?? undefined,
     dedupAccountIds: parseJsonArray(r.dedupAccountIds),
+    sourceCodes: parseJsonArray(r.sourceCodes),
     tzOffsetMinutes: r.tzOffsetMinutes,
     createdBy: r.createdBy ?? undefined,
     createdAt: r.createdAt,

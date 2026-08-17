@@ -57,7 +57,13 @@ async function api(
 }
 
 /** 灌一条进线记录 */
-async function seed(accountId: string, contactId: string, at: number, replyAt?: number) {
+async function seed(
+  accountId: string,
+  contactId: string,
+  at: number,
+  replyAt?: number,
+  sourceCode?: string
+) {
   const convId = `whatsapp:${accountId}:${contactId}`
   const messages: unknown[] = [
     {
@@ -92,7 +98,8 @@ async function seed(accountId: string, contactId: string, at: number, replyAt?: 
         contactId,
         title: '张三',
         isGroup: false,
-        lastMessageAt: at
+        lastMessageAt: at,
+        ...(sourceCode ? { leadSourceCode: sourceCode, leadSourceVia: 'code' } : {})
       }
     ],
     messages
@@ -160,6 +167,60 @@ describe('工单接口', () => {
     assert.equal(stats.total, 2)
     assert.equal(stats.fresh, 2)
     assert.equal(stats.response.replied, 1)
+  })
+})
+
+describe('工单编辑', () => {
+  test('修改账号/时间/来源筛选后统计随之变化', async () => {
+    await seed('a1', 'wa:+8613800138000', T0 + 3600_000, undefined, 'ad1')
+    await seed('a1', 'wa:+8613900139000', T0 + 3600_000)
+    await seed('a2', 'wa:+8615000150000', T0 + 3600_000)
+    const c = (
+      await api('POST', '/api/campaigns', { name: 'x', accountIds: ['a1'], startAt: T0 })
+    ).json.campaign
+    assert.equal((await api('GET', `/api/campaigns/${c.id}/stats`)).json.stats.total, 2)
+
+    // 添加账号 a2 → 统计多一条
+    const r1 = await api('PATCH', `/api/campaigns/${c.id}`, { accountIds: ['a1', 'a2'] })
+    assert.equal(r1.status, 200)
+    assert.deepEqual(r1.json.campaign.accountIds, ['a1', 'a2'])
+    assert.equal((await api('GET', `/api/campaigns/${c.id}/stats`)).json.stats.total, 3)
+
+    // 移除 a1 只剩 a2
+    await api('PATCH', `/api/campaigns/${c.id}`, { accountIds: ['a2'] })
+    assert.equal((await api('GET', `/api/campaigns/${c.id}/stats`)).json.stats.total, 1)
+
+    // 改回 a1 并按来源码过滤 → 只剩 ad1 那条
+    await api('PATCH', `/api/campaigns/${c.id}`, { accountIds: ['a1'], sourceCodes: ['ad1'] })
+    assert.equal((await api('GET', `/api/campaigns/${c.id}/stats`)).json.stats.total, 1)
+    // 清空来源筛选恢复全量
+    await api('PATCH', `/api/campaigns/${c.id}`, { sourceCodes: [] })
+    assert.equal((await api('GET', `/api/campaigns/${c.id}/stats`)).json.stats.total, 2)
+
+    // 收窄时间窗到进线之前 → 0
+    await api('PATCH', `/api/campaigns/${c.id}`, { endAt: T0 + 1000 })
+    assert.equal((await api('GET', `/api/campaigns/${c.id}/stats`)).json.stats.total, 0)
+    // 清掉结束时间（显式 null）恢复
+    await api('PATCH', `/api/campaigns/${c.id}`, { endAt: null })
+    assert.equal((await api('GET', `/api/campaigns/${c.id}/stats`)).json.stats.total, 2)
+  })
+
+  test('编辑校验：空账号、结束早于开始、跨字段时间联合校验', async () => {
+    const c = (
+      await api('POST', '/api/campaigns', { name: 'x', accountIds: ['a1'], startAt: T0 })
+    ).json.campaign
+    assert.equal((await api('PATCH', `/api/campaigns/${c.id}`, { accountIds: [] })).status, 400)
+    assert.equal(
+      (await api('PATCH', `/api/campaigns/${c.id}`, { endAt: T0 - 1 })).status,
+      400
+    )
+    // 只改 startAt 把它推到已有 endAt 之后也要被拒
+    await api('PATCH', `/api/campaigns/${c.id}`, { endAt: T0 + 1000 })
+    assert.equal(
+      (await api('PATCH', `/api/campaigns/${c.id}`, { startAt: T0 + 2000 })).status,
+      400
+    )
+    assert.equal((await api('PATCH', '/api/campaigns/nonexistent', { name: 'y' })).status, 404)
   })
 })
 

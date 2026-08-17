@@ -162,6 +162,8 @@ export const campaigns = sqliteTable(
     dedupBeforeAt: integer('dedup_before_at'),
     /** JSON：时间规则只看这些账号的历史；空数组 = 全部账号 */
     dedupAccountIds: text('dedup_account_ids').notNull().default('[]'),
+    /** JSON：只统计这些投放来源码；空数组 = 全部来源 */
+    sourceCodes: text('source_codes').notNull().default('[]'),
     /** 看板时区偏移（分钟），默认 UTC+8 */
     tzOffsetMinutes: integer('tz_offset_minutes').notNull().default(480),
     createdBy: text('created_by'),

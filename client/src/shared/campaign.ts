@@ -14,6 +14,9 @@ export interface Campaign {
   endAt?: number
   dedupLibraryIds: string[]
   dedupBeforeAt?: number
+  dedupAccountIds: string[]
+  /** 只统计这些投放来源码；空 = 全部来源 */
+  sourceCodes: string[]
   tzOffsetMinutes: number
   createdBy?: string
   createdAt: number
@@ -28,6 +31,8 @@ export interface CampaignInput {
   endAt?: number
   dedupLibraryIds?: string[]
   dedupBeforeAt?: number
+  dedupAccountIds?: string[]
+  sourceCodes?: string[]
   tzOffsetMinutes?: number
 }
 

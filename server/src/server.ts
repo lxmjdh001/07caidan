@@ -771,12 +771,23 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   app.patch('/api/campaigns/:id', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
     const id = (req.params as { id: string }).id
-    const ok = campaignRepo.updateCampaign(
-      ctxOf(req).tenant,
-      id,
-      (req.body ?? {}) as Partial<CampaignInput>
-    )
-    return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
+    const patch = (req.body ?? {}) as Partial<CampaignInput> & { endAt?: number | null }
+    const existing = campaignRepo.getCampaign(ctxOf(req).tenant, id)
+    if (!existing) return reply.code(404).send({ error: 'not found' })
+    if (patch.name !== undefined && !patch.name.trim()) {
+      return reply.code(400).send({ error: '工单名称不能为空' })
+    }
+    if (patch.accountIds !== undefined && patch.accountIds.length === 0) {
+      return reply.code(400).send({ error: '至少保留一个参与账号' })
+    }
+    // 时间要按补丁后的最终值联合校验，只看单个字段会放过「把开始改到结束之后」
+    const start = patch.startAt ?? existing.startAt
+    const end = 'endAt' in patch ? (patch.endAt ?? undefined) : existing.endAt
+    if (end !== undefined && end <= start) {
+      return reply.code(400).send({ error: '结束时间必须晚于开始时间' })
+    }
+    campaignRepo.updateCampaign(ctxOf(req).tenant, id, patch)
+    return { ok: true, campaign: campaignRepo.getCampaign(ctxOf(req).tenant, id) }
   })
 
   app.delete('/api/campaigns/:id', async (req, reply) => {
