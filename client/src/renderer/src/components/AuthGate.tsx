@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import type { AuthState } from '@shared/ipc'
 import { useI18n } from '../i18n'
 import { brand } from '@shared/branding'
 
@@ -13,7 +12,8 @@ interface Props {
 export function AuthGate({ onAuthed }: Props): React.JSX.Element {
   const { t } = useI18n()
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login')
-  const [serverUrl, setServerUrl] = useState('')
+  // 后台地址打包进品牌配置，用户只填邮箱和密码
+  const serverUrl = brand.apiUrl
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
@@ -22,10 +22,6 @@ export function AuthGate({ onAuthed }: Props): React.JSX.Element {
   const [info, setInfo] = useState('')
   const [busy, setBusy] = useState(false)
   const [codeSent, setCodeSent] = useState(false)
-
-  useEffect(() => {
-    void api.authState().then((s: AuthState) => setServerUrl(s.serverUrl))
-  }, [])
 
   // 切到注册模式或改地址时，探测后台是否需要邮箱验证
   useEffect(() => {
@@ -116,15 +112,6 @@ export function AuthGate({ onAuthed }: Props): React.JSX.Element {
               : t('auth.forgotSub')}
         </p>
 
-        <label className="field">
-          <span>{t('auth.serverUrl')}</span>
-          <input
-            type="text"
-            value={serverUrl}
-            placeholder="https://api.example.com"
-            onChange={(e) => setServerUrl(e.target.value)}
-          />
-        </label>
         <label className="field">
           <span>{t('auth.email')}</span>
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />

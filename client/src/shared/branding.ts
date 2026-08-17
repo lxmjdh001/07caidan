@@ -14,6 +14,8 @@ export interface Brand {
   supportEmail: string
   themeColor: string
   dashboardTitle: string
+  /** 后台 API 地址；打包进客户端，登录界面不再让用户填 */
+  apiUrl: string
 }
 
 declare const __BRAND__: Brand | undefined
@@ -26,7 +28,8 @@ const FALLBACK: Brand = {
   website: '',
   supportEmail: '',
   themeColor: '#22a06b',
-  dashboardTitle: '引流看板'
+  dashboardTitle: '引流看板',
+  apiUrl: 'http://localhost:8787'
 }
 
 export const brand: Brand =

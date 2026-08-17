@@ -6,5 +6,6 @@
   "website": "",
   "supportEmail": "",
   "themeColor": "#22a06b",
-  "dashboardTitle": "引流看板"
+  "dashboardTitle": "引流看板",
+  "apiUrl": "http://localhost:8787"
 }

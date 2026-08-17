@@ -27,6 +27,7 @@ cd server  && BRAND=acme npm start
 | shortName | 打包产物命名（预留给 electron-builder productName/appId） |
 | themeColor | 预留：主题主色（当前主题色仍在 CSS 令牌中） |
 | dashboardTitle | 公开看板页 `<title>` 与页头 |
+| apiUrl | 后台 API 地址，打包进客户端；登录界面只填邮箱+密码，不再让用户填地址 |
 | company / website / supportEmail | 预留：关于页与邮件署名 |
 
 ## 注意
