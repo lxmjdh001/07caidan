@@ -9,6 +9,7 @@ import { AnnouncementsView } from './components/AnnouncementsView'
 import { BillingView } from './components/BillingView'
 import { CampaignsView } from './components/CampaignsView'
 import { SupportView } from './components/SupportView'
+import { LogsView } from './components/LogsView'
 import { brand } from './branding'
 import { LOCALES, useI18n, type Locale } from './i18n'
 
@@ -16,7 +17,7 @@ export function App(): React.JSX.Element {
   const { t, locale, setLocale } = useI18n()
   const [client, setClient] = useState<ApiClient | null>(null)
   const [me, setMe] = useState<Me | null>(null)
-  const [view, setView] = useState<'chats' | 'campaigns' | 'billing' | 'announcements' | 'support' | 'users'>('chats')
+  const [view, setView] = useState<'chats' | 'campaigns' | 'billing' | 'announcements' | 'support' | 'logs' | 'users'>('chats')
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
 
@@ -104,6 +105,12 @@ export function App(): React.JSX.Element {
               {t('nav.support')}
             </button>
           )}
+          {canSupport && (
+            <button className={view === 'logs' ? 'on' : ''} onClick={() => setView('logs')}>
+              <ScrollIcon />
+              {t('nav.logs')}
+            </button>
+          )}
           {canUsers && (
             <button className={view === 'users' ? 'on' : ''} onClick={() => setView('users')}>
               <UsersIcon />
@@ -144,6 +151,8 @@ export function App(): React.JSX.Element {
           <AnnouncementsView client={client} />
         ) : view === 'support' && canSupport ? (
           <SupportView client={client} />
+        ) : view === 'logs' && canSupport ? (
+          <LogsView client={client} />
         ) : (
           <div className="body">
             <ConversationList
@@ -185,6 +194,15 @@ function LifebuoyIcon(): React.JSX.Element {
       <circle cx="12" cy="12" r="10" />
       <circle cx="12" cy="12" r="4" />
       <path d="M4.9 4.9 9 9M15 15l4.1 4.1M19.1 4.9 15 9M9 15l-4.1 4.1" />
+    </svg>
+  )
+}
+function ScrollIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+      <path d="M8 21h12a2 2 0 0 0 2-2v-1H10v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2h4" />
+      <path d="M19 17V5a2 2 0 0 0-2-2H4" />
+      <path d="M11 8h5M11 12h5" />
     </svg>
   )
 }

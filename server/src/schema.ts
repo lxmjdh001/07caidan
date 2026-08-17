@@ -585,6 +585,48 @@ export const supportMessages = sqliteTable(
   (t) => [index('idx_ticket_msgs').on(t.tenant, t.ticketId, t.createdAt)]
 )
 
+/** 客户端上报的运行日志（M19）。游客日志 userId 为空，靠 deviceId 归拢。 */
+export const clientLogs = sqliteTable(
+  'client_logs',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    tenant: text('tenant').notNull(),
+    /** 客户端登录用户；游客为空 */
+    userId: integer('user_id'),
+    /** 硬件派生的设备指纹（哈希，不含隐私原文） */
+    deviceId: text('device_id').notNull(),
+    /** debug / info / warn / error */
+    level: text('level').notNull(),
+    /** 日志作用域（如 whatsapp:main） */
+    scope: text('scope').notNull().default(''),
+    message: text('message').notNull(),
+    /** 附加元数据（JSON 字符串） */
+    meta: text('meta'),
+    appVersion: text('app_version').notNull().default(''),
+    osType: text('os_type').notNull().default(''),
+    osVersion: text('os_version').notNull().default(''),
+    /** 客户端本地时间戳 */
+    at: integer('at').notNull(),
+    /** 服务端接收时间 */
+    createdAt: integer('created_at').notNull()
+  },
+  (t) => [
+    index('idx_client_logs').on(t.tenant, t.createdAt),
+    index('idx_client_logs_device').on(t.tenant, t.deviceId, t.createdAt)
+  ]
+)
+
+/** 管理后台控制的按用户日志级别（未设置默认 warn） */
+export const clientLogLevels = sqliteTable(
+  'client_log_levels',
+  {
+    tenant: text('tenant').notNull(),
+    userId: integer('user_id').notNull(),
+    level: text('level').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.userId] })]
+)
+
 export const media = sqliteTable(
   'media',
   {

@@ -223,6 +223,34 @@ export async function login(
   return res.json() as Promise<{ token: string; user: Me }>
 }
 
+export interface ClientLogRow {
+  id: number
+  userId: number | null
+  email?: string
+  deviceId: string
+  level: string
+  scope: string
+  message: string
+  meta: string | null
+  appVersion: string
+  osType: string
+  osVersion: string
+  at: number
+  createdAt: number
+}
+
+export interface LogDevice {
+  deviceId: string
+  userId: number | null
+  email?: string
+  appVersion: string
+  osType: string
+  osVersion: string
+  lastAt: number
+  total: number
+  errors: number
+}
+
 export class ApiClient {
   constructor(
     private readonly base: string,
@@ -437,6 +465,36 @@ export class ApiClient {
 
   updateReminderSettings(body: Partial<ReminderSettingsRow>): Promise<{ settings: ReminderSettingsRow }> {
     return this.req('/api/admin/reminder-settings', { method: 'PUT', body: JSON.stringify(body) })
+  }
+
+  // ── 客户端日志（需 support:manage）──
+  listClientLogs(filter: {
+    level?: string
+    userId?: number
+    deviceId?: string
+    q?: string
+  }): Promise<{ logs: ClientLogRow[] }> {
+    const qs = new URLSearchParams()
+    if (filter.level) qs.set('level', filter.level)
+    if (filter.userId !== undefined) qs.set('userId', String(filter.userId))
+    if (filter.deviceId) qs.set('deviceId', filter.deviceId)
+    if (filter.q) qs.set('q', filter.q)
+    const suffix = qs.toString()
+    return this.req(`/api/admin/logs${suffix ? `?${suffix}` : ''}`)
+  }
+
+  listLogDevices(): Promise<{
+    devices: LogDevice[]
+    levels: Array<{ userId: number; level: string }>
+  }> {
+    return this.req('/api/admin/logs/devices')
+  }
+
+  setLogLevel(userId: number, level: string): Promise<{ ok: boolean }> {
+    return this.req('/api/admin/logs/level', {
+      method: 'POST',
+      body: JSON.stringify({ userId, level })
+    })
   }
 
   // ── 支持工单（需 support:manage）──

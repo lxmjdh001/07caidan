@@ -29,6 +29,7 @@ import { sweepReminders } from './notify/reminder-cron.ts'
 import { REMINDER_VARS } from './notify/template.ts'
 import { Repo } from './repo.ts'
 import { SupportRepo } from './support/support-repo.ts'
+import { BATCH_MAX, LogRepo, isLogLevel, type LogEntryInput } from './logs/log-repo.ts'
 import type { SyncPayload } from './types.ts'
 import { brand } from './branding.ts'
 
@@ -67,6 +68,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   const aiRepo = new AiRepo(db, billingRepo)
   const notifyRepo = new NotifyRepo(db)
   const supportRepo = new SupportRepo(db)
+  const logRepo = new LogRepo(db)
   const aiClient = overrides.aiClient ?? new AiClient()
   const mailer = createEmailSender(config)
   auth.bootstrap(config.adminTenant, config.adminUser, config.adminPassword)
@@ -113,7 +115,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   }
 
   // 公开路由前缀（无需鉴权）：管理员登录、客户端注册/登录/发码/配置
-  const PUBLIC = ['/api/login', '/api/client/config', '/api/client/register', '/api/client/login', '/api/client/send-code', '/api/client/forgot-password', '/api/client/reset-password']
+  const PUBLIC = ['/api/logs', '/api/login', '/api/client/config', '/api/client/register', '/api/client/login', '/api/client/send-code', '/api/client/forgot-password', '/api/client/reset-password']
 
   // 鉴权：/api 路由（公开的除外）需带有效令牌。
   // 令牌可为「管理员会话」「客户端用户会话」「静态同步令牌」，映射到不同上下文。
@@ -236,6 +238,12 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
         if (n > 0) app.log.info({ pruned: n }, 'LINE 超龄事件已清理')
       } catch (err) {
         app.log.warn({ err: String(err) }, 'LINE 事件清理失败')
+      }
+      try {
+        const n = logRepo.prune()
+        if (n > 0) app.log.info({ pruned: n }, '过期客户端日志已清理')
+      } catch (err) {
+        app.log.warn({ err: String(err) }, '客户端日志清理失败')
       }
     },
     60 * 60 * 1000
@@ -419,6 +427,83 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (!owner) return
     const r = clientAuth.deleteRole(owner, (req.params as { id: string }).id)
     if (!r.ok) return reply.code(400).send({ error: r.error ?? 'not_found' })
+    return { ok: true }
+  })
+
+  // ══════════ 客户端日志上报（M19）══════════
+
+  /**
+   * 批量上报。登录用户带令牌（关联 userId）；未登录也能报（游客日志，
+   * 靠设备指纹归拢）—— 登录前崩溃恰恰是最需要日志的场景。
+   * 响应带回该用户的目标日志级别，客户端据此调整过滤门槛。
+   */
+  app.post('/api/logs', async (req, reply) => {
+    const b = (req.body ?? {}) as {
+      deviceId?: string
+      appVersion?: string
+      osType?: string
+      osVersion?: string
+      entries?: LogEntryInput[]
+    }
+    if (!b.deviceId || !/^[a-f0-9]{8,64}$/i.test(b.deviceId)) {
+      return reply.code(400).send({ error: 'deviceId 必填（硬件指纹哈希）' })
+    }
+    if (!Array.isArray(b.entries)) return reply.code(400).send({ error: 'entries 必填' })
+    if (b.entries.length > BATCH_MAX) {
+      return reply.code(400).send({ error: `单批最多 ${BATCH_MAX} 条` })
+    }
+    // 游客与登录用户共用此路由：令牌有效则关联用户，无令牌落游客日志
+    const token = bearer(req)
+    const user = token ? clientAuth.resolve(token) : null
+    const tenant = user?.tenant ?? config.clientTenant
+    const added = logRepo.ingest(tenant, user?.id, {
+      deviceId: b.deviceId.toLowerCase(),
+      appVersion: b.appVersion,
+      osType: b.osType,
+      osVersion: b.osVersion
+    }, b.entries)
+    return { ok: true, added, level: logRepo.levelFor(tenant, user?.id) }
+  })
+
+  // ── 管理后台：日志查看与级别控制 ──
+
+  app.get('/api/admin/logs', async (req, reply) => {
+    if (!requirePerm(req, reply, 'support:manage')) return
+    const q = req.query as Record<string, string | undefined>
+    const rows = logRepo.list(ctxOf(req).tenant, {
+      level: q.level,
+      userId: q.userId ? Number(q.userId) : undefined,
+      deviceId: q.deviceId,
+      q: q.q,
+      limit: q.limit ? Number(q.limit) : undefined
+    })
+    return {
+      logs: rows.map((r) => ({
+        ...r,
+        email: r.userId === null ? undefined : clientAuth.emailOf(r.userId)
+      }))
+    }
+  })
+
+  app.get('/api/admin/logs/devices', async (req, reply) => {
+    if (!requirePerm(req, reply, 'support:manage')) return
+    const tenant = ctxOf(req).tenant
+    return {
+      devices: logRepo.devices(tenant).map((d) => ({
+        ...d,
+        email: d.userId === null ? undefined : clientAuth.emailOf(d.userId)
+      })),
+      levels: logRepo.listLevels(tenant)
+    }
+  })
+
+  app.post('/api/admin/logs/level', async (req, reply) => {
+    if (!requirePerm(req, reply, 'support:manage')) return
+    const b = (req.body ?? {}) as { userId?: number; level?: string }
+    if (typeof b.userId !== 'number' || !b.level || !isLogLevel(b.level)) {
+      return reply.code(400).send({ error: 'userId 与合法 level 必填（debug/info/warn/error）' })
+    }
+    logRepo.setLevel(ctxOf(req).tenant, b.userId, b.level)
     return { ok: true }
   })
 

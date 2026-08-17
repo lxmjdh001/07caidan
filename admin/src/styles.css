@@ -374,3 +374,18 @@ input { font-family: inherit; }
   flex: 1; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
   font-size: 13px; background: var(--panel-alt); color: var(--text); font-family: inherit;
 }
+
+.log-meta {
+  margin: 6px 0 0;
+  padding: 8px;
+  background: var(--bg-2, rgba(127, 127, 127, 0.08));
+  border-radius: 6px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 240px;
+  overflow: auto;
+}
+.row-on {
+  background: var(--bg-2, rgba(127, 127, 127, 0.1));
+}

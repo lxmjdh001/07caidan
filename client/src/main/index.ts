@@ -22,6 +22,8 @@ import { JsonMessageStore } from './core/json-message-store'
 import { SettingsStore } from './core/settings-store'
 import { registerIpc } from './ipc'
 import { initLogging } from './logging'
+import { deviceId, osInfo } from './core/device-id'
+import { LogUploader, teeLogger } from './core/log-uploader'
 import { installAppMenu } from './menu'
 import { TranslationPipeline } from './translation/pipeline'
 import { PassthroughTranslator } from './translation/passthrough-translator'
@@ -50,11 +52,29 @@ async function bootstrap(): Promise<void> {
   await app.whenReady()
 
   const userData = app.getPath('userData')
-  const logger = initLogging(join(userData, 'logs'))
-  logger.info(`${brand.appName} 启动`, { version: app.getVersion(), userData })
+  const baseLogger = initLogging(join(userData, 'logs'))
 
   const settings = new SettingsStore(userData)
   await settings.init()
+
+  // 日志上报（M19）：本地 pino 之外的第二条通路。登录前也上报（游客日志，
+  // 设备指纹归拢）；门槛默认 warn，管理后台可按用户调整。
+  const logUploader = new LogUploader({
+    getConfig: () => {
+      const sync = settings.get().sync
+      return { serverUrl: sync.serverUrl, token: sync.token }
+    },
+    deviceId: deviceId(),
+    appVersion: app.getVersion(),
+    ...osInfo()
+  })
+  logUploader.start()
+  app.on('before-quit', () => {
+    logUploader.stop()
+    void logUploader.flush()
+  })
+  const logger = teeLogger(baseLogger, logUploader)
+  logger.info(`${brand.appName} 启动`, { version: app.getVersion(), userData })
 
   const store = new JsonMessageStore(join(userData, 'data'))
   await store.init()

@@ -68,6 +68,21 @@ export function openDb(dbPath: string): Db {
       created_at INTEGER NOT NULL,
       PRIMARY KEY (tenant, id)
     );
+    CREATE TABLE IF NOT EXISTS client_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant TEXT NOT NULL, user_id INTEGER, device_id TEXT NOT NULL,
+      level TEXT NOT NULL, scope TEXT NOT NULL DEFAULT '',
+      message TEXT NOT NULL, meta TEXT,
+      app_version TEXT NOT NULL DEFAULT '', os_type TEXT NOT NULL DEFAULT '',
+      os_version TEXT NOT NULL DEFAULT '',
+      at INTEGER NOT NULL, created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_client_logs ON client_logs (tenant, created_at);
+    CREATE INDEX IF NOT EXISTS idx_client_logs_device ON client_logs (tenant, device_id, created_at);
+    CREATE TABLE IF NOT EXISTS client_log_levels (
+      tenant TEXT NOT NULL, user_id INTEGER NOT NULL, level TEXT NOT NULL,
+      PRIMARY KEY (tenant, user_id)
+    );
     CREATE TABLE IF NOT EXISTS client_sessions (
       token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL
     );
