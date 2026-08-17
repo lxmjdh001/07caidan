@@ -230,6 +230,18 @@ describe('分享链接与公开看板', () => {
     assert.equal((await api('GET', `/api/campaigns/${campaign.id}/links`)).json.links.length, 2)
   })
 
+  test('删除链接：列表移除且公开访问立即 404', async () => {
+    const { campaign, link } = await setup()
+    assert.equal(
+      (await api('DELETE', `/api/campaigns/links/${link.token}`)).status,
+      200
+    )
+    assert.equal((await api('GET', `/api/campaigns/${campaign.id}/links`)).json.links.length, 0)
+    const pub = await api('GET', `/public/campaign/${link.token}`, undefined, null)
+    assert.equal(pub.status, 404)
+    assert.equal(pub.json.error, 'not_found', '删除后如同从未存在，而非 revoked')
+  })
+
   test('伪造令牌无效', async () => {
     const pub = await api('GET', '/public/campaign/deadbeef', undefined, null)
     assert.equal(pub.status, 404)

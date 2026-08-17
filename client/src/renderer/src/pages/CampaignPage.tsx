@@ -634,6 +634,18 @@ function CampaignDetail({
                       {t('campaign.revoke')}
                     </button>
                   )}
+                  <button
+                    type="button"
+                    className="danger-btn"
+                    title={t('campaign.deleteLinkHint')}
+                    onClick={async () => {
+                      if (!window.confirm(t('campaign.deleteLinkConfirm'))) return
+                      await api.campaign('deleteLink', l.token)
+                      await refresh()
+                    }}
+                  >
+                    {t('campaign.deleteLink')}
+                  </button>
                 </li>
               )
             })}
