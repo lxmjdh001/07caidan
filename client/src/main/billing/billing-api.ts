@@ -111,11 +111,17 @@ export class BillingApi {
   }
 
   // ── 团队管理（老板建客服子账号）──
+  /** 自己的 userId/角色/权限（团队页展示子账号 @后缀用） */
+  myIdentity(): Promise<unknown> {
+    return this.request('GET', '/api/me/permissions')
+  }
+
+
   listTeamMembers(): Promise<unknown> {
     return this.request('GET', '/api/team/members')
   }
 
-  createTeamMember(body: { email: string; password: string; role: string }): Promise<unknown> {
+  createTeamMember(body: { username: string; password: string; role: string }): Promise<unknown> {
     return this.request('POST', '/api/team/members', body)
   }
 

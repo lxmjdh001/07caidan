@@ -31,6 +31,10 @@ export interface BillingRouteDeps {
   }
   requirePerm: (req: FastifyRequest, reply: FastifyReply, perm: string) => boolean
   publicBase: () => string
+  /** 订单列表展示用：userId → 邮箱 */
+  emailOf?: (userId: number) => string | undefined
+  /** 手动调余额时用邮箱定位用户 */
+  userIdOf?: (email: string) => number | undefined
 }
 
 const GATEWAYS: Record<string, PaymentGateway> = {
@@ -51,7 +55,7 @@ const PERIOD_UNITS: PeriodUnit[] = ['month', 'quarter', 'half_year', 'year', 'da
  * - 支付通道（公开回调）：/pay/notify/:tenant/:channelId，靠各通道自己的验签
  */
 export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDeps): void {
-  const { billing, orders, channels, ai, aiClient, ctxOf, requirePerm, publicBase } = deps
+  const { billing, orders, channels, ai, aiClient, ctxOf, requirePerm, publicBase, emailOf, userIdOf } = deps
 
   /**
    * 客户端用户守卫：必须是邮箱登录的桌面端用户（静态同步令牌没有身份，不能有钱包）。
@@ -253,6 +257,77 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
         (req.body ?? {}) as Parameters<AiRepo['updateSettings']>[1]
       )
     }
+  })
+
+  /**
+   * 管理员手动加/扣余额。走 mutate() 统一入口 —— 必然落一条 adjust 流水，
+   * note 里带操作人，事后审计能看到是谁调的。扣成负数会被拒（insufficient）。
+   */
+  app.post('/api/admin/balance-adjust', async (req, reply) => {
+    if (!requirePerm(req, reply, 'billing:manage')) return
+    const b = (req.body ?? {}) as {
+      userId?: number
+      email?: string
+      deltaCents?: number
+      note?: string
+    }
+    const tenant = ctxOf(req).tenant
+    const userId =
+      typeof b.userId === 'number' ? b.userId : b.email ? userIdOf?.(b.email) : undefined
+    if (userId === undefined) return reply.code(400).send({ error: '用户不存在（userId 或 email 必填）' })
+    const delta = Math.round(Number(b.deltaCents ?? 0))
+    if (!Number.isFinite(delta) || delta === 0) {
+      return reply.code(400).send({ error: 'deltaCents 必填（正加负扣，美分）' })
+    }
+    const operator = ctxOf(req).principal ? ` by ${(ctxOf(req).principal as { username?: string }).username ?? 'admin'}` : ''
+    const r = billing.mutate(tenant, {
+      userId,
+      kind: 'adjust',
+      amountCents: delta,
+      note: `${b.note?.trim() || '管理员手动调整'}${operator}`
+    })
+    if (!r.ok) return reply.code(400).send({ error: '余额不足，不能扣成负数', reason: r.reason })
+    return { ok: true, balance: r.balance }
+  })
+
+  // ── 订单（手动补单：测试或线下收款时管理员直接标记已支付）──
+  app.get('/api/admin/orders', async (req, reply) => {
+    if (!requirePerm(req, reply, 'billing:manage')) return
+    const q = req.query as { status?: string }
+    return {
+      orders: orders.listAll(ctxOf(req).tenant, q.status).map((o) => ({
+        ...o,
+        email: emailOf?.(o.userId)
+      }))
+    }
+  })
+
+  /**
+   * 手动标记已支付。走与支付回调完全相同的结算路径（幂等、套餐单自动开通），
+   * 只是跳过金额校验 —— 权限本身就是 billing:manage，责任在管理员。
+   */
+  app.post('/api/admin/orders/:id/mark-paid', async (req, reply) => {
+    if (!requirePerm(req, reply, 'billing:manage')) return
+    const tenant = ctxOf(req).tenant
+    const orderId = (req.params as { id: string }).id
+    const settled = orders.settle(tenant, orderId, { tradeNo: 'manual-admin' })
+    if (!settled.ok) {
+      const msg =
+        settled.reason === 'not_found'
+          ? '订单不存在'
+          : settled.reason === 'expired'
+            ? '订单已过期，请让用户重新下单'
+            : `订单状态不允许（${settled.reason}）`
+      return reply.code(400).send({ error: msg, reason: settled.reason })
+    }
+    // 与支付回调同一套后置逻辑：套餐单到账即自动换购
+    if (!settled.alreadyPaid && settled.order.kind === 'plan' && settled.order.planId) {
+      const change = billing.changePlan(tenant, settled.order.userId, settled.order.planId)
+      if (!change.ok) {
+        req.log.warn({ orderId, reason: change.reason }, '手动补单后自动换购失败，金额留在余额')
+      }
+    }
+    return { ok: true, alreadyPaid: settled.alreadyPaid ?? false, order: orders.get(tenant, orderId) }
   })
 
   app.get('/api/admin/usage-summary', async (req, reply) => {

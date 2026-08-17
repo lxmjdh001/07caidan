@@ -55,9 +55,9 @@ export class ClientAuthRepo {
   }
 
   /** 生成并存储验证码（6 位数字），返回验证码供发信 */
-  issueCode(email: string): string {
-    // 用时间戳派生但不可预测：随机 6 位
-    const code = String(Math.floor(100000 + secureRand() * 900000))
+  issueCode(email: string, fixed?: string): string {
+    // 开发模式（未配 SMTP）传入固定码，方便测试；线上永远随机 6 位不可预测
+    const code = fixed ?? String(Math.floor(100000 + secureRand() * 900000))
     this.db
       .insert(emailCodes)
       .values({ email, code, expiresAt: Date.now() + CODE_TTL_MS })
@@ -124,7 +124,8 @@ export class ClientAuthRepo {
   }
 
   login(email: string, password: string): { token: string; user: ClientUser } | null {
-    const row = this.db.select().from(clientUsers).where(eq(clientUsers.email, email)).get()
+    const normalized = email.trim().toLowerCase()
+    const row = this.db.select().from(clientUsers).where(eq(clientUsers.email, normalized)).get()
     if (!row) return null
     if (!verifyPassword(password, row.passwordHash)) return null
     // 被停用的子账号不能登录 —— 客服离职后老板一键停用即可
@@ -176,14 +177,22 @@ export class ClientAuthRepo {
 
   /**
    * 老板创建子账号。权限收敛校验在此：分配的角色/权限必须 ⊆ 老板自己的。
+   *
+   * 登录名格式：`<用户名>@<老板id>`。老板只填 @ 前面的用户名（仅字母数字），
+   * 后缀由系统拼接 —— 子账号天然按老板隔离，绝不会与其他老板的
+   * 真实邮箱或子账号撞名（真实邮箱域名必含点号，这里的后缀是纯数字）。
    */
   createMember(
     owner: ClientUser,
-    email: string,
+    username: string,
     password: string,
     role: string
   ): { ok: true; member: TeamMember } | { ok: false; error: string } {
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { ok: false, error: '邮箱格式不正确' }
+    const uname = username.trim().toLowerCase()
+    if (!/^[a-z0-9]{2,32}$/.test(uname)) {
+      return { ok: false, error: '用户名只能是 2-32 位字母或数字（@ 后缀由系统添加）' }
+    }
+    const email = `${uname}@${owner.id}`
     if (password.length < 8) return { ok: false, error: '密码至少 8 位' }
     const rolePerms =
       role === 'agent'
@@ -195,13 +204,12 @@ export class ClientAuthRepo {
     if (!canDelegate(owner.permissions, rolePerms)) {
       return { ok: false, error: '不能分配超出自己权限的角色' }
     }
-    const normalized = email.trim().toLowerCase()
     try {
       const res = this.db
         .insert(clientUsers)
         .values({
           tenant: owner.tenant,
-          email: normalized,
+          email,
           passwordHash: hashPassword(password),
           verified: 1,
           ownerId: owner.id,
@@ -216,7 +224,7 @@ export class ClientAuthRepo {
         ok: true,
         member: {
           id,
-          email: normalized,
+          email,
           role,
           roleName: this.roleName(owner.tenant, role),
           permissions: rolePerms,
@@ -225,7 +233,7 @@ export class ClientAuthRepo {
         }
       }
     } catch {
-      return { ok: false, error: '该邮箱已被注册' }
+      return { ok: false, error: '该用户名已被占用' }
     }
   }
 
@@ -372,6 +380,16 @@ export class ClientAuthRepo {
   }
 
   /** 按用户 id 取邮箱（到期提醒发邮件用） */
+  /** 邮箱 → 用户 id（管理后台手动调余额时用邮箱定位用户） */
+  userIdOf(email: string): number | undefined {
+    const r = this.db
+      .select({ id: clientUsers.id })
+      .from(clientUsers)
+      .where(eq(clientUsers.email, email.trim().toLowerCase()))
+      .get()
+    return r?.id
+  }
+
   emailOf(userId: number): string | undefined {
     const r = this.db
       .select({ email: clientUsers.email })

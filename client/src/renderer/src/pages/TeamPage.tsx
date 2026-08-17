@@ -34,10 +34,11 @@ export function TeamPage(): React.JSX.Element {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
-  // 建号表单
-  const [email, setEmail] = useState('')
+  // 建号表单：只填 @ 前的用户名，后缀 @<老板id> 系统拼接
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [role, setRole] = useState('agent')
+  const [myId, setMyId] = useState<number | null>(null)
 
   // 建角色表单
   const [roleName, setRoleName] = useState('')
@@ -60,6 +61,10 @@ export function TeamPage(): React.JSX.Element {
 
   useEffect(() => {
     void reload()
+    void api
+      .billing<{ userId: number }>('myIdentity')
+      .then((r) => setMyId(r.userId))
+      .catch(() => setMyId(null))
   }, [reload])
 
   const run = async (fn: () => Promise<unknown>): Promise<void> => {
@@ -76,13 +81,13 @@ export function TeamPage(): React.JSX.Element {
   }
 
   const createMember = (): void => {
-    if (!email || !password) {
+    if (!username || !password) {
       setErr(t('auth.fillAll'))
       return
     }
     void run(async () => {
-      await api.billing('createTeamMember', { email, password, role })
-      setEmail('')
+      await api.billing('createTeamMember', { username, password, role })
+      setUsername('')
       setPassword('')
     })
   }
@@ -165,8 +170,19 @@ export function TeamPage(): React.JSX.Element {
             <h2>{t('team.addMember')}</h2>
             <p className="form-hint">{t('team.addMemberHint')}</p>
             <label className="field">
-              <span>{t('auth.email')}</span>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+              <span>{t('team.username')}</span>
+              <div className="code-row">
+                <input
+                  value={username}
+                  placeholder="agent01"
+                  onChange={(e) =>
+                    // 只允许字母数字：从输入端就挡住 @ 和其他符号
+                    setUsername(e.target.value.replace(/[^a-zA-Z0-9]/g, '').toLowerCase())
+                  }
+                />
+                {myId !== null && <span className="team-suffix">@{myId}</span>}
+              </div>
+              <span className="field-hint">{t('team.usernameHint')}</span>
             </label>
             <label className="field">
               <span>{t('auth.password')}</span>

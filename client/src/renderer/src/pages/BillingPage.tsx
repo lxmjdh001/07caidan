@@ -58,6 +58,95 @@ interface PaymentInfo {
   payload?: Record<string, string>
 }
 
+/** 应付估算（gross-up 口径与后端一致，仅作展示） */
+function estimatePayable(channel: PayChannel, amountCents: number): number {
+  if (channel.feePaidBy !== 'customer' || !Number.isFinite(amountCents) || amountCents <= 0) {
+    return amountCents
+  }
+  return Math.ceil((amountCents + channel.feeFixedCents) / (1 - channel.feeRate))
+}
+
+/** 支付通道卡片列表：把各通道手续费亮出来，用户自己挑最划算的 */
+function ChannelCards({
+  channels,
+  amountCents,
+  selected,
+  onSelect
+}: {
+  channels: PayChannel[]
+  /** 商品金额（美分）；>0 时卡片上显示该金额下的手续费与应付 */
+  amountCents: number
+  selected: string
+  onSelect: (id: string) => void
+}): React.JSX.Element {
+  const { t } = useI18n()
+  return (
+    <div className="channel-grid">
+      {channels.map((c) => {
+        const payable = estimatePayable(c, amountCents)
+        const fee = payable - amountCents
+        return (
+          <button
+            key={c.id}
+            type="button"
+            className={`channel-card ${selected === c.id ? 'on' : ''}`}
+            onClick={() => onSelect(c.id)}
+          >
+            <span className="channel-name">{c.name}</span>
+            <span className="channel-currency">{c.currency}</span>
+            <span className="channel-fee">
+              {c.feePaidBy === 'customer'
+                ? amountCents > 0 && fee > 0
+                  ? t('bill.cardFee').replace('{fee}', usd(fee))
+                  : t('bill.cardFeeRate')
+                      .replace('{rate}', `${(c.feeRate * 100).toFixed(1)}%`)
+                      .replace('{fixed}', c.feeFixedCents > 0 ? `+${usd(c.feeFixedCents)}` : '')
+                : t('bill.cardNoFee')}
+            </span>
+            {amountCents > 0 && c.feePaidBy === 'customer' && fee > 0 && (
+              <span className="channel-payable">
+                {t('bill.cardPayable').replace('{total}', usd(payable))}
+              </span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/** 下单结果：网页支付链接或转账 payload */
+function PaymentResult({ payment }: { payment: PaymentInfo | null }): React.JSX.Element | null {
+  const { t } = useI18n()
+  if (!payment) return null
+  return (
+    <>
+      {payment.payUrl && (
+        <div className="link-preview">
+          <code>{payment.payUrl}</code>
+          <button
+            type="button"
+            className="primary-btn"
+            onClick={() => void navigator.clipboard.writeText(payment.payUrl!)}
+          >
+            {t('campaign.copy')}
+          </button>
+        </div>
+      )}
+      {payment.payload && (
+        <div className="pay-payload">
+          {Object.entries(payment.payload).map(([k, v]) => (
+            <p key={k}>
+              <span className="pp-key">{k}</span> <code>{v}</code>
+            </p>
+          ))}
+          <p className="field-hint">{t('bill.payloadHint')}</p>
+        </div>
+      )}
+    </>
+  )
+}
+
 function usd(cents: number): string {
   const sign = cents < 0 ? '-' : ''
   const abs = Math.abs(Math.round(cents))
@@ -229,6 +318,8 @@ function PlansTab({ me, onChanged }: { me: Me | null; onChanged: () => Promise<v
   const [plans, setPlans] = useState<Plan[]>([])
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState('')
+  /** 余额不足时进入的直付面板：选通道给这个套餐下单 */
+  const [payPlan, setPayPlan] = useState<Plan | null>(null)
 
   useEffect(() => {
     void api.billing<{ plans: Plan[] }>('listPlans').then((r) => setPlans(r.plans))
@@ -237,6 +328,16 @@ function PlansTab({ me, onChanged }: { me: Me | null; onChanged: () => Promise<v
   const unitLabel = (p: Plan): string => {
     const unit = t(`bill.unit.${p.periodUnit}` as 'bill.unit.month')
     return p.periodCount > 1 ? `${p.periodCount} ${unit}` : unit
+  }
+
+  if (payPlan) {
+    return (
+      <PlanPayPanel
+        plan={payPlan}
+        onBack={() => setPayPlan(null)}
+        onChanged={onChanged}
+      />
+    )
   }
 
   return (
@@ -267,7 +368,10 @@ function PlansTab({ me, onChanged }: { me: Me | null; onChanged: () => Promise<v
                     await api.billing('subscribe', p.id)
                     await onChanged()
                   } catch (e) {
-                    setMsg(errText(e))
+                    const m = errText(e)
+                    // 余额不足 → 不弹错误，直接进入付款流程
+                    if (m.includes('余额不足')) setPayPlan(p)
+                    else setMsg(m)
                   } finally {
                     setBusy('')
                   }
@@ -280,6 +384,84 @@ function PlansTab({ me, onChanged }: { me: Me | null; onChanged: () => Promise<v
         })}
       </div>
       <p className="field-hint">{t('bill.prorationHint')}</p>
+    </div>
+  )
+}
+
+/** 套餐直付：余额不够时不绕充值，直接对套餐下单付款 */
+function PlanPayPanel({
+  plan,
+  onBack,
+  onChanged
+}: {
+  plan: Plan
+  onBack: () => void
+  onChanged: () => Promise<void>
+}): React.JSX.Element {
+  const { t } = useI18n()
+  const [channels, setChannels] = useState<PayChannel[]>([])
+  const [channelId, setChannelId] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const [payment, setPayment] = useState<PaymentInfo | null>(null)
+
+  useEffect(() => {
+    void api.billing<{ channels: PayChannel[] }>('listChannels').then((r) => {
+      setChannels(r.channels)
+      if (r.channels[0]) setChannelId(r.channels[0].id)
+    })
+  }, [])
+
+  return (
+    <div className="form-page">
+      <section className="form-card">
+        <div className="page-toolbar">
+          <button type="button" className="ghost-btn" onClick={onBack}>
+            ← {t('bill.backToPlans')}
+          </button>
+        </div>
+        <h3>{t('bill.payForPlan').replace('{plan}', `${plan.name} ${usd(plan.priceCents)}`)}</h3>
+        <p className="field-hint">{t('bill.payForPlanHint')}</p>
+        {channels.length === 0 ? (
+          <p className="field-hint">{t('bill.noChannels')}</p>
+        ) : (
+          <>
+            <ChannelCards
+              channels={channels}
+              amountCents={plan.priceCents}
+              selected={channelId}
+              onSelect={setChannelId}
+            />
+            {err && <p className="auth-err">{err}</p>}
+            <button
+              type="button"
+              className="primary-btn"
+              disabled={busy || !channelId}
+              onClick={async () => {
+                setErr('')
+                setPayment(null)
+                setBusy(true)
+                try {
+                  const r = await api.billing<{ payment: PaymentInfo }>('createOrder', {
+                    kind: 'plan',
+                    planId: plan.id,
+                    channelId
+                  })
+                  setPayment(r.payment)
+                  await onChanged()
+                } catch (e) {
+                  setErr(errText(e))
+                } finally {
+                  setBusy(false)
+                }
+              }}
+            >
+              {t('bill.createOrder')}
+            </button>
+          </>
+        )}
+        <PaymentResult payment={payment} />
+      </section>
     </div>
   )
 }
@@ -316,23 +498,20 @@ function TopupTab({ onChanged }: { onChanged: () => Promise<void> }): React.JSX.
           <p className="field-hint">{t('bill.noChannels')}</p>
         ) : (
           <>
-            <div className="field-row">
-              <label className="field">
-                <span>{t('bill.channel')}</span>
-                <select value={channelId} onChange={(e) => setChannelId(e.target.value)}>
-                  {channels.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}（{c.currency}）
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="field">
-                <span>{t('bill.amountUsd')}</span>
-                <input type="text" value={amount} onChange={(e) => setAmount(e.target.value)} />
-              </label>
+            <label className="field">
+              <span>{t('bill.amountUsd')}</span>
+              <input type="text" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </label>
+            <div className="field">
+              <span>{t('bill.channel')}</span>
+              <ChannelCards
+                channels={channels}
+                amountCents={Number.isFinite(amountCents) ? amountCents : 0}
+                selected={channelId}
+                onSelect={setChannelId}
+              />
             </div>
-            {channel && channel.feePaidBy === 'customer' && Number.isFinite(estimate) && (
+            {channel && channel.feePaidBy === 'customer' && Number.isFinite(estimate) && estimate > amountCents && (
               <p className="field-hint">
                 {t('bill.feeEstimate')
                   .replace('{fee}', usd(estimate - amountCents))
@@ -371,28 +550,7 @@ function TopupTab({ onChanged }: { onChanged: () => Promise<void> }): React.JSX.
           </>
         )}
 
-        {payment?.payUrl && (
-          <div className="link-preview">
-            <code>{payment.payUrl}</code>
-            <button
-              type="button"
-              className="primary-btn"
-              onClick={() => void navigator.clipboard.writeText(payment.payUrl!)}
-            >
-              {t('campaign.copy')}
-            </button>
-          </div>
-        )}
-        {payment?.payload && (
-          <div className="pay-payload">
-            {Object.entries(payment.payload).map(([k, v]) => (
-              <p key={k}>
-                <span className="pp-key">{k}</span> <code>{v}</code>
-              </p>
-            ))}
-            <p className="field-hint">{t('bill.payloadHint')}</p>
-          </div>
-        )}
+        <PaymentResult payment={payment} />
       </section>
     </div>
   )

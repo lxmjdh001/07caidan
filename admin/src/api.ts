@@ -251,6 +251,23 @@ export interface LogDevice {
   errors: number
 }
 
+export interface AdminOrder {
+  id: string
+  userId: number
+  email?: string
+  kind: 'topup' | 'plan'
+  planId?: string
+  amountCents: number
+  payableCents: number
+  payableLocal: number
+  currency: string
+  channelId: string
+  status: string
+  tradeNo?: string
+  createdAt: number
+  paidAt?: number
+}
+
 export class ApiClient {
   constructor(
     private readonly base: string,
@@ -465,6 +482,23 @@ export class ApiClient {
 
   updateReminderSettings(body: Partial<ReminderSettingsRow>): Promise<{ settings: ReminderSettingsRow }> {
     return this.req('/api/admin/reminder-settings', { method: 'PUT', body: JSON.stringify(body) })
+  }
+
+  // ── 订单与余额（需 billing:manage）──
+  listAdminOrders(status?: string): Promise<{ orders: AdminOrder[] }> {
+    return this.req(`/api/admin/orders${status ? `?status=${status}` : ''}`)
+  }
+
+  markOrderPaid(id: string): Promise<{ ok: boolean; alreadyPaid: boolean }> {
+    return this.req(`/api/admin/orders/${encodeURIComponent(id)}/mark-paid`, { method: 'POST' })
+  }
+
+  adjustBalance(body: {
+    email: string
+    deltaCents: number
+    note?: string
+  }): Promise<{ ok: boolean; balance: { balanceCents: number; credits: number } }> {
+    return this.req('/api/admin/balance-adjust', { method: 'POST', body: JSON.stringify(body) })
   }
 
   // ── 客户端日志（需 support:manage）──

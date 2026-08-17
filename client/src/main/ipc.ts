@@ -78,6 +78,7 @@ const BILLING_METHODS: Record<string, true> = {
   closeTicket: true,
   uploadTicketImage: true,
   fetchMedia: true,
+  myIdentity: true,
   listTeamMembers: true,
   createTeamMember: true,
   updateTeamMember: true,

@@ -122,3 +122,17 @@ describe('找回密码', () => {
     assert.equal(ca.hasUser('nobody@test.com'), false)
   })
 })
+
+describe('开发模式固定验证码（HTTP 层见 team-rbac 附带用例）', () => {
+  beforeEach(() => {
+    ca = new ClientAuthRepo(openDb(join(dir, `${Math.random().toString(36).slice(2)}.db`)))
+  })
+
+  test('issueCode 传固定码则存固定码，不传则随机 6 位', () => {
+    const fixed = ca.issueCode('a@b.com', '12345')
+    assert.equal(fixed, '12345')
+    assert.equal(ca.register('t1', 'a@b.com', 'password1', '12345', true).ok, true)
+    const rand = ca.issueCode('c@d.com')
+    assert.match(rand, /^\d{6}$/)
+  })
+})

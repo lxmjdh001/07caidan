@@ -136,6 +136,20 @@ export class OrderRepo {
       .map(toOrder)
   }
 
+  /** 管理后台：全租户订单列表（可按状态过滤，手动补单用） */
+  listAll(tenant: string, status?: string, limit = 100): Order[] {
+    const conds = [eq(orders.tenant, tenant)]
+    if (status) conds.push(eq(orders.status, status))
+    return this.db
+      .select()
+      .from(orders)
+      .where(and(...conds))
+      .orderBy(desc(orders.createdAt))
+      .limit(limit)
+      .all()
+      .map(toOrder)
+  }
+
   /**
    * 结算一笔支付回调。
    *

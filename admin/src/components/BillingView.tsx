@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type {
+  AdminOrder,
   AiModelRow,
   AiProvider,
   ApiClient,
@@ -13,7 +14,7 @@ interface Props {
   client: ApiClient
 }
 
-type Tab = 'plans' | 'channels' | 'rates' | 'ai' | 'usage'
+type Tab = 'plans' | 'channels' | 'rates' | 'ai' | 'usage' | 'orders'
 
 /** 美分 → 美元展示 */
 function usd(cents: number): string {
@@ -42,7 +43,8 @@ export function BillingView({ client }: Props): React.JSX.Element {
     { id: 'channels', label: t('billing.channels') },
     { id: 'rates', label: t('billing.rates') },
     { id: 'ai', label: t('billing.ai') },
-    { id: 'usage', label: t('billing.usage') }
+    { id: 'usage', label: t('billing.usage') },
+    { id: 'orders', label: t('billing.orders') }
   ]
 
   return (
@@ -67,6 +69,7 @@ export function BillingView({ client }: Props): React.JSX.Element {
         {tab === 'rates' && <RatesTab client={client} />}
         {tab === 'ai' && <AiTab client={client} />}
         {tab === 'usage' && <UsageTab client={client} />}
+        {tab === 'orders' && <OrdersTab client={client} />}
       </div>
     </div>
   )
@@ -832,5 +835,167 @@ function UsageTab({ client }: Props): React.JSX.Element {
         </table>
       )}
     </section>
+  )
+}
+
+
+// ══════════ 订单与余额（手动补单 / 调余额） ══════════
+
+function OrdersTab({ client }: Props): React.JSX.Element {
+  const { t } = useI18n()
+  const [orders, setOrders] = useState<AdminOrder[]>([])
+  const [status, setStatus] = useState('pending')
+  const [err, setErr] = useState('')
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState('')
+  // 余额调整表单
+  const [email, setEmail] = useState('')
+  const [amount, setAmount] = useState('')
+  const [direction, setDirection] = useState<'add' | 'deduct'>('add')
+  const [note, setNote] = useState('')
+
+  const load = useCallback(async () => {
+    try {
+      setOrders((await client.listAdminOrders(status || undefined)).orders)
+      setErr('')
+    } catch (e) {
+      setErr(String((e as Error).message ?? e))
+    }
+  }, [client, status])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const usd = (c: number): string => `$${(c / 100).toFixed(2)}`
+
+  return (
+    <>
+      <section className="card">
+        <h3>{t('billing.adjust')}</h3>
+        <p className="hint">{t('billing.adjustHint')}</p>
+        <div className="form-row">
+          <label>
+            <span>{t('billing.userEmail')}</span>
+            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="user@example.com" />
+          </label>
+          <label>
+            <span>{t('billing.adjustDirection')}</span>
+            <select value={direction} onChange={(e) => setDirection(e.target.value as 'add')}>
+              <option value="add">{t('billing.adjustAdd')}</option>
+              <option value="deduct">{t('billing.adjustDeduct')}</option>
+            </select>
+          </label>
+          <label>
+            <span>{t('billing.amountUsd')}</span>
+            <input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="10.00" />
+          </label>
+          <label>
+            <span>{t('billing.note')}</span>
+            <input value={note} onChange={(e) => setNote(e.target.value)} />
+          </label>
+          <button
+            className="primary"
+            disabled={busy === 'adjust'}
+            onClick={async () => {
+              setErr('')
+              setMsg('')
+              const cents = Math.round(Number(amount) * 100)
+              if (!email.trim() || !Number.isFinite(cents) || cents <= 0) {
+                return setErr(t('billing.adjustInvalid'))
+              }
+              setBusy('adjust')
+              try {
+                const r = await client.adjustBalance({
+                  email: email.trim(),
+                  deltaCents: direction === 'add' ? cents : -cents,
+                  note: note.trim() || undefined
+                })
+                setMsg(t('billing.adjustDone').replace('{balance}', usd(r.balance.balanceCents)))
+                setAmount('')
+                setNote('')
+              } catch (e) {
+                setErr(String((e as Error).message ?? e))
+              } finally {
+                setBusy('')
+              }
+            }}
+          >
+            {t('common.save')}
+          </button>
+        </div>
+        {msg && <p className="ok-hint">{msg}</p>}
+      </section>
+
+      <section className="card">
+        <div className="toolbar">
+          <h3>{t('billing.orders')}</h3>
+          <select value={status} onChange={(e) => setStatus(e.target.value)}>
+            <option value="pending">{t('billing.statusPending')}</option>
+            <option value="paid">{t('billing.statusPaid')}</option>
+            <option value="expired">{t('billing.statusExpired')}</option>
+            <option value="">{t('billing.statusAll')}</option>
+          </select>
+        </div>
+        {err && <div className="error-banner">{err}</div>}
+        <table className="table">
+          <thead>
+            <tr>
+              <th>{t('billing.orderTime')}</th>
+              <th>{t('billing.userEmail')}</th>
+              <th>{t('billing.orderKind')}</th>
+              <th>{t('billing.orderAmount')}</th>
+              <th>{t('billing.orderPayable')}</th>
+              <th>{t('billing.orderStatus')}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {orders.map((o) => (
+              <tr key={o.id}>
+                <td title={o.id}>{new Date(o.createdAt).toLocaleString()}</td>
+                <td>{o.email ?? o.userId}</td>
+                <td>{o.kind === 'plan' ? t('billing.kindPlan') : t('billing.kindTopup')}</td>
+                <td>{usd(o.amountCents)}</td>
+                <td>
+                  {(o.payableLocal / 100).toFixed(2)} {o.currency}
+                </td>
+                <td>{o.status}</td>
+                <td>
+                  {o.status === 'pending' && (
+                    <button
+                      className="primary"
+                      disabled={busy === o.id}
+                      onClick={async () => {
+                        if (!window.confirm(t('billing.markPaidConfirm'))) return
+                        setBusy(o.id)
+                        try {
+                          await client.markOrderPaid(o.id)
+                          setMsg(t('billing.markPaidDone'))
+                          await load()
+                        } catch (e) {
+                          setErr(String((e as Error).message ?? e))
+                        } finally {
+                          setBusy('')
+                        }
+                      }}
+                    >
+                      {t('billing.markPaid')}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {orders.length === 0 && (
+              <tr>
+                <td colSpan={7} className="hint">
+                  {t('billing.noOrders')}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </section>
+    </>
   )
 }

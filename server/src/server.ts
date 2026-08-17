@@ -259,6 +259,8 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     aiClient,
     ctxOf,
     requirePerm: (req, reply, perm) => requirePerm(req, reply, perm as Permission),
+    emailOf: (userId) => clientAuth.emailOf(userId),
+    userIdOf: (email) => clientAuth.userIdOf(email),
     publicBase
   })
 
@@ -276,7 +278,8 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
       return reply.code(400).send({ error: '邮箱格式不正确' })
     }
-    const code = clientAuth.issueCode(email)
+    // 开发模式（未配 SMTP）验证码固定 12345；配置 SMTP 后走真实邮件
+    const code = clientAuth.issueCode(email, config.smtp ? undefined : '12345')
     try {
       await mailer.send(email, `${brand.appName} 验证码`, `你的验证码是 ${code}，10 分钟内有效。`)
     } catch (err) {
@@ -298,7 +301,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     }
     const normalized = email.trim().toLowerCase()
     if (clientAuth.hasUser(normalized)) {
-      const code = clientAuth.issueCode(normalized)
+      const code = clientAuth.issueCode(normalized, config.smtp ? undefined : '12345')
       try {
         await mailer.send(
           normalized,
@@ -393,9 +396,9 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   app.post('/api/team/members', async (req, reply) => {
     const owner = requireTeamOwner(req, reply)
     if (!owner) return
-    const b = (req.body ?? {}) as { email?: string; password?: string; role?: string }
-    if (!b.email || !b.password) return reply.code(400).send({ error: '邮箱和密码必填' })
-    const r = clientAuth.createMember(owner, b.email, b.password, b.role ?? 'agent')
+    const b = (req.body ?? {}) as { username?: string; password?: string; role?: string }
+    if (!b.username || !b.password) return reply.code(400).send({ error: '用户名和密码必填' })
+    const r = clientAuth.createMember(owner, b.username, b.password, b.role ?? 'agent')
     if (!r.ok) return reply.code(400).send({ error: r.error })
     return { member: r.member }
   })
@@ -516,6 +519,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     const ctx = ctxOf(req)
     if (!ctx.clientUser) return reply.code(403).send({ error: '需要客户端账号登录' })
     return {
+      userId: ctx.clientUser.id,
       email: ctx.clientUser.email,
       role: ctx.clientUser.role,
       permissions: ctx.clientUser.permissions

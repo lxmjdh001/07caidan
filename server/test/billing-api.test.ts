@@ -295,6 +295,112 @@ describe('套餐全链路', () => {
   })
 })
 
+describe('管理员手动补单与调余额', () => {
+  test('手动标记已支付：充值到账一次，重复标记幂等', async () => {
+    const ch = await mockChannel()
+    const order = (
+      await api('POST', '/api/billing/orders', { kind: 'topup', amountCents: 2000, channelId: ch })
+    ).json.order
+
+    const r1 = await api('POST', `/api/admin/orders/${order.id}/mark-paid`, {}, adminToken)
+    assert.equal(r1.status, 200)
+    assert.equal(r1.json.alreadyPaid, false)
+    assert.equal(
+      (await api('GET', '/api/billing/me')).json.balance.balanceCents,
+      2000
+    )
+    // 再标记一次：幂等，不重复入账
+    const r2 = await api('POST', `/api/admin/orders/${order.id}/mark-paid`, {}, adminToken)
+    assert.equal(r2.json.alreadyPaid, true)
+    assert.equal((await api('GET', '/api/billing/me')).json.balance.balanceCents, 2000)
+  })
+
+  test('套餐单手动标记后自动开通订阅', async () => {
+    const ch = await mockChannel()
+    const plan = (
+      await api(
+        'POST',
+        '/api/admin/plans',
+        { name: '测试月付', priceCents: 999, periodUnit: 'month', maxAccounts: 3 },
+        adminToken
+      )
+    ).json.plan
+    const order = (
+      await api('POST', '/api/billing/orders', { kind: 'plan', planId: plan.id, channelId: ch })
+    ).json.order
+    await api('POST', `/api/admin/orders/${order.id}/mark-paid`, {}, adminToken)
+    const me = (await api('GET', '/api/billing/me')).json
+    assert.equal(me.subscription?.planId, plan.id)
+    assert.equal(me.accountQuota, 3)
+  })
+
+  test('管理员订单列表可按状态过滤且带用户邮箱', async () => {
+    const ch = await mockChannel()
+    await api('POST', '/api/billing/orders', { kind: 'topup', amountCents: 1000, channelId: ch })
+    const list = await api('GET', '/api/admin/orders?status=pending', undefined, adminToken)
+    assert.equal(list.status, 200)
+    assert.ok(list.json.orders.length >= 1)
+    assert.equal(list.json.orders[0].email, 'u@test.com')
+  })
+
+  test('手动加余额 / 扣余额都会留 adjust 流水；扣成负数被拒', async () => {
+    const add = await api(
+      'POST',
+      '/api/admin/balance-adjust',
+      { email: 'u@test.com', deltaCents: 5000, note: '测试赠送' },
+      adminToken
+    )
+    assert.equal(add.status, 200)
+    assert.equal(add.json.balance.balanceCents, 5000)
+
+    const deduct = await api(
+      'POST',
+      '/api/admin/balance-adjust',
+      { email: 'u@test.com', deltaCents: -3000 },
+      adminToken
+    )
+    assert.equal(deduct.json.balance.balanceCents, 2000)
+
+    // 流水必须有两条 adjust，且 note 带操作人
+    const ledger = (await api('GET', '/api/billing/ledger')).json.ledger
+    const adjusts = ledger.filter((l: any) => l.kind === 'adjust')
+    assert.equal(adjusts.length, 2)
+    assert.match(adjusts[0].note, /by admin/)
+
+    // 扣穿余额被拒，余额不变
+    const over = await api(
+      'POST',
+      '/api/admin/balance-adjust',
+      { email: 'u@test.com', deltaCents: -99999 },
+      adminToken
+    )
+    assert.equal(over.status, 400)
+    assert.equal((await api('GET', '/api/billing/me')).json.balance.balanceCents, 2000)
+
+    // 未知邮箱
+    assert.equal(
+      (
+        await api(
+          'POST',
+          '/api/admin/balance-adjust',
+          { email: 'ghost@test.com', deltaCents: 100 },
+          adminToken
+        )
+      ).status,
+      400
+    )
+  })
+
+  test('普通同步令牌不能补单或调余额', async () => {
+    assert.equal((await api('GET', '/api/admin/orders')).status, 403)
+    assert.equal(
+      (await api('POST', '/api/admin/balance-adjust', { email: 'u@test.com', deltaCents: 1 }))
+        .status,
+      403
+    )
+  })
+})
+
 describe('积分与模型计费（HTTP 层）', () => {
   async function setupModel(): Promise<string> {
     const p = (
