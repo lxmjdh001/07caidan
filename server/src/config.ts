@@ -14,6 +14,8 @@ export interface ServerConfig {
   tokens: string[]
   /** Anthropic API Key（缺失则 AI 分析接口返回 501） */
   anthropicApiKey: string | undefined
+  /** 实时自动打标签开关（缺省 false） */
+  autoTag?: boolean
   /** 意向分析使用的模型 */
   analysisModel: string
   /** 管理后台登录账号 */
@@ -50,6 +52,8 @@ export function loadConfig(): ServerConfig {
     tokens,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
     analysisModel: process.env.OMNI_ANALYSIS_MODEL || 'claude-opus-5',
+    /** 实时自动打标签：新入站消息触发意向重算（有 key 用 Claude，否则用关键词兜底） */
+    autoTag: process.env.OMNI_AUTO_TAG === 'true',
     adminUser: process.env.OMNI_ADMIN_USER || 'admin',
     adminPassword: process.env.OMNI_ADMIN_PASSWORD || 'admin',
     adminTenant: process.env.OMNI_ADMIN_TENANT || tokens[0] || 'dev-token',

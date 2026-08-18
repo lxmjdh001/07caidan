@@ -30,7 +30,8 @@ export default defineConfig({
         HOST: '127.0.0.1',
         OMNI_DATA_DIR: DATA_DIR,
         OMNI_ADMIN_USER: 'admin',
-        OMNI_ADMIN_PASSWORD: 'admin'
+        OMNI_ADMIN_PASSWORD: 'admin',
+        OMNI_AUTO_TAG: 'true'
       }
     },
     {

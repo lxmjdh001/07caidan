@@ -130,6 +130,26 @@ export const emailCodes = sqliteTable('email_codes', {
 })
 
 /**
+ * 会话意向标签（M5 实时自动打标签）。
+ * 新入站消息触发意向重算后落库；会话列表据此显示标签，无需每次现算。
+ * lastInboundAt = 上次分析时最新入站消息时间，用于判断是否需要重打。
+ */
+export const conversationIntent = sqliteTable(
+  'conversation_intent',
+  {
+    tenant: text('tenant').notNull(),
+    conversationId: text('conversation_id').notNull(),
+    level: text('level').notNull().default('unknown'),
+    summary: text('summary').notNull().default(''),
+    signals: text('signals').notNull().default('[]'),
+    suggestedAction: text('suggested_action').notNull().default(''),
+    analyzedAt: integer('analyzed_at').notNull(),
+    lastInboundAt: integer('last_inbound_at').notNull().default(0)
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.conversationId] })]
+)
+
+/**
  * 客户端配置云同步（跨设备漫游）。
  * 每个客户端用户一条；blob 是「非敏感偏好白名单」的 JSON。
  * 红线：绝不存平台账号凭证/会话/代理与登录令牌 —— 那些按设计留在各设备本地。

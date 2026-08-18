@@ -79,7 +79,12 @@
 - [x] 额度计量与支付对接（并入 M11/M12：易支付/PayPal/USDT + 模型积分；Stripe 未做）
 - [x] 管理后台（React + Vite，前后端分离，admin/）：登录、客户/会话列表、聊天记录查看、AI 意向分析
 - [x] 管理后台套餐/用量报表（计费管理五页签）；公告推送未做
-- [ ] 实时/自动打标签（可选升级：新消息触发意向重算）
+- [x] 实时/自动打标签（新消息触发意向重算）
+      conversation_intent 表 + IntentRepo（落库/批量取/needsRetag 节流）+ AutoTagger（sync 后对
+      有新入站的会话非阻塞打标签，maxPerRun 上限）+ StubAnalyzer（关键词零成本，无 key 也能自动打）。
+      开关 OMNI_AUTO_TAG；Claude 按需深度分析结果也落库覆盖关键词标签。
+      会话列表附加 intentLevel，后台聊天记录列表显示高/中/低意向彩色标签。
+      测试：11 条（关键词分级/落库/节流/上限/隔离）；e2e 截图核对后台列表实时标签
 - [ ] 媒体走对象存储（S3/MinIO）
 - [ ] 客户端自动更新（electron-updater）与审计/风控
 

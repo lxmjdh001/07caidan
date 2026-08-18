@@ -176,6 +176,9 @@ input { font-family: inherit; }
 .tag.tg { background: #2aabee1a; color: #2aabee; }
 .tag.line { background: #06c7551a; color: #06c755; }
 .tag.acct { background: var(--panel-alt); color: var(--muted); }
+.tag.intent-high { background: var(--danger-bg); color: var(--danger-text); }
+.tag.intent-medium { background: var(--warn-bg); color: var(--warn-text); }
+.tag.intent-low { background: var(--panel-alt); color: var(--muted); }
 
 /* 聊天区 */
 .chat { flex: 1; display: flex; flex-direction: column; min-width: 0; background: var(--bg); }

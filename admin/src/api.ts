@@ -8,6 +8,8 @@ export interface Conversation {
   title: string
   isGroup: boolean
   lastMessageAt: number
+  /** 意向标签（实时自动打标签结果）；未打标签则不带 */
+  intentLevel?: 'high' | 'medium' | 'low' | 'unknown'
 }
 
 export interface Message {

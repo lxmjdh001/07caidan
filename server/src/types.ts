@@ -11,6 +11,8 @@ export interface SyncConversation {
   /** ad = 平台广告上下文，code = 预填文案追踪码 */
   leadSourceVia?: string
   lastMessageAt: number
+  /** 意向标签等级（会话列表附加，来自实时自动打标签）；未打标签则不带 */
+  intentLevel?: 'high' | 'medium' | 'low' | 'unknown'
 }
 
 /** 客户端同步上来的消息（含译文，媒体以引用形式） */

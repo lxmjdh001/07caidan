@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useI18n } from '../i18n'
 import type { Conversation } from '../api'
-import { CHANNELS, avatarColor } from '../util'
+import { CHANNELS, INTENT_LABEL, avatarColor } from '../util'
 
 interface Props {
   conversations: Conversation[]
@@ -46,6 +46,9 @@ export function ConversationList({ conversations, activeId, onSelect }: Props): 
                 <div className="conv-title">{c.title}</div>
                 <div className="conv-tags">
                   <span className={`tag ${ch.cls}`}>{ch.label}</span>
+                  {c.intentLevel && c.intentLevel !== 'unknown' && (
+                    <span className={`tag intent-${c.intentLevel}`}>{INTENT_LABEL[c.intentLevel]}</span>
+                  )}
                   <span className="tag acct">@{c.accountId}</span>
                   {c.contactId && <span className="tag acct">{c.contactId.replace(/^wa:/, '')}</span>}
                 </div>

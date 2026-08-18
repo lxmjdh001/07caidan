@@ -6,7 +6,9 @@ import { pipeline } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
 import cors from '@fastify/cors'
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
-import { IntentAnalyzer } from './analyzer.ts'
+import { IntentAnalyzer, StubAnalyzer } from './analyzer.ts'
+import { IntentRepo } from './intent-repo.ts'
+import { AutoTagger } from './auto-tagger.ts'
 import { AiClient } from './ai/ai-client.ts'
 import { AiRepo } from './ai/ai-repo.ts'
 import { AuthRepo, type Principal } from './auth-repo.ts'
@@ -81,6 +83,13 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   const analyzer = config.anthropicApiKey
     ? new IntentAnalyzer(config.anthropicApiKey, config.analysisModel)
     : null
+  // 实时自动打标签：新入站消息用关键词分析器（零成本）自动打意向标签；
+  // Claude 深度分析仍走按需按钮，其结果也落库覆盖关键词标签。
+  const intentRepo = new IntentRepo(db)
+  const autoTagger = new AutoTagger(repo, intentRepo, {
+    analyzer: new StubAnalyzer(),
+    enabled: !!config.autoTag
+  })
 
   const app = Fastify({ logger: true, bodyLimit: 64 * 1024 * 1024 })
   // 前后端分离：管理后台是独立前端（admin/），这里开放跨域即可
@@ -712,10 +721,18 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   app.post('/api/sync', async (req, reply) => {
     if (!requireSync(req, reply)) return
     const payload = req.body as SyncPayload
-    const result = repo.ingest(ctxOf(req).tenant, {
+    const tenant = ctxOf(req).tenant
+    const result = repo.ingest(tenant, {
       conversations: payload.conversations ?? [],
       messages: payload.messages ?? []
     })
+    // 实时自动打标签：对本批有入站消息的会话按需重算意向（非阻塞，不拖慢同步）
+    if (autoTagger.active) {
+      const inboundConvs = [
+        ...new Set((payload.messages ?? []).filter((m) => m.direction === 'in').map((m) => m.conversationId))
+      ]
+      if (inboundConvs.length > 0) void autoTagger.tag(tenant, inboundConvs)
+    }
     return { ok: true, ...result }
   })
 
@@ -750,12 +767,15 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   app.get('/api/conversations', async (req, reply) => {
     if (!requirePerm(req, reply, 'conversations:read')) return
     const q = req.query as { limit?: string; offset?: string }
+    const tenant = ctxOf(req).tenant
+    const convs = repo.listConversations(tenant, Number(q.limit) || 100, Number(q.offset) || 0)
+    // 附加已落库的意向标签（实时自动打标签结果），无则不带
+    const levels = intentRepo.levelsFor(tenant, convs.map((c) => c.id))
     return {
-      conversations: repo.listConversations(
-        ctxOf(req).tenant,
-        Number(q.limit) || 100,
-        Number(q.offset) || 0
-      )
+      conversations: convs.map((c) => {
+        const level = levels.get(c.id)
+        return level ? { ...c, intentLevel: level } : c
+      })
     }
   })
 
@@ -1278,8 +1298,14 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (!requirePerm(req, reply, 'analyze:run')) return
     if (!analyzer) return reply.code(501).send({ error: 'AI 分析未配置（缺少 ANTHROPIC_API_KEY）' })
     const id = (req.params as { id: string }).id
-    const messages = repo.listMessages(ctxOf(req).tenant, id, 500)
-    return { analysis: await analyzer.analyze(messages) }
+    const tenant = ctxOf(req).tenant
+    const messages = repo.listMessages(tenant, id, 500)
+    const analysis = await analyzer.analyze(messages)
+    // 按需深度分析的结果也落库，覆盖关键词自动标签（更准）
+    let newestInbound = 0
+    for (const m of messages) if (m.direction === 'in' && m.timestamp > newestInbound) newestInbound = m.timestamp
+    intentRepo.put(tenant, id, analysis, newestInbound)
+    return { analysis }
   })
 
   app.post('/api/analyze/contact/:contactId', async (req, reply) => {

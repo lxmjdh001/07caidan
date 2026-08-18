@@ -99,6 +99,13 @@ export function openDb(dbPath: string): Db {
       blob TEXT NOT NULL DEFAULT '{}', updated_at INTEGER NOT NULL,
       PRIMARY KEY (tenant, user_id)
     );
+    CREATE TABLE IF NOT EXISTS conversation_intent (
+      tenant TEXT NOT NULL, conversation_id TEXT NOT NULL,
+      level TEXT NOT NULL DEFAULT 'unknown', summary TEXT NOT NULL DEFAULT '',
+      signals TEXT NOT NULL DEFAULT '[]', suggested_action TEXT NOT NULL DEFAULT '',
+      analyzed_at INTEGER NOT NULL, last_inbound_at INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (tenant, conversation_id)
+    );
     CREATE TABLE IF NOT EXISTS email_codes (
       email TEXT PRIMARY KEY, code TEXT NOT NULL, expires_at INTEGER NOT NULL
     );

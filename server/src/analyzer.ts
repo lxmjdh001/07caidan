@@ -12,6 +12,51 @@ export interface IntentAnalysis {
   suggestedAction: string
 }
 
+/** 意向分析器统一接口（IntentAnalyzer 走 Claude；StubAnalyzer 走关键词，零成本） */
+export interface Analyzer {
+  analyze(messages: StoredMessage[]): Promise<IntentAnalysis>
+}
+
+/** 高意向关键词（下单/价格/催单等，含中英） */
+const HIGH_INTENT = /买|購|购买|下单|下單|付款|怎么买|怎麼買|多少钱|多少錢|价格|價格|報價|报价|link|下单|buy|price|order|purchase|how much|checkout|pay/i
+/** 中意向：提问/了解 */
+const MEDIUM_INTENT = /吗|嗎|\?|？|有没有|有沒有|可以|请问|請問|了解|咨询|諮詢|详情|詳情|how|what|can you|do you|available/i
+
+/**
+ * 零成本关键词意向分析器。
+ * 没有 ANTHROPIC_API_KEY 也能自动打标签：客户入站消息命中下单/价格类词 → high，
+ * 提问类 → medium，其余 → low，无内容 → unknown。是 Claude 分析的免费降级/兜底。
+ */
+export class StubAnalyzer implements Analyzer {
+  async analyze(messages: StoredMessage[]): Promise<IntentAnalysis> {
+    const inbound = messages
+      .filter((m) => m.direction === 'in')
+      .map((m) => (m.bodyType === 'media' ? (m.caption ?? '') : (m.text ?? '')))
+      .join('\n')
+      .trim()
+    if (!inbound) {
+      return { intentLevel: 'unknown', summary: '暂无客户消息', signals: [], suggestedAction: '主动问候' }
+    }
+    if (HIGH_INTENT.test(inbound)) {
+      return {
+        intentLevel: 'high',
+        summary: '客户提及下单/价格，购买意向强',
+        signals: ['价格/下单意向'],
+        suggestedAction: '尽快报价并引导下单'
+      }
+    }
+    if (MEDIUM_INTENT.test(inbound)) {
+      return {
+        intentLevel: 'medium',
+        summary: '客户在咨询了解，有一定意向',
+        signals: ['咨询/提问'],
+        suggestedAction: '耐心解答，挖掘需求'
+      }
+    }
+    return { intentLevel: 'low', summary: '仅一般互动', signals: [], suggestedAction: '保持跟进' }
+  }
+}
+
 const SCHEMA = {
   type: 'object',
   additionalProperties: false,
