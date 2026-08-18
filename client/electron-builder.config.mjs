@@ -53,6 +53,7 @@ export default {
   },
   linux: {
     target: ['AppImage'],
+    ...(existsSync(join(iconDir, 'icon.png')) ? { icon: join(iconDir, 'icon.png') } : {}),
     category: 'Office'
   }
 }

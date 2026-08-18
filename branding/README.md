@@ -34,3 +34,28 @@ cd server  && BRAND=acme npm start
 
 - 三端读的是**同一份 JSON**，改名只改一处，不会出现"客户端改了后台忘了"
 - 品牌文件不含密钥，可入库；每个贴牌客户一个文件便于 diff
+
+
+## 应用图标（贴牌）
+
+每个品牌一套图标，放在 `branding/<brand>/`：
+
+| 文件 | 用途 |
+| --- | --- |
+| icon.icns | macOS 安装包（electron-builder 自动拾取） |
+| icon.ico | Windows 安装包 |
+| icon.png | Linux AppImage + 开发模式 Dock 图标 |
+
+生成方式（二选一）：
+
+```bash
+# 1）没有设计稿：按品牌 themeColor + logoText 自动生成
+python3 branding/make-icons.py <brand>
+
+# 2）客户提供 logo（≥1024x1024 PNG）：只做格式转换
+python3 branding/make-icons.py <brand> path/to/logo.png
+```
+
+打包时 `BRAND=<brand> npm run dist:mac` 会自动使用对应品牌目录里的图标；
+目录缺失则回落 Electron 默认图标（构建不报错）。
+依赖：`pip3 install pillow`（首次），macOS 自带 iconutil。

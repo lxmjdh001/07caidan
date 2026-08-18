@@ -54,6 +54,17 @@ async function bootstrap(): Promise<void> {
   const userData = app.getPath('userData')
   const baseLogger = initLogging(join(userData, 'logs'))
 
+  // 开发模式 Dock 图标：打包版由 electron-builder 的 icns/ico 接管，
+  // 未打包时手动指到品牌图标（缺失就保持 Electron 默认，不报错）
+  if (!app.isPackaged && process.platform === 'darwin') {
+    const devIcon = join(app.getAppPath(), '..', 'branding', process.env.BRAND || 'default', 'icon.png')
+    try {
+      app.dock?.setIcon(devIcon)
+    } catch {
+      /* 图标缺失或格式不对：忽略 */
+    }
+  }
+
   const settings = new SettingsStore(userData)
   await settings.init()
 
