@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "description": "OmniChat 白牌多平台聚合客服（client / server / admin）",
   "scripts": {
-    "verify:brands": "node scripts/verify-brands.mjs"
+    "verify:brands": "node scripts/verify-brands.mjs",
+    "verify:i18n": "node scripts/i18n-coverage.mjs"
   }
 }
