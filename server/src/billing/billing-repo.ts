@@ -20,6 +20,8 @@ export interface Plan {
   periodUnit: PeriodUnit
   periodCount: number
   maxAccounts: number
+  /** Markdown 描述；空 = 不显示 */
+  description: string
   enabled: boolean
   sortOrder: number
   createdAt: number
@@ -31,6 +33,7 @@ export interface PlanInput {
   periodUnit: PeriodUnit
   periodCount?: number
   maxAccounts: number
+  description?: string
   enabled?: boolean
   sortOrder?: number
 }
@@ -117,6 +120,7 @@ export class BillingRepo {
       periodUnit: input.periodUnit,
       periodCount: Math.max(1, Math.floor(input.periodCount ?? 1)),
       maxAccounts: Math.max(0, Math.floor(input.maxAccounts)),
+      description: (input.description ?? '').slice(0, 4000),
       enabled: input.enabled === false ? 0 : 1,
       sortOrder: input.sortOrder ?? 0,
       createdAt: Date.now()
@@ -157,6 +161,7 @@ export class BillingRepo {
       set.periodCount = Math.max(1, Math.floor(patch.periodCount))
     }
     if (patch.maxAccounts !== undefined) set.maxAccounts = Math.max(0, Math.floor(patch.maxAccounts))
+    if (patch.description !== undefined) set.description = patch.description.slice(0, 4000)
     if (patch.enabled !== undefined) set.enabled = patch.enabled ? 1 : 0
     if (patch.sortOrder !== undefined) set.sortOrder = patch.sortOrder
     if (Object.keys(set).length === 0) return true
@@ -649,6 +654,7 @@ function toPlan(r: typeof plans.$inferSelect): Plan {
     periodUnit: r.periodUnit as PeriodUnit,
     periodCount: r.periodCount,
     maxAccounts: r.maxAccounts,
+    description: r.description,
     enabled: r.enabled === 1,
     sortOrder: r.sortOrder,
     createdAt: r.createdAt

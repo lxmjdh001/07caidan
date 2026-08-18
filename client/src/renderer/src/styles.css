@@ -2239,3 +2239,17 @@ body {
   font-weight: 600;
   color: var(--accent);
 }
+
+/* ── Markdown 文案（套餐描述） ── */
+.md { font-size: 13px; line-height: 1.6; color: var(--text); text-align: start; }
+.md p { margin: 4px 0; }
+.md h3, .md h4, .md h5 { margin: 8px 0 4px; }
+.md ul, .md ol { margin: 4px 0; padding-inline-start: 18px; }
+.md code {
+  background: var(--panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 12px;
+}
+.md a { color: var(--accent); }

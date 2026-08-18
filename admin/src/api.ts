@@ -102,6 +102,7 @@ export interface Plan {
   enabled: boolean
   sortOrder: number
   createdAt: number
+  description?: string
 }
 
 export interface PayChannel {

@@ -88,6 +88,7 @@ function PlansTab({ client }: Props): React.JSX.Element {
   const [unit, setUnit] = useState<string>('month')
   const [count, setCount] = useState('1')
   const [maxAccounts, setMaxAccounts] = useState('10')
+  const [desc, setDesc] = useState('')
 
   const load = useCallback(async () => {
     try {
@@ -111,9 +112,11 @@ function PlansTab({ client }: Props): React.JSX.Element {
       priceCents: cents,
       periodUnit: unit as Plan['periodUnit'],
       periodCount: Number(count) || 1,
-      maxAccounts: Number(maxAccounts) || 1
+      maxAccounts: Number(maxAccounts) || 1,
+      description: desc
     })
     setName('')
+    setDesc('')
     await load()
   }
 
@@ -156,6 +159,15 @@ function PlansTab({ client }: Props): React.JSX.Element {
             {t('billing.create')}
           </button>
         </div>
+        <label className="block-label">
+          <span>{t('billing.planDesc')}</span>
+          <textarea
+            rows={4}
+            value={desc}
+            placeholder={t('billing.planDescHint')}
+            onChange={(e) => setDesc(e.target.value)}
+          />
+        </label>
         {err && <p className="err">{err}</p>}
       </section>
 
@@ -171,6 +183,7 @@ function PlansTab({ client }: Props): React.JSX.Element {
                 <th className="num">{t('billing.priceUsd')}</th>
                 <th>{t('billing.period')}</th>
                 <th className="num">{t('billing.maxAccounts')}</th>
+                <th>{t('billing.planDesc')}</th>
                 <th>{t('billing.enabled')}</th>
               </tr>
             </thead>
@@ -184,6 +197,20 @@ function PlansTab({ client }: Props): React.JSX.Element {
                     {t(`billing.unit.${p.periodUnit}` as 'billing.unit.month')}
                   </td>
                   <td className="num">{p.maxAccounts}</td>
+                  <td className="desc-cell" title={p.description || ''}>
+                    <span>{(p.description || '').slice(0, 40) || '—'}</span>
+                    <button
+                      className="ghost small"
+                      onClick={async () => {
+                        const next = window.prompt(t('billing.planDescPrompt'), p.description || '')
+                        if (next === null) return
+                        await client.updatePlan(p.id, { description: next })
+                        await load()
+                      }}
+                    >
+                      {t('common.edit')}
+                    </button>
+                  </td>
                   <td>
                     <button
                       className="ghost small"

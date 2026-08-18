@@ -99,6 +99,7 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
       periodUnit: unit,
       periodCount: Number(b.periodCount ?? 1),
       maxAccounts: Number(b.maxAccounts ?? 1),
+      description: typeof b.description === 'string' ? b.description : '',
       enabled: b.enabled !== false,
       sortOrder: Number(b.sortOrder ?? 0)
     })

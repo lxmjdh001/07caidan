@@ -389,3 +389,9 @@ input { font-family: inherit; }
 .row-on {
   background: var(--bg-2, rgba(127, 127, 127, 0.1));
 }
+
+.block-label { display: block; margin-top: 10px; }
+.block-label span { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.block-label textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.desc-cell { max-width: 220px; }
+.desc-cell span { display: inline-block; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; margin-inline-end: 6px; }

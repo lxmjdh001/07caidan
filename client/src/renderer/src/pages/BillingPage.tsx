@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { errText } from '../errors'
+import { Markdown } from '../components/Markdown'
 import { useI18n } from '../i18n'
 
 const api = window.omni
@@ -12,6 +13,7 @@ interface Plan {
   periodUnit: string
   periodCount: number
   maxAccounts: number
+  description?: string
 }
 
 interface PayChannel {
@@ -359,6 +361,7 @@ function PlansTab({ me, onChanged }: { me: Me | null; onChanged: () => Promise<v
               <p className="field-hint">
                 {t('bill.maxAccounts')} {p.maxAccounts}
               </p>
+              {p.description ? <Markdown text={p.description} /> : null}
               <button
                 type="button"
                 className="primary-btn"

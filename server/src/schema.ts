@@ -245,6 +245,8 @@ export const plans = sqliteTable(
     periodCount: integer('period_count').notNull().default(1),
     /** 可登录的平台账号数上限 */
     maxAccounts: integer('max_accounts').notNull().default(1),
+    /** 套餐描述（Markdown 源文本，客户端渲染） */
+    description: text('description').notNull().default(''),
     enabled: integer('enabled').notNull().default(1),
     sortOrder: integer('sort_order').notNull().default(0),
     createdAt: integer('created_at').notNull()
