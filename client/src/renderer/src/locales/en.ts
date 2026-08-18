@@ -2,6 +2,8 @@ import type { MessageKey } from './zh-CN'
 
 /** English —— 兜底语言：任何语言缺 key 时用这里的文案 */
 export const en: Record<MessageKey, string> = {
+  'chat.intentHigh': 'High intent',
+  'chat.intentMedium': 'Med. intent',
   'app.name': 'OmniChat',
   'sidebar.title': 'Chats',
   'sidebar.search': 'Search chats…',

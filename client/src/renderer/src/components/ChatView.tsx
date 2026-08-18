@@ -7,6 +7,7 @@ import { useI18n } from '../i18n'
 import { formatBubbleTime } from '../time'
 import { Avatar } from './Avatar'
 import { ChannelTag } from './ChannelTag'
+import { localIntent } from '../local-intent'
 
 interface Props {
   conversation: Conversation | null
@@ -309,6 +310,9 @@ export function ChatView({
     }
   }
 
+  // 本地关键词意向：让客服一眼看出当前客户购买意向（仅高/中提示，低/无不打扰）
+  const intent = localIntent(messages)
+
   return (
     <div className="chat">
       <header className="chat-header">
@@ -322,6 +326,11 @@ export function ChatView({
           <div className="chat-title">{conversation.title}</div>
           <div className="chat-subtitle">
             <ChannelTag kind={conversation.channel} />
+            {intent && intent !== 'low' && (
+              <span className={`intent-chip intent-${intent}`}>
+                {t(intent === 'high' ? 'chat.intentHigh' : 'chat.intentMedium')}
+              </span>
+            )}
             {conversation.contactId && (
               <span className="contact-id">{conversation.contactId.replace(/^wa:/, '')}</span>
             )}

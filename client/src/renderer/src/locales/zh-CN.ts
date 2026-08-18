@@ -1,5 +1,7 @@
 /** 简体中文（基准语言：所有 key 以此为准，其他语言缺失时回落英语） */
 export const zhCN = {
+  'chat.intentHigh': '高意向',
+  'chat.intentMedium': '中意向',
   'app.name': 'OmniChat',
   'sidebar.title': '消息',
   'sidebar.search': '搜索会话…',

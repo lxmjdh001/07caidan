@@ -2,6 +2,8 @@ import type { MessageKey } from './zh-CN'
 
 /** 日本語 */
 export const ja: Partial<Record<MessageKey, string>> = {
+  'chat.intentHigh': '意欲 高',
+  'chat.intentMedium': '意欲 中',
   // ── 補完（約200件、ビジネス日本語）──
   'auth.doReset': 'パスワードをリセット',
   'auth.forgot': 'パスワードをお忘れですか',

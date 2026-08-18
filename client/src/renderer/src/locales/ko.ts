@@ -2,6 +2,8 @@ import type { MessageKey } from './zh-CN'
 
 /** 한국어 */
 export const ko: Partial<Record<MessageKey, string>> = {
+  'chat.intentHigh': '관심 높음',
+  'chat.intentMedium': '관심 보통',
   // ── 보완(약 200개, 비즈니스 한국어) ──
   'auth.doReset': '비밀번호 재설정',
   'auth.forgot': '비밀번호를 잊으셨나요',

@@ -2,6 +2,8 @@ import type { MessageKey } from './zh-CN'
 
 /** 繁體中文（台灣 / 香港）。用詞依當地習慣，非簡轉繁直譯。 */
 export const zhTW: Partial<Record<MessageKey, string>> = {
+  'chat.intentHigh': '高意向',
+  'chat.intentMedium': '中意向',
   // ── 補齊（原缺約 200 條，依台灣用詞）──
   'auth.doReset': '重設密碼',
   'auth.forgot': '忘記密碼',
