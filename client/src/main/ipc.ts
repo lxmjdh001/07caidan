@@ -88,7 +88,9 @@ const BILLING_METHODS: Record<string, true> = {
   deleteTeamMember: true,
   listTeamRoles: true,
   createTeamRole: true,
-  deleteTeamRole: true
+  deleteTeamRole: true,
+  listDevices: true,
+  revokeDevice: true
 }
 
 /** 渲染进程可调用的全部主进程能力，集中在此注册 */

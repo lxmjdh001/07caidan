@@ -140,6 +140,15 @@ export class BillingApi {
     return this.request('GET', '/api/team/roles')
   }
 
+  // ── 登录设备（一订阅限 N 台 + 远程下线）──
+  listDevices(): Promise<unknown> {
+    return this.request('GET', '/api/client/devices')
+  }
+
+  revokeDevice(deviceId: string): Promise<unknown> {
+    return this.request('POST', '/api/client/devices/revoke', { deviceId })
+  }
+
   createTeamRole(body: { name: string; permissions: string[] }): Promise<unknown> {
     return this.request('POST', '/api/team/roles', body)
   }

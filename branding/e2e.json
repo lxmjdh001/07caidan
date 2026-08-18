@@ -1,0 +1,11 @@
+{
+  "appName": "OmniChat E2E",
+  "shortName": "omnichat-e2e",
+  "logoText": "OC",
+  "company": "OmniChat",
+  "website": "",
+  "supportEmail": "",
+  "themeColor": "#22a06b",
+  "dashboardTitle": "引流看板",
+  "apiUrl": "http://127.0.0.1:8798"
+}

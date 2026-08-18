@@ -20,6 +20,15 @@ interface Role {
   permissions: string[]
 }
 
+interface Device {
+  deviceId: string
+  deviceName: string
+  lastSeenAt: number
+  firstSeenAt: number
+  sessions: number
+  current: boolean
+}
+
 /**
  * 团队管理（老板视角）：客服子账号 + 自定义角色。
  *
@@ -30,6 +39,7 @@ export function TeamPage(): React.JSX.Element {
   const { t } = useI18n()
   const [members, setMembers] = useState<Member[]>([])
   const [roles, setRoles] = useState<Role[]>([])
+  const [devices, setDevices] = useState<Device[]>([])
   const [allPerms, setAllPerms] = useState<string[]>([])
   const [myId, setMyId] = useState<number | null>(null)
   const [err, setErr] = useState('')
@@ -39,13 +49,15 @@ export function TeamPage(): React.JSX.Element {
 
   const reload = useCallback(async () => {
     try {
-      const [m, r] = await Promise.all([
+      const [m, r, d] = await Promise.all([
         api.billing<{ members: Member[] }>('listTeamMembers'),
-        api.billing<{ roles: Role[]; permissions: string[] }>('listTeamRoles')
+        api.billing<{ roles: Role[]; permissions: string[] }>('listTeamRoles'),
+        api.billing<{ devices: Device[] }>('listDevices')
       ])
       setMembers(m.members)
       setRoles(r.roles)
       setAllPerms(r.permissions)
+      setDevices(d.devices)
       setErr('')
     } catch (e) {
       setErr(errText(e))
@@ -227,6 +239,55 @@ export function TeamPage(): React.JSX.Element {
                   </button>
                 </div>
               ))
+            )}
+          </section>
+
+          {/* 登录设备（一订阅限 N 台 + 远程下线）*/}
+          <section className="form-card">
+            <div className="card-head-row">
+              <h2>{t('team.devices')}</h2>
+            </div>
+            <p className="form-hint">{t('team.devicesHint')}</p>
+            {devices.length === 0 ? (
+              <p className="form-hint">{t('team.noDevices')}</p>
+            ) : (
+              <table className="data-table team-table">
+                <thead>
+                  <tr>
+                    <th>{t('team.deviceName')}</th>
+                    <th>{t('team.deviceLastSeen')}</th>
+                    <th className="num">{t('team.deviceSessions')}</th>
+                    <th aria-label="actions"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {devices.map((d) => (
+                    <tr key={d.deviceId}>
+                      <td className="team-login-cell">
+                        {d.deviceName}
+                        {d.current && <span className="team-disabled-tag">{t('team.deviceCurrent')}</span>}
+                      </td>
+                      <td>{new Date(d.lastSeenAt).toLocaleString()}</td>
+                      <td className="num">{d.sessions}</td>
+                      <td className="team-actions">
+                        <button
+                          type="button"
+                          className="danger-btn"
+                          disabled={busy || d.current}
+                          title={d.current ? t('team.deviceCurrentHint') : ''}
+                          onClick={() => {
+                            if (!window.confirm(t('team.deviceRevokeConfirm').replace('{name}', d.deviceName)))
+                              return
+                            void run(() => api.billing('revokeDevice', d.deviceId))
+                          }}
+                        >
+                          {t('team.deviceRevoke')}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </section>
         </div>
