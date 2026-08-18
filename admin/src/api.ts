@@ -99,6 +99,8 @@ export interface Plan {
   periodUnit: 'month' | 'quarter' | 'half_year' | 'year' | 'day'
   periodCount: number
   maxAccounts: number
+  /** 可同时登录的设备数上限；0 = 不限 */
+  maxDevices?: number
   enabled: boolean
   sortOrder: number
   createdAt: number

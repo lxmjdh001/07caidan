@@ -2,6 +2,12 @@ import type { AuthResult, AuthState } from '@shared/ipc'
 import type { Logger } from '../core/logger'
 import { noopLogger } from '../core/logger'
 import type { SettingsStore } from '../core/settings-store'
+import { deviceId, deviceName } from '../core/device-id'
+
+/** 本机设备标识，随登录/注册上报供后台做「一订阅限 N 台」与远程下线 */
+function deviceFields(): { deviceId: string; deviceName: string } {
+  return { deviceId: deviceId(), deviceName: deviceName() }
+}
 
 /**
  * 客户端账号登录（在主进程完成，令牌存入设置的 sync 段并自动启用同步）。
@@ -82,7 +88,12 @@ export class ClientAuth {
     password: string,
     code?: string
   ): Promise<AuthResult> {
-    return this.authFlow(serverUrl, '/api/client/register', { email, password, code }, email)
+    return this.authFlow(
+      serverUrl,
+      '/api/client/register',
+      { email, password, code, ...deviceFields() },
+      email
+    )
   }
 
   async forgotPassword(serverUrl: string, email: string): Promise<AuthResult> {
@@ -99,7 +110,12 @@ export class ClientAuth {
   }
 
   async login(serverUrl: string, email: string, password: string): Promise<AuthResult> {
-    return this.authFlow(serverUrl, '/api/client/login', { email, password }, email)
+    return this.authFlow(
+      serverUrl,
+      '/api/client/login',
+      { email, password, ...deviceFields() },
+      email
+    )
   }
 
   async logout(): Promise<void> {

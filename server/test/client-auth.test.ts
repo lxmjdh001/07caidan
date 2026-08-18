@@ -58,8 +58,8 @@ describe('ClientAuthRepo', () => {
     assert.equal(ca.login('a@b.com', 'wrong'), null)
     assert.equal(ca.login('none@b.com', 'secret'), null)
     const r = ca.login('a@b.com', 'secret')
-    assert.ok(r)
-    assert.equal(ca.resolve(r!.token)?.email, 'a@b.com')
+    assert.ok(r && 'token' in r)
+    if (r && 'token' in r) assert.equal(ca.resolve(r.token)?.email, 'a@b.com')
   })
 
   test('登出后令牌失效', () => {

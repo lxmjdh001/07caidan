@@ -112,7 +112,14 @@ export const clientRoles = sqliteTable(
 export const clientSessions = sqliteTable('client_sessions', {
   token: text('token').primaryKey(),
   userId: integer('user_id').notNull(),
-  expiresAt: integer('expires_at').notNull()
+  expiresAt: integer('expires_at').notNull(),
+  /** 设备指纹（客户端 device-id.ts 派生）；老会话为空，不计入设备数 */
+  deviceId: text('device_id'),
+  /** 人类可读设备名（主机名/系统），仅用于展示 */
+  deviceName: text('device_name'),
+  /** 最近活跃时间（resolve 时节流刷新） */
+  lastSeenAt: integer('last_seen_at'),
+  createdAt: integer('created_at')
 })
 
 /** 邮箱验证码 */
@@ -249,6 +256,8 @@ export const plans = sqliteTable(
     periodCount: integer('period_count').notNull().default(1),
     /** 可登录的平台账号数上限 */
     maxAccounts: integer('max_accounts').notNull().default(1),
+    /** 可同时登录的设备数上限；0 = 不限 */
+    maxDevices: integer('max_devices').notNull().default(0),
     /** 套餐描述（Markdown 源文本，客户端渲染） */
     description: text('description').notNull().default(''),
     enabled: integer('enabled').notNull().default(1),

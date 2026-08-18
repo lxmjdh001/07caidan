@@ -64,6 +64,8 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   const lineRelay = new LineRelay(db)
   const campaignRepo = new CampaignRepo(db)
   const billingRepo = new BillingRepo(db)
+  // 设备上限来自计费主体（老板）当前订阅的套餐；注入回调避免 auth 硬依赖 billing
+  clientAuth.deviceQuotaResolver = (ownerId) => billingRepo.deviceQuota(config.clientTenant, ownerId)
   const orderRepo = new OrderRepo(db, billingRepo)
   const channelRepo = new ChannelRepo(db)
   const aiRepo = new AiRepo(db, billingRepo)
@@ -333,14 +335,21 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   })
 
   app.post('/api/client/register', async (req, reply) => {
-    const b = (req.body ?? {}) as { email?: string; password?: string; code?: string }
+    const b = (req.body ?? {}) as {
+      email?: string
+      password?: string
+      code?: string
+      deviceId?: string
+      deviceName?: string
+    }
     if (!b.email || !b.password) return reply.code(400).send({ error: '邮箱和密码必填' })
     const r = clientAuth.register(
       config.clientTenant,
       b.email,
       b.password,
       b.code,
-      config.requireEmailVerify
+      config.requireEmailVerify,
+      { deviceId: b.deviceId, deviceName: b.deviceName }
     )
     if (!r.ok) return reply.code(400).send({ error: r.error })
     return {
@@ -355,10 +364,24 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   })
 
   app.post('/api/client/login', async (req, reply) => {
-    const b = (req.body ?? {}) as { email?: string; password?: string }
+    const b = (req.body ?? {}) as {
+      email?: string
+      password?: string
+      deviceId?: string
+      deviceName?: string
+    }
     if (!b.email || !b.password) return reply.code(400).send({ error: '邮箱和密码必填' })
-    const r = clientAuth.login(b.email, b.password)
+    const r = clientAuth.login(b.email, b.password, { deviceId: b.deviceId, deviceName: b.deviceName })
     if (!r) return reply.code(401).send({ error: '邮箱或密码错误' })
+    // 设备数超限：给出当前设备列表，让用户远程下线其一后再登录
+    if ('deviceLimit' in r) {
+      return reply.code(403).send({
+        error: '登录设备数已达套餐上限，请先在其它设备退出或远程下线',
+        code: 'device_limit',
+        maxDevices: r.maxDevices,
+        devices: r.devices
+      })
+    }
     return {
       token: r.token,
       user: {
@@ -368,6 +391,22 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
         permissions: r.user.permissions
       }
     }
+  })
+
+  // ── 设备管理（远程下线）：任何已登录客户端用户可管理自己计费主体的设备 ──
+  app.get('/api/client/devices', async (req, reply) => {
+    const ctx = ctxOf(req)
+    if (!ctx.clientUser) return reply.code(403).send({ error: '需要客户端账号登录' })
+    return { devices: clientAuth.listDevices(ctx.clientUser, bearer(req) ?? undefined) }
+  })
+
+  app.post('/api/client/devices/revoke', async (req, reply) => {
+    const ctx = ctxOf(req)
+    if (!ctx.clientUser) return reply.code(403).send({ error: '需要客户端账号登录' })
+    const b = (req.body ?? {}) as { deviceId?: string }
+    if (!b.deviceId) return reply.code(400).send({ error: 'deviceId 必填' })
+    const revoked = clientAuth.revokeDevice(ctx.clientUser, b.deviceId)
+    return { ok: true, revoked }
   })
 
   app.post('/api/client/logout', async (req) => {

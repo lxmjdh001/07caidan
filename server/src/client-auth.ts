@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { and, eq, lt } from 'drizzle-orm'
+import { and, eq, gt, inArray, isNotNull, lt } from 'drizzle-orm'
 import { hashPassword, newSessionToken, verifyPassword } from './auth.ts'
 import type { Db } from './db.ts'
 import { randomUUID } from 'node:crypto'
@@ -46,9 +46,38 @@ export type RegisterResult =
   | { ok: true; token: string; user: ClientUser }
   | { ok: false; error: string }
 
+/** 登录时客户端上报的设备信息（都可空，老客户端不带） */
+export interface DeviceInfo {
+  deviceId?: string
+  deviceName?: string
+}
+
+/** 一台设备的聚合视图（远程下线用；不含令牌） */
+export interface DeviceSummary {
+  deviceId: string
+  deviceName: string
+  lastSeenAt: number
+  firstSeenAt: number
+  /** 该设备当前活跃会话数 */
+  sessions: number
+  /** 是否为发起本次请求的设备 */
+  current: boolean
+}
+
+export type LoginResult =
+  | { token: string; user: ClientUser }
+  | null
+  | { deviceLimit: true; maxDevices: number; devices: DeviceSummary[] }
+
 /** 客户端用户（桌面端账号）认证：注册/登录/邮箱验证码。 */
 export class ClientAuthRepo {
   private readonly db: Db
+
+  /**
+   * 设备上限解析器：给出计费主体（老板）的设备数上限，0 = 不限。
+   * 由 server 注入 billing.deviceQuota，避免 auth 硬依赖 billing。
+   */
+  deviceQuotaResolver?: (billingOwnerId: number) => number
 
   constructor(db: Db) {
     this.db = db
@@ -87,7 +116,8 @@ export class ClientAuthRepo {
     email: string,
     password: string,
     code: string | undefined,
-    requireVerify: boolean
+    requireVerify: boolean,
+    device?: DeviceInfo
   ): RegisterResult {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
       return { ok: false, error: '邮箱格式不正确' }
@@ -120,17 +150,42 @@ export class ClientAuthRepo {
       role: 'boss',
       permissions: [...CLIENT_ROLE_PRESETS.boss!]
     }
-    return { ok: true, token: this.createSession(user.id), user }
+    // 新注册的老板尚无订阅，不做设备限制，只记录设备信息
+    return { ok: true, token: this.createSession(user.id, device), user }
   }
 
-  login(email: string, password: string): { token: string; user: ClientUser } | null {
+  login(email: string, password: string, device?: DeviceInfo): LoginResult {
     const normalized = email.trim().toLowerCase()
     const row = this.db.select().from(clientUsers).where(eq(clientUsers.email, normalized)).get()
     if (!row) return null
     if (!verifyPassword(password, row.passwordHash)) return null
     // 被停用的子账号不能登录 —— 客服离职后老板一键停用即可
     if (row.enabled !== 1) return null
-    return { token: this.createSession(row.id), user: this.hydrate(row) }
+
+    const user = this.hydrate(row)
+    // 设备上限：仅在客户端上报了 deviceId 且计费主体设了正数上限时生效
+    const limit = this.enforceDeviceLimit(user, device?.deviceId)
+    if (limit) return limit
+
+    return { token: this.createSession(row.id, device), user }
+  }
+
+  /**
+   * 计费主体（老板）名下所有用户共享同一设备池。返回被拒信息或 null（放行）。
+   * 已知设备重复登录不占新名额；未知设备在已达上限时被拒，改由远程下线腾位。
+   */
+  private enforceDeviceLimit(
+    user: ClientUser,
+    deviceId: string | undefined
+  ): { deviceLimit: true; maxDevices: number; devices: DeviceSummary[] } | null {
+    if (!deviceId) return null // 无法识别的设备不纳入管控（老客户端），放行
+    const ownerId = user.ownerId ?? user.id
+    const quota = this.deviceQuotaResolver?.(ownerId) ?? 0
+    if (quota <= 0) return null // 0 = 不限
+    const active = this.activeDeviceIds(this.groupUserIds(ownerId))
+    if (active.has(deviceId)) return null // 已在册设备，直接放行
+    if (active.size < quota) return null // 还有名额
+    return { deviceLimit: true, maxDevices: quota, devices: this.listDevicesForOwner(ownerId) }
   }
 
   /** 解析会话令牌 → 客户端用户（同步鉴权用）；无效/过期返回 null */
@@ -139,7 +194,111 @@ export class ClientAuthRepo {
     if (!s || s.expiresAt < Date.now()) return null
     const u = this.db.select().from(clientUsers).where(eq(clientUsers.id, s.userId)).get()
     if (!u || u.enabled !== 1) return null
+    // 节流刷新最近活跃（>60s 才写，避免每个请求都落盘）
+    const now = Date.now()
+    if (s.deviceId && (s.lastSeenAt == null || now - s.lastSeenAt > 60_000)) {
+      this.db
+        .update(clientSessions)
+        .set({ lastSeenAt: now })
+        .where(eq(clientSessions.token, token))
+        .run()
+    }
     return this.hydrate(u)
+  }
+
+  // ══════════ 设备管理（一个订阅限 N 台 + 远程下线） ══════════
+
+  /** 计费主体名下的全部用户 id（老板本人 + 其子账号），共享设备池 */
+  private groupUserIds(ownerId: number): number[] {
+    const subs = this.db
+      .select({ id: clientUsers.id })
+      .from(clientUsers)
+      .where(eq(clientUsers.ownerId, ownerId))
+      .all()
+      .map((r) => r.id)
+    return [ownerId, ...subs]
+  }
+
+  /** 一组用户当前活跃（未过期）会话里出现过的去重 deviceId 集合 */
+  private activeDeviceIds(userIds: number[]): Set<string> {
+    if (userIds.length === 0) return new Set()
+    const rows = this.db
+      .select({ deviceId: clientSessions.deviceId })
+      .from(clientSessions)
+      .where(
+        and(
+          inArray(clientSessions.userId, userIds),
+          gt(clientSessions.expiresAt, Date.now()),
+          isNotNull(clientSessions.deviceId)
+        )
+      )
+      .all()
+    return new Set(rows.map((r) => r.deviceId!).filter(Boolean))
+  }
+
+  /** 计费主体的设备列表（聚合去重，不含令牌） */
+  private listDevicesForOwner(ownerId: number, currentToken?: string): DeviceSummary[] {
+    const now = Date.now()
+    const rows = this.db
+      .select()
+      .from(clientSessions)
+      .where(
+        and(
+          inArray(clientSessions.userId, this.groupUserIds(ownerId)),
+          gt(clientSessions.expiresAt, now),
+          isNotNull(clientSessions.deviceId)
+        )
+      )
+      .all()
+    const byDevice = new Map<string, DeviceSummary>()
+    for (const r of rows) {
+      const id = r.deviceId!
+      const seen = r.lastSeenAt ?? r.createdAt ?? 0
+      const first = r.createdAt ?? seen
+      const prev = byDevice.get(id)
+      if (!prev) {
+        byDevice.set(id, {
+          deviceId: id,
+          deviceName: r.deviceName ?? '未知设备',
+          lastSeenAt: seen,
+          firstSeenAt: first,
+          sessions: 1,
+          current: r.token === currentToken
+        })
+      } else {
+        prev.sessions += 1
+        if (seen > prev.lastSeenAt) {
+          prev.lastSeenAt = seen
+          if (r.deviceName) prev.deviceName = r.deviceName
+        }
+        if (first < prev.firstSeenAt) prev.firstSeenAt = first
+        if (r.token === currentToken) prev.current = true
+      }
+    }
+    return [...byDevice.values()].sort((a, b) => b.lastSeenAt - a.lastSeenAt)
+  }
+
+  /** 列出「我」所属计费主体的全部设备（当前设备标记 current） */
+  listDevices(user: ClientUser, currentToken?: string): DeviceSummary[] {
+    return this.listDevicesForOwner(user.ownerId ?? user.id, currentToken)
+  }
+
+  /**
+   * 远程下线：吊销某设备在本计费主体名下的全部会话。
+   * 只能下线同一计费主体的设备（跨老板隔离）。返回被吊销的会话数。
+   */
+  revokeDevice(user: ClientUser, deviceId: string): number {
+    if (!deviceId) return 0
+    const res = this.db
+      .delete(clientSessions)
+      .where(
+        and(
+          inArray(clientSessions.userId, this.groupUserIds(user.ownerId ?? user.id)),
+          eq(clientSessions.deviceId, deviceId)
+        )
+      )
+      .run()
+    return res.changes
   }
 
   /** 补齐有效权限：内置预设或老板自定义角色 ∪ 直接分配 */
@@ -455,11 +614,20 @@ export class ClientAuthRepo {
     this.db.delete(clientSessions).where(eq(clientSessions.token, token)).run()
   }
 
-  private createSession(userId: number): string {
+  private createSession(userId: number, device?: DeviceInfo): string {
     const token = newSessionToken()
+    const now = Date.now()
     this.db
       .insert(clientSessions)
-      .values({ token, userId, expiresAt: Date.now() + SESSION_TTL_MS })
+      .values({
+        token,
+        userId,
+        expiresAt: now + SESSION_TTL_MS,
+        deviceId: device?.deviceId?.slice(0, 128) ?? null,
+        deviceName: device?.deviceName?.slice(0, 128) ?? null,
+        lastSeenAt: now,
+        createdAt: now
+      })
       .run()
     return token
   }

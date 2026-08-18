@@ -88,6 +88,7 @@ function PlansTab({ client }: Props): React.JSX.Element {
   const [unit, setUnit] = useState<string>('month')
   const [count, setCount] = useState('1')
   const [maxAccounts, setMaxAccounts] = useState('10')
+  const [maxDevices, setMaxDevices] = useState('0')
   const [desc, setDesc] = useState('')
   /** 正在编辑描述的套餐（弹窗多行编辑，预填当前内容） */
   const [descEdit, setDescEdit] = useState<Plan | null>(null)
@@ -115,6 +116,7 @@ function PlansTab({ client }: Props): React.JSX.Element {
       periodUnit: unit as Plan['periodUnit'],
       periodCount: Number(count) || 1,
       maxAccounts: Number(maxAccounts) || 1,
+      maxDevices: Math.max(0, Number(maxDevices) || 0),
       description: desc
     })
     setName('')
@@ -157,6 +159,15 @@ function PlansTab({ client }: Props): React.JSX.Element {
               style={{ width: 70 }}
             />
           </label>
+          <label>
+            <span>{t('billing.maxDevices')}</span>
+            <input
+              value={maxDevices}
+              onChange={(e) => setMaxDevices(e.target.value)}
+              style={{ width: 70 }}
+              title={t('billing.maxDevicesHint')}
+            />
+          </label>
           <button className="primary" onClick={() => void create()}>
             {t('billing.create')}
           </button>
@@ -185,6 +196,7 @@ function PlansTab({ client }: Props): React.JSX.Element {
                 <th className="num">{t('billing.priceUsd')}</th>
                 <th>{t('billing.period')}</th>
                 <th className="num">{t('billing.maxAccounts')}</th>
+                <th className="num">{t('billing.maxDevices')}</th>
                 <th>{t('billing.planDesc')}</th>
                 <th>{t('billing.enabled')}</th>
               </tr>
@@ -199,6 +211,7 @@ function PlansTab({ client }: Props): React.JSX.Element {
                     {t(`billing.unit.${p.periodUnit}` as 'billing.unit.month')}
                   </td>
                   <td className="num">{p.maxAccounts}</td>
+                  <td className="num">{p.maxDevices ? p.maxDevices : t('billing.unlimited')}</td>
                   <td className="desc-cell" title={p.description || ''}>
                     <span>{(p.description || '').slice(0, 40) || '—'}</span>
                     <button className="ghost small" onClick={() => setDescEdit(p)}>

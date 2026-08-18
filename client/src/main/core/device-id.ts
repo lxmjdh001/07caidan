@@ -36,3 +36,13 @@ export function deviceId(): string {
 export function osInfo(): { osType: string; osVersion: string } {
   return { osType: process.platform, osVersion: os.release() }
 }
+
+/** 人类可读的设备名（远程下线列表里展示，方便用户认出哪台是哪台） */
+const PLATFORM_LABEL: Record<string, string> = {
+  darwin: 'macOS',
+  win32: 'Windows',
+  linux: 'Linux'
+}
+export function deviceName(): string {
+  return `${os.hostname()} · ${PLATFORM_LABEL[process.platform] ?? process.platform}`
+}

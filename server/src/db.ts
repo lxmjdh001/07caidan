@@ -91,7 +91,8 @@ export function openDb(dbPath: string): Db {
       PRIMARY KEY (tenant, user_id)
     );
     CREATE TABLE IF NOT EXISTS client_sessions (
-      token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL
+      token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL,
+      device_id TEXT, device_name TEXT, last_seen_at INTEGER, created_at INTEGER
     );
     CREATE TABLE IF NOT EXISTS email_codes (
       email TEXT PRIMARY KEY, code TEXT NOT NULL, expires_at INTEGER NOT NULL
@@ -148,6 +149,7 @@ export function openDb(dbPath: string): Db {
       period_unit TEXT NOT NULL DEFAULT 'month',
       period_count INTEGER NOT NULL DEFAULT 1,
       max_accounts INTEGER NOT NULL DEFAULT 1,
+      max_devices INTEGER NOT NULL DEFAULT 0,
       description TEXT NOT NULL DEFAULT '',
       enabled INTEGER NOT NULL DEFAULT 1,
       sort_order INTEGER NOT NULL DEFAULT 0,
@@ -328,7 +330,12 @@ function migrate(sqlite: BetterSqlite3.Database): void {
     ['client_users', 'owner_id', 'INTEGER'],
     ['client_users', 'role', "TEXT NOT NULL DEFAULT 'boss'"],
     ['client_users', 'permissions', "TEXT NOT NULL DEFAULT '[]'"],
-    ['client_users', 'enabled', 'INTEGER NOT NULL DEFAULT 1']
+    ['client_users', 'enabled', 'INTEGER NOT NULL DEFAULT 1'],
+    ['plans', 'max_devices', 'INTEGER NOT NULL DEFAULT 0'],
+    ['client_sessions', 'device_id', 'TEXT'],
+    ['client_sessions', 'device_name', 'TEXT'],
+    ['client_sessions', 'last_seen_at', 'INTEGER'],
+    ['client_sessions', 'created_at', 'INTEGER']
   ] as const
 
   for (const [table, column, definition] of columns) {

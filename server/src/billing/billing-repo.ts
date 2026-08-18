@@ -20,6 +20,8 @@ export interface Plan {
   periodUnit: PeriodUnit
   periodCount: number
   maxAccounts: number
+  /** 可同时登录的设备数上限；0 = 不限 */
+  maxDevices: number
   /** Markdown 描述；空 = 不显示 */
   description: string
   enabled: boolean
@@ -33,6 +35,7 @@ export interface PlanInput {
   periodUnit: PeriodUnit
   periodCount?: number
   maxAccounts: number
+  maxDevices?: number
   description?: string
   enabled?: boolean
   sortOrder?: number
@@ -120,6 +123,7 @@ export class BillingRepo {
       periodUnit: input.periodUnit,
       periodCount: Math.max(1, Math.floor(input.periodCount ?? 1)),
       maxAccounts: Math.max(0, Math.floor(input.maxAccounts)),
+      maxDevices: Math.max(0, Math.floor(input.maxDevices ?? 0)),
       description: (input.description ?? '').slice(0, 4000),
       enabled: input.enabled === false ? 0 : 1,
       sortOrder: input.sortOrder ?? 0,
@@ -161,6 +165,7 @@ export class BillingRepo {
       set.periodCount = Math.max(1, Math.floor(patch.periodCount))
     }
     if (patch.maxAccounts !== undefined) set.maxAccounts = Math.max(0, Math.floor(patch.maxAccounts))
+    if (patch.maxDevices !== undefined) set.maxDevices = Math.max(0, Math.floor(patch.maxDevices))
     if (patch.description !== undefined) set.description = patch.description.slice(0, 4000)
     if (patch.enabled !== undefined) set.enabled = patch.enabled ? 1 : 0
     if (patch.sortOrder !== undefined) set.sortOrder = patch.sortOrder
@@ -578,6 +583,17 @@ export class BillingRepo {
     return this.getPlan(tenant, sub.planId)?.maxAccounts ?? 0
   }
 
+  /**
+   * 当前设备数上限；0 = 不限（无有效订阅或套餐未设上限都视为不限）。
+   * 与 accountQuota 语义不同：设备上限缺省是「不限」而非「禁止」——
+   * 没订阅的用户仍要能登录，只是无法添加平台账号。
+   */
+  deviceQuota(tenant: string, userId: number, now = Date.now()): number {
+    const sub = this.getSubscription(tenant, userId)
+    if (!sub || sub.status !== 'active' || sub.expiresAt <= now) return 0
+    return this.getPlan(tenant, sub.planId)?.maxDevices ?? 0
+  }
+
   checkAccountQuota(
     tenant: string,
     userId: number,
@@ -654,6 +670,7 @@ function toPlan(r: typeof plans.$inferSelect): Plan {
     periodUnit: r.periodUnit as PeriodUnit,
     periodCount: r.periodCount,
     maxAccounts: r.maxAccounts,
+    maxDevices: r.maxDevices,
     description: r.description,
     enabled: r.enabled === 1,
     sortOrder: r.sortOrder,
