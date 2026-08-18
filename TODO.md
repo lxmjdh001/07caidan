@@ -168,12 +168,14 @@
       各品牌独立 userData 目录（贴牌版与原版共存不串数据）
 - [x] electron-builder 打包接入：productName/appId/输出目录/NSIS 快捷方式名
       随品牌走；品牌图标目录存在时自动使用；无证书时跳过签名自动发现
-- [x] 管理后台：登录页标题、侧栏 Logo/名称、浏览器标题（favicon/主题色预留）
+- [x] 管理后台：登录页标题、侧栏 Logo/名称、浏览器标题、主题色接入强调色（favicon 仍预留）
 - [x] 后端：看板页标题占位符替换、验证码邮件署名（logo 预留）
 - [~] logo 资源按品牌目录存放（`branding/<brand>/logo.svg`、`icon.icns`、`icon.ico`、`favicon`），
       构建脚本按需拷贝，缺失时回落到默认并给出告警
       已有：electron-builder 按 `branding/<brand>/icon.*` 存在与否选用，缺失回落默认并在构建日志提示。
-      待办：admin favicon / 客户端渲染层 logo.svg 的按品牌拷贝；themeColor 目前是"预留"（未接到 --accent）
+      themeColor 已接入 UI 强调色（客户端+后台运行时把 --accent/--accent-soft 染成品牌色，
+      仅自定义品牌覆盖，默认绿保持浅/深调优值）—— e2e 截图确认紫色品牌整机变紫。
+      待办：admin favicon / 客户端渲染层 logo.svg 的按品牌拷贝
 - [x] 校验：CI 对每个品牌校验配置，防止某端漏读配置导致上线才发现还叫旧名字
       `scripts/verify-brands.mjs`（`npm run verify:brands`）+ `scripts/brand-schema.mjs`：
       校验 branding/*.json 的所有端所需字段并集（appName/shortName/logoText/company/dashboardTitle/
