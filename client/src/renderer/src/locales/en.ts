@@ -86,6 +86,7 @@ export const en: Record<MessageKey, string> = {
   'campaign.linkName': 'Source label',
   'campaign.linkNamePlaceholder': 'e.g. FB ad set A',
   'campaign.saveLink': 'Save link',
+  'campaign.saveNeedsLink': 'Fill in a tracking code to generate the link, then save it.',
   'campaign.savedLinks': 'Saved entry links',
   'campaign.savedLinksHint': 'Save one per traffic source; distinct tracking codes let campaign stats attribute leads per source.',
   'campaign.revoked': 'Revoked',

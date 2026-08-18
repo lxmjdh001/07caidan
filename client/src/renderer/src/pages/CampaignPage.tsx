@@ -1043,8 +1043,7 @@ function EntryLinkPanel({ accounts }: { accounts: AccountOption[] }): React.JSX.
           </div>
         )}
 
-        {url && (
-          <div className="field-row entry-save-row">
+        <div className="field-row entry-save-row">
             <label className="field">
               <span>{t('campaign.linkName')}</span>
               <input
@@ -1057,7 +1056,7 @@ function EntryLinkPanel({ accounts }: { accounts: AccountOption[] }): React.JSX.
             <button
               type="button"
               className="primary-btn"
-              disabled={busy || !name.trim()}
+              disabled={busy || !name.trim() || !url}
               onClick={async () => {
                 setErr('')
                 setBusy(true)
@@ -1083,7 +1082,7 @@ function EntryLinkPanel({ accounts }: { accounts: AccountOption[] }): React.JSX.
               {t('campaign.saveLink')}
             </button>
           </div>
-        )}
+        {!url && <p className="field-hint">{t('campaign.saveNeedsLink')}</p>}
         {err && <p className="auth-err">{err}</p>}
       </section>
 

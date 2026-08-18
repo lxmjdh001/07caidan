@@ -84,6 +84,7 @@ export const zhCN = {
   'campaign.linkName': '来源备注',
   'campaign.linkNamePlaceholder': '如：FB 广告组A',
   'campaign.saveLink': '保存此链接',
+  'campaign.saveNeedsLink': '填好追踪码生成链接后即可保存。',
   'campaign.savedLinks': '已保存的推广链接',
   'campaign.savedLinksHint': '每个投放来源保存一条，追踪码不同即可在工单统计里区分进线来源。',
   'campaign.revoked': '已停用',
