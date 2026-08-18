@@ -95,7 +95,12 @@
 ### 书写方向（RTL）
 - [x] 阿拉伯语根节点设 dir，整体布局镜像
 - [x] CSS 改用逻辑属性（margin-inline-start / text-align: start 等）
-- [ ] RTL 下气泡收发方向与时间戳位置的人工校对
+- [x] RTL 下气泡收发方向与时间戳位置的人工校对
+      阿拉伯语 Electron 截图核对（预置阿语会话）：整体镜像正确 —— 入站气泡靠右、出站靠左、
+      时间戳与 ✓ 回执随之镜像。修复气泡尾角与 meta 对齐用物理属性的问题（border-bottom-*-radius
+      → border-end-*-radius；text-align:right → end），尾角现随方向镜像。
+      旁注（另立）：阿语字典缺若干导航键（Plan & Balance / Team / Help & Feedback 回落英文），
+      属多语言补全，非 RTL 布局问题
 
 ## M11 — 计费、套餐与支付
 > 客户端「套餐与余额」页已完成（概览/套餐/充值/账单四页签）。

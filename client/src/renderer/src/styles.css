@@ -894,11 +894,12 @@ body {
 
 .bubble-row.out .bubble {
   background: var(--bubble-out);
-  border-bottom-right-radius: 5px;
+  /* 逻辑属性：出站气泡「靠边」的下角在 RTL 下自动镜像到另一侧 */
+  border-end-end-radius: 5px;
 }
 
 .bubble-row.in .bubble {
-  border-bottom-left-radius: 5px;
+  border-end-start-radius: 5px;
 }
 
 .bubble-author {
@@ -936,7 +937,7 @@ body {
   margin-top: 4px;
   font-size: 10.5px;
   color: var(--muted);
-  text-align: right;
+  text-align: end;
   display: flex;
   justify-content: flex-end;
   gap: 6px;
