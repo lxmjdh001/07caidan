@@ -2284,3 +2284,8 @@ body {
   outline: none;
 }
 .team-role-select:focus { border-color: var(--accent); }
+
+.copied-ok {
+  color: var(--accent) !important;
+  border-color: var(--accent) !important;
+}

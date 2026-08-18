@@ -945,6 +945,7 @@ function EntryLinkPanel({ accounts }: { accounts: AccountOption[] }): React.JSX.
   const [greeting, setGreeting] = useState(DEFAULT_GREETING)
   const [copied, setCopied] = useState(false)
   const [saved, setSaved] = useState<SavedEntryLink[]>([])
+  const [copiedId, setCopiedId] = useState('')
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -1115,14 +1116,14 @@ function EntryLinkPanel({ accounts }: { accounts: AccountOption[] }): React.JSX.
                   </div>
                   <button
                     type="button"
-                    className="ghost-btn"
+                    className={`ghost-btn ${copiedId === l.id ? 'copied-ok' : ''}`}
                     onClick={() => {
                       void navigator.clipboard.writeText(u)
-                      setCopied(true)
-                      setTimeout(() => setCopied(false), 1500)
+                      setCopiedId(l.id)
+                      setTimeout(() => setCopiedId(''), 1500)
                     }}
                   >
-                    {t('campaign.copy')}
+                    {copiedId === l.id ? t('campaign.copied') : t('campaign.copy')}
                   </button>
                   <button
                     type="button"
