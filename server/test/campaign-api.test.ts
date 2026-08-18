@@ -418,3 +418,28 @@ describe('重粉库接口', () => {
     assert.equal((await api('GET', '/api/fan-libraries')).json.libraries.length, 0)
   })
 })
+
+describe('推广入口链接（多条持久化）', () => {
+  test('创建多条 → 列表 → 删除；校验必填', async () => {
+    const mk = (name: string, code: string) =>
+      api('POST', '/api/entry-links', {
+        name,
+        channel: 'whatsapp',
+        accountId: 'a1',
+        handle: '+8613800138000',
+        code,
+        greeting: 'hi'
+      })
+    assert.equal((await mk('FB广告A', 'fb01')).status, 200)
+    assert.equal((await mk('TikTok组B', 'tt02')).status, 200)
+    const list = await api('GET', '/api/entry-links')
+    assert.equal(list.json.links.length, 2)
+    assert.equal(list.json.links[0].name, 'TikTok组B', '新的在前')
+
+    assert.equal((await api('POST', '/api/entry-links', { name: 'x' })).status, 400)
+
+    const id = list.json.links[0].id
+    assert.equal((await api('DELETE', `/api/entry-links/${id}`)).status, 200)
+    assert.equal((await api('GET', '/api/entry-links')).json.links.length, 1)
+  })
+})

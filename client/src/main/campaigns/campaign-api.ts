@@ -67,6 +67,25 @@ export class CampaignApi {
     return this.request('POST', `/api/campaigns/${encodeURIComponent(campaignId)}/links`, opts)
   }
 
+  listEntryLinks(): Promise<unknown> {
+    return this.request('GET', '/api/entry-links')
+  }
+
+  createEntryLink(body: {
+    name: string
+    channel: string
+    accountId: string
+    handle: string
+    code: string
+    greeting?: string
+  }): Promise<unknown> {
+    return this.request('POST', '/api/entry-links', body)
+  }
+
+  deleteEntryLink(id: string): Promise<unknown> {
+    return this.request('DELETE', `/api/entry-links/${encodeURIComponent(id)}`)
+  }
+
   revokeLink(token: string): Promise<void> {
     return this.request('POST', `/api/campaigns/links/${encodeURIComponent(token)}/revoke`).then(
       () => {}

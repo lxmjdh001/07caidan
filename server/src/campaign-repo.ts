@@ -15,7 +15,7 @@ import {
   fanLibraries,
   fanLibraryEntries,
   messages
-} from './schema.ts'
+, entryLinks } from './schema.ts'
 
 /** SQLite 单条语句的变量上限较保守，大名单分批处理 */
 const CHUNK = 400
@@ -37,6 +37,18 @@ export interface Campaign {
   createdBy?: string
   createdAt: number
   updatedAt: number
+}
+
+export interface EntryLinkRow {
+  tenant: string
+  id: string
+  name: string
+  channel: string
+  accountId: string
+  handle: string
+  code: string
+  greeting: string
+  createdAt: number
 }
 
 export interface CampaignLink {
@@ -453,6 +465,44 @@ export class CampaignRepo {
     if (campaign.sourceCodes.length === 0) return all
     const wanted = new Set(campaign.sourceCodes)
     return all.filter((l) => l.sourceCode !== undefined && wanted.has(l.sourceCode))
+  }
+
+  // ── 推广入口链接（保存多条，按来源区分投放渠道）──
+
+  listEntryLinks(tenant: string): EntryLinkRow[] {
+    return this.db
+      .select()
+      .from(entryLinks)
+      .where(eq(entryLinks.tenant, tenant))
+      .orderBy(sql`${entryLinks.createdAt} DESC`)
+      .all()
+  }
+
+  createEntryLink(
+    tenant: string,
+    input: { name: string; channel: string; accountId: string; handle: string; code: string; greeting?: string }
+  ): EntryLinkRow {
+    const row = {
+      tenant,
+      id: randomUUID(),
+      name: input.name,
+      channel: input.channel,
+      accountId: input.accountId,
+      handle: input.handle,
+      code: input.code,
+      greeting: input.greeting ?? '',
+      createdAt: Date.now()
+    }
+    this.db.insert(entryLinks).values(row).run()
+    return row
+  }
+
+  deleteEntryLink(tenant: string, id: string): boolean {
+    const r = this.db
+      .delete(entryLinks)
+      .where(and(eq(entryLinks.tenant, tenant), eq(entryLinks.id, id)))
+      .run()
+    return r.changes > 0
   }
 
   /**

@@ -844,6 +844,44 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
   })
 
+  // ── 推广入口链接（保存多条区分来源；campaigns:manage）──
+  app.get('/api/entry-links', async (req, reply) => {
+    if (!requireCampaign(req, reply)) return
+    return { links: campaignRepo.listEntryLinks(ctxOf(req).tenant) }
+  })
+
+  app.post('/api/entry-links', async (req, reply) => {
+    if (!requireCampaign(req, reply)) return
+    const b = (req.body ?? {}) as {
+      name?: string
+      channel?: string
+      accountId?: string
+      handle?: string
+      code?: string
+      greeting?: string
+    }
+    if (!b.name?.trim()) return reply.code(400).send({ error: '备注名必填' })
+    if (!b.channel || !b.accountId || !b.handle?.trim() || !b.code?.trim()) {
+      return reply.code(400).send({ error: '渠道、账号、句柄与追踪码必填' })
+    }
+    return {
+      link: campaignRepo.createEntryLink(ctxOf(req).tenant, {
+        name: b.name.trim(),
+        channel: b.channel,
+        accountId: b.accountId,
+        handle: b.handle.trim(),
+        code: b.code.trim(),
+        greeting: b.greeting
+      })
+    }
+  })
+
+  app.delete('/api/entry-links/:id', async (req, reply) => {
+    if (!requireCampaign(req, reply)) return
+    const ok = campaignRepo.deleteEntryLink(ctxOf(req).tenant, (req.params as { id: string }).id)
+    return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
+  })
+
   // ── 重粉库 ──
   app.get('/api/fan-libraries', async (req, reply) => {
     if (!requireCampaign(req, reply)) return

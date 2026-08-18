@@ -925,13 +925,41 @@ function LibraryPanel({
  * 三个平台都只有「预填文案」这一个可用参数位，所以追踪码写进客户要发的第一句话。
  * 客户发出后，系统解析出 [ref:xxx] 并固定为该客户的来源，工单统计里按来源拆分。
  */
+interface SavedEntryLink {
+  id: string
+  name: string
+  channel: string
+  accountId: string
+  handle: string
+  code: string
+  greeting: string
+  createdAt: number
+}
+
 function EntryLinkPanel({ accounts }: { accounts: AccountOption[] }): React.JSX.Element {
   const { t } = useI18n()
   const [accountKey, setAccountKey] = useState(accounts[0]?.key ?? '')
   const [handle, setHandle] = useState('')
   const [code, setCode] = useState('')
+  const [name, setName] = useState('')
   const [greeting, setGreeting] = useState(DEFAULT_GREETING)
   const [copied, setCopied] = useState(false)
+  const [saved, setSaved] = useState<SavedEntryLink[]>([])
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const reload = useCallback(async () => {
+    try {
+      const r = await api.campaign<{ links: SavedEntryLink[] }>('listEntryLinks')
+      setSaved(r.links)
+    } catch (e) {
+      setErr(errText(e))
+    }
+  }, [])
+
+  useEffect(() => {
+    void reload()
+  }, [reload])
 
   const account = accounts.find((a) => a.key === accountKey)
   const channel = (account?.channel ?? 'whatsapp') as EntryChannel
@@ -1013,6 +1041,105 @@ function EntryLinkPanel({ accounts }: { accounts: AccountOption[] }): React.JSX.
               {copied ? t('campaign.copied') : t('campaign.copy')}
             </button>
           </div>
+        )}
+
+        {url && (
+          <div className="field-row entry-save-row">
+            <label className="field">
+              <span>{t('campaign.linkName')}</span>
+              <input
+                type="text"
+                value={name}
+                placeholder={t('campaign.linkNamePlaceholder')}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </label>
+            <button
+              type="button"
+              className="primary-btn"
+              disabled={busy || !name.trim()}
+              onClick={async () => {
+                setErr('')
+                setBusy(true)
+                try {
+                  await api.campaign('createEntryLink', {
+                    name: name.trim(),
+                    channel,
+                    accountId: account?.accountId ?? '',
+                    handle: effectiveHandle,
+                    code: code.trim(),
+                    greeting: greeting.trim() || DEFAULT_GREETING
+                  })
+                  setName('')
+                  setCode('')
+                  await reload()
+                } catch (e) {
+                  setErr(errText(e))
+                } finally {
+                  setBusy(false)
+                }
+              }}
+            >
+              {t('campaign.saveLink')}
+            </button>
+          </div>
+        )}
+        {err && <p className="auth-err">{err}</p>}
+      </section>
+
+      <section className="form-card">
+        <h3>{t('campaign.savedLinks')}</h3>
+        <p className="field-hint">{t('campaign.savedLinksHint')}</p>
+        {saved.length === 0 ? (
+          <p className="empty-hint">{t('form.noOptions')}</p>
+        ) : (
+          <ul className="link-list">
+            {saved.map((l) => {
+              const u = entryLink(
+                l.channel as EntryChannel,
+                l.handle,
+                l.code,
+                l.greeting || DEFAULT_GREETING
+              )
+              const acc = accounts.find((a) => a.accountId === l.accountId)
+              return (
+                <li key={l.id}>
+                  <div className="link-main">
+                    <span className="link-label">
+                      {l.name}
+                      <span className="link-sub">
+                        {' '}
+                        · {acc?.label ?? l.accountId} · {t('campaign.trackCode')} {l.code}
+                      </span>
+                    </span>
+                    <code className="link-url">{u}</code>
+                  </div>
+                  <button
+                    type="button"
+                    className="ghost-btn"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(u)
+                      setCopied(true)
+                      setTimeout(() => setCopied(false), 1500)
+                    }}
+                  >
+                    {t('campaign.copy')}
+                  </button>
+                  <button
+                    type="button"
+                    className="danger-btn"
+                    onClick={async () => {
+                      if (!window.confirm(t('campaign.deleteLinkConfirm'))) return
+                      await api.campaign('deleteEntryLink', l.id)
+                      await reload()
+                    }}
+                  >
+                    {t('campaign.deleteLink')}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
         )}
       </section>
 

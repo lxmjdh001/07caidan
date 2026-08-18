@@ -68,6 +68,13 @@ export function openDb(dbPath: string): Db {
       created_at INTEGER NOT NULL,
       PRIMARY KEY (tenant, id)
     );
+    CREATE TABLE IF NOT EXISTS entry_links (
+      tenant TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL,
+      channel TEXT NOT NULL, account_id TEXT NOT NULL, handle TEXT NOT NULL,
+      code TEXT NOT NULL, greeting TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, id)
+    );
     CREATE TABLE IF NOT EXISTS client_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       tenant TEXT NOT NULL, user_id INTEGER, device_id TEXT NOT NULL,

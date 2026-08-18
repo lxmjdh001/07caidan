@@ -631,6 +631,26 @@ export const clientLogLevels = sqliteTable(
   (t) => [primaryKey({ columns: [t.tenant, t.userId] })]
 )
 
+/** 已保存的推广入口链接（M-entry）：一个来源一条，方便运营区分投放渠道 */
+export const entryLinks = sqliteTable(
+  'entry_links',
+  {
+    tenant: text('tenant').notNull(),
+    id: text('id').notNull(),
+    /** 备注名，如「FB 广告组A」 */
+    name: text('name').notNull(),
+    channel: text('channel').notNull(),
+    accountId: text('account_id').notNull(),
+    /** 账号句柄（手机号/用户名/LINE ID） */
+    handle: text('handle').notNull(),
+    /** 追踪码（进线归因用） */
+    code: text('code').notNull(),
+    greeting: text('greeting').notNull().default(''),
+    createdAt: integer('created_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.id] })]
+)
+
 export const media = sqliteTable(
   'media',
   {
