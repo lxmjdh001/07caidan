@@ -83,8 +83,9 @@
       conversation_intent 表 + IntentRepo（落库/批量取/needsRetag 节流）+ AutoTagger（sync 后对
       有新入站的会话非阻塞打标签，maxPerRun 上限）+ StubAnalyzer（关键词零成本，无 key 也能自动打）。
       开关 OMNI_AUTO_TAG；Claude 按需深度分析结果也落库覆盖关键词标签。
-      会话列表附加 intentLevel，后台聊天记录列表显示高/中/低意向彩色标签。
-      测试：11 条（关键词分级/落库/节流/上限/隔离）；e2e 截图核对后台列表实时标签
+      会话列表附加 intentLevel，后台聊天记录列表显示高/中/低意向彩色标签，
+      并支持按意向筛选（全部/高/中/低），老板一键聚焦高意向线索。
+      测试：11 条（关键词分级/落库/节流/上限/隔离）；e2e 截图核对后台列表实时标签 + 筛选
 - [ ] 媒体走对象存储（S3/MinIO）
 - [ ] 客户端自动更新（electron-updater）与审计/风控
 

@@ -39,6 +39,7 @@ const zhCN = {
 
   'conv.title': '客户会话',
   'conv.search': '搜索客户…',
+  'conv.intentAll': '全部',
   'conv.empty': '暂无会话',
   'conv.group': '群组',
   'chat.empty': '选择左侧会话查看聊天记录',
@@ -332,6 +333,7 @@ const en: Partial<Record<MessageKey, string>> = {
 
   'conv.title': 'Conversations',
   'conv.search': 'Search customers…',
+  'conv.intentAll': 'All',
   'conv.empty': 'No conversations',
   'conv.group': 'Group',
   'chat.empty': 'Select a conversation on the left',
