@@ -187,7 +187,10 @@
 - [x] 工单统计缓存（30s TTL 内存缓存，key=tenant:campaignId:updatedAt —— 改工单即换 key 自动失效；
       传自定义 labels 的调用绕过缓存；invalidateStats 可强制清空。5 条单测钉死命中/过期/失效/绕过/清空。
       公开看板与老板端共用此缓存，抗高频刷新。后台工单统计页 e2e 截图核对真实数字）
-- [ ] 看板按天趋势的时区随工单配置（已存 tzOffsetMinutes，前端已用，待真实跨时区验证）
+- [x] 看板按天趋势的时区随工单配置（跨时区已验证）
+      dayKey/fillDays 按工单 tzOffsetMinutes 归日；补测负偏移（UTC 以西）：同一绝对窗口
+      纽约(UTC-5)归 08-16、北京(UTC+8)归 08-17，边界/跨月正确。公开看板 /c/:token e2e 截图
+      核对聚合卡+每日趋势渲染，并断言页面不含任何粉丝身份（红线保持）
 
 ## M10 — 投放归因
 - [x] WhatsApp Click-to-WhatsApp 广告上下文（ctwaClid / sourceId / sourceUrl）

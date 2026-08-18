@@ -41,6 +41,43 @@ describe('dayKey', () => {
   test('跨月边界', () => {
     assert.equal(dayKey(Date.UTC(2026, 7, 31, 16, 0, 0), 480), '2026-09-01')
   })
+  test('负偏移（UTC 以西）：同一瞬间归到更早的日期', () => {
+    // 2026-08-16 20:00 UTC：UTC+8 已是 17 号，纽约(UTC-4/夏令 -240)仍是 16 号
+    const ts = Date.UTC(2026, 7, 16, 20, 0, 0)
+    assert.equal(dayKey(ts, 480), '2026-08-17') // 曼谷/新加坡次日凌晨
+    assert.equal(dayKey(ts, -300), '2026-08-16') // 美东标准时同一天
+    // 凌晨时段：UTC 02:00，UTC-5 归到前一天
+    const ts2 = Date.UTC(2026, 7, 16, 2, 0, 0)
+    assert.equal(dayKey(ts2, 480), '2026-08-16')
+    assert.equal(dayKey(ts2, -300), '2026-08-15')
+  })
+})
+
+describe('fillDays 按工单时区补空白天', () => {
+  test('同一绝对窗口，不同时区归到不同日期', () => {
+    // 08-16 20:00 → 08-17 03:00 UTC（7 小时窗口）
+    const startAt = Date.UTC(2026, 7, 16, 20, 0, 0)
+    const endAt = Date.UTC(2026, 7, 17, 3, 0, 0)
+    // 纽约(UTC-5) 视角整段都在 08-16
+    assert.deepEqual(
+      fillDays([], startAt, endAt, -300).map((d) => d.date),
+      ['2026-08-16']
+    )
+    // 北京(UTC+8) 视角整段都在 08-17
+    assert.deepEqual(
+      fillDays([], startAt, endAt, 480).map((d) => d.date),
+      ['2026-08-17']
+    )
+  })
+
+  test('多天窗口按时区逐日补齐，不漏不重', () => {
+    const startAt = Date.UTC(2026, 7, 16, 12, 0, 0)
+    const endAt = Date.UTC(2026, 7, 18, 12, 0, 0)
+    assert.deepEqual(
+      fillDays([], startAt, endAt, 480).map((d) => d.date),
+      ['2026-08-16', '2026-08-17', '2026-08-18']
+    )
+  })
 })
 
 describe('median', () => {
