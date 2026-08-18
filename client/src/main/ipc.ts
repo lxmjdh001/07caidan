@@ -85,6 +85,7 @@ const BILLING_METHODS: Record<string, true> = {
   listTeamMembers: true,
   createTeamMember: true,
   updateTeamMember: true,
+  deleteTeamMember: true,
   listTeamRoles: true,
   createTeamRole: true,
   deleteTeamRole: true

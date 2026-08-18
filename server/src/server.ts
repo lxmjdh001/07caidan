@@ -413,6 +413,14 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     return { ok: true }
   })
 
+  app.delete('/api/team/members/:id', async (req, reply) => {
+    const owner = requireTeamOwner(req, reply)
+    if (!owner) return
+    const r = clientAuth.deleteMember(owner, Number((req.params as { id: string }).id))
+    if (!r.ok) return reply.code(400).send({ error: r.error })
+    return { ok: true }
+  })
+
   app.get('/api/team/roles', async (req, reply) => {
     const owner = requireTeamOwner(req, reply)
     if (!owner) return

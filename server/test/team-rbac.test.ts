@@ -325,6 +325,49 @@ describe('客户端 RBAC：老板与子账号', () => {
   })
 })
 
+describe('删除子账号', () => {
+  test('删除后会话失效、不能登录、列表移除；不能删别人的', async () => {
+    const boss1 = await registerBoss('b1@test.com')
+    const boss2 = await registerBoss('b2@test.com')
+    const memberId = (
+      await api(
+        'POST',
+        '/api/team/members',
+        { username: 'agent1', password: 'agentpass123', role: 'agent' },
+        boss1
+      )
+    ).json.member.id
+    const agent = (
+      await api('POST', '/api/client/login', {
+        email: await loginNameOf(boss1, 'agent1'),
+        password: 'agentpass123'
+      })
+    ).json.token
+
+    // 别的老板删不掉
+    assert.equal(
+      (await api('DELETE', `/api/team/members/${memberId}`, undefined, boss2)).status,
+      400
+    )
+    // 自己的老板可以删
+    assert.equal(
+      (await api('DELETE', `/api/team/members/${memberId}`, undefined, boss1)).status,
+      200
+    )
+    assert.equal((await api('GET', '/api/notices', undefined, agent)).status, 401, '会话已吊销')
+    assert.equal(
+      (
+        await api('POST', '/api/client/login', {
+          email: await loginNameOf(boss1, 'agent1'),
+          password: 'agentpass123'
+        })
+      ).status,
+      401
+    )
+    assert.equal((await api('GET', '/api/team/members', undefined, boss1)).json.members.length, 0)
+  })
+})
+
 describe('开启邮箱验证的注册（开发模式固定码 12345）', () => {
   test('无码被拒；固定码 12345 成功；错码被拒', async () => {
     await app.close()

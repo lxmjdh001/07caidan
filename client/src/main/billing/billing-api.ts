@@ -132,6 +132,10 @@ export class BillingApi {
     return this.request('PATCH', `/api/team/members/${id}`, body)
   }
 
+  deleteTeamMember(id: number): Promise<unknown> {
+    return this.request('DELETE', `/api/team/members/${id}`)
+  }
+
   listTeamRoles(): Promise<unknown> {
     return this.request('GET', '/api/team/roles')
   }

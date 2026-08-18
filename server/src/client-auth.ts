@@ -293,6 +293,19 @@ export class ClientAuthRepo {
     return { ok: true }
   }
 
+  /** 删除子账号：吊销其全部会话后删行。只能删自己名下的。 */
+  deleteMember(owner: ClientUser, memberId: number): { ok: boolean; error?: string } {
+    const row = this.db
+      .select({ id: clientUsers.id })
+      .from(clientUsers)
+      .where(and(eq(clientUsers.id, memberId), eq(clientUsers.ownerId, owner.id)))
+      .get()
+    if (!row) return { ok: false, error: '子账号不存在' }
+    this.db.delete(clientSessions).where(eq(clientSessions.userId, memberId)).run()
+    this.db.delete(clientUsers).where(eq(clientUsers.id, memberId)).run()
+    return { ok: true }
+  }
+
   // ── 自定义角色 ──
 
   createRole(

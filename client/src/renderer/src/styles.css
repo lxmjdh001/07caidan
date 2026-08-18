@@ -27,14 +27,15 @@
   --danger: #e0524e;
 
   /* 左侧账号栏：浅色主题下也是深色的，属于刻意设计 */
-  --rail-bg: #1f2430;
-  --rail-text: #c6ccd6;
-  --rail-text-dim: #9aa3b2;
-  --rail-text-faint: #7d8798;
-  --rail-strong: #ffffff;
-  --rail-hover: rgb(255 255 255 / 0.08);
-  --rail-active: rgb(255 255 255 / 0.14);
-  --rail-chip: rgb(255 255 255 / 0.12);
+  /* 浅色模式下侧栏也用浅色 —— 菜单跟随全局主题，不再固定深色 */
+  --rail-bg: #eef0f4;
+  --rail-text: #3d4454;
+  --rail-text-dim: #6b7484;
+  --rail-text-faint: #8b93a3;
+  --rail-strong: #14181f;
+  --rail-hover: rgb(0 0 0 / 0.06);
+  --rail-active: var(--accent);
+  --rail-chip: rgb(0 0 0 / 0.08);
 
   /* 提示条 / 标签 */
   --warn-bg: #fdf4e3;
@@ -2256,3 +2257,30 @@ body {
 
 .entry-save-row { align-items: flex-end; margin-top: 8px; }
 .link-sub { font-weight: 400; font-size: 12px; color: var(--muted); }
+
+/* ── 团队管理表格与弹窗 ── */
+.card-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.card-head-row h2 { margin: 0; }
+.team-table { width: 100%; }
+.team-table td { vertical-align: middle; }
+.team-table .row-off { opacity: 0.55; }
+.team-login-cell { font-weight: 600; font-family: ui-monospace, monospace; font-size: 13px; }
+.team-perm-cell { font-size: 12px; color: var(--muted); max-width: 220px; }
+.team-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.team-role-select,
+.team-table select {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  background: var(--panel-alt);
+  color: var(--text);
+  font-family: inherit;
+  outline: none;
+}
+.team-role-select:focus { border-color: var(--accent); }

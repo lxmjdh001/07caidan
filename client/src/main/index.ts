@@ -328,7 +328,17 @@ async function bootstrap(): Promise<void> {
   })
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
+    // 关窗进托盘后窗口只是隐藏：点 Dock 图标要把它拉回来，而不是没反应
+    const wins = BrowserWindow.getAllWindows()
+    if (wins.length === 0) {
+      createMainWindow()
+      return
+    }
+    for (const w of wins) {
+      if (w.isMinimized()) w.restore()
+      w.show()
+    }
+    wins[0]?.focus()
   })
 
   app.on('window-all-closed', () => {
