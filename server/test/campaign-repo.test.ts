@@ -356,3 +356,58 @@ describe('时间判重的账号范围', () => {
     assert.equal(campaigns.statsOf(T, c, {}, T0 + DAY).duplicate, 0)
   })
 })
+
+describe('工单统计 TTL 缓存', () => {
+  const H = 3600_000
+
+  test('TTL 内命中：返回同一对象，且不反映期间的新进线', () => {
+    seed({ accountId: 'a1', contactId: 'c1', inAt: T0 + H })
+    const c = makeCampaign({ accountIds: ['a1'] })
+    const s1 = campaigns.statsOf(T, c, undefined, T0 + DAY)
+    assert.equal(s1.total, 1)
+    // 期间来了新粉
+    seed({ accountId: 'a1', contactId: 'c2', inAt: T0 + 2 * H })
+    const s2 = campaigns.statsOf(T, c, undefined, T0 + DAY + 10_000)
+    assert.equal(s2, s1, '30s 内应命中缓存，返回同一对象引用')
+    assert.equal(s2.total, 1, '缓存期内不反映新进线')
+  })
+
+  test('TTL 过期后重算，反映最新数据', () => {
+    seed({ accountId: 'a1', contactId: 'c1', inAt: T0 + H })
+    const c = makeCampaign({ accountIds: ['a1'] })
+    assert.equal(campaigns.statsOf(T, c, undefined, T0 + DAY).total, 1)
+    seed({ accountId: 'a1', contactId: 'c2', inAt: T0 + 2 * H })
+    // 超过 30s TTL
+    const s = campaigns.statsOf(T, c, undefined, T0 + DAY + 31_000)
+    assert.equal(s.total, 2, '过期后应重算并看到新进线')
+  })
+
+  test('工单被改（updatedAt 变）即失效', () => {
+    seed({ accountId: 'a1', contactId: 'c1', inAt: T0 + H })
+    const c = makeCampaign({ accountIds: ['a1'] })
+    assert.equal(campaigns.statsOf(T, c, undefined, T0 + DAY).total, 1)
+    seed({ accountId: 'a1', contactId: 'c2', inAt: T0 + 2 * H })
+    // 模拟工单被编辑：updatedAt 变化 → 缓存 key 变 → 重算
+    const edited = { ...c, updatedAt: c.updatedAt + 1 }
+    const s = campaigns.statsOf(T, edited, undefined, T0 + DAY + 5_000)
+    assert.equal(s.total, 2, 'updatedAt 变化后应重算')
+  })
+
+  test('传自定义 labels 绕过缓存，始终现算', () => {
+    seed({ accountId: 'a1', contactId: 'c1', inAt: T0 + H })
+    const c = makeCampaign({ accountIds: ['a1'] })
+    campaigns.statsOf(T, c, undefined, T0 + DAY) // 先填一次缓存
+    seed({ accountId: 'a1', contactId: 'c2', inAt: T0 + 2 * H })
+    const s = campaigns.statsOf(T, c, { a1: '主号' }, T0 + DAY + 5_000)
+    assert.equal(s.total, 2, '带 labels 的调用不吃缓存')
+  })
+
+  test('invalidateStats 清空后立即重算', () => {
+    seed({ accountId: 'a1', contactId: 'c1', inAt: T0 + H })
+    const c = makeCampaign({ accountIds: ['a1'] })
+    assert.equal(campaigns.statsOf(T, c, undefined, T0 + DAY).total, 1)
+    seed({ accountId: 'a1', contactId: 'c2', inAt: T0 + 2 * H })
+    campaigns.invalidateStats()
+    assert.equal(campaigns.statsOf(T, c, undefined, T0 + DAY + 5_000).total, 2)
+  })
+})

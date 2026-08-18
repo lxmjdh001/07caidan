@@ -96,11 +96,21 @@ function chunked<T>(items: T[], size = CHUNK): T[][] {
 }
 
 /** 工单 / 分享链接 / 重粉库的数据访问层 */
+/** 工单统计 TTL 缓存时长：公开看板会被打粉团队高频刷新，30s 缓存足以扛住而不失实时感 */
+const STATS_TTL_MS = 30_000
+
 export class CampaignRepo {
   private readonly db: Db
+  /** 统计结果缓存。key = tenant:campaignId:updatedAt（改工单即换 key 自动失效） */
+  private readonly statsCache = new Map<string, { stats: CampaignStats; expiresAt: number }>()
 
   constructor(db: Db) {
     this.db = db
+  }
+
+  /** 手动清空统计缓存（测试或必要时的强制失效用） */
+  invalidateStats(): void {
+    this.statsCache.clear()
   }
 
   // ── 工单 ──
@@ -562,6 +572,13 @@ export class CampaignRepo {
     accountLabels?: Record<string, string>,
     now = Date.now()
   ): CampaignStats {
+    // 传了自定义 labels 的调用（非默认展示名）绕过缓存，避免把一份 labels 的结果串给另一个调用者
+    const cacheable = accountLabels === undefined
+    const key = `${tenant}:${campaign.id}:${campaign.updatedAt}`
+    if (cacheable) {
+      const hit = this.statsCache.get(key)
+      if (hit && now < hit.expiresAt) return hit.stats
+    }
     const labels = accountLabels ?? campaign.accountLabels
     const leads = this.leadsOf(tenant, campaign)
     const rules = {
@@ -594,6 +611,12 @@ export class CampaignRepo {
       Math.min(campaign.endAt ?? now, now),
       campaign.tzOffsetMinutes
     )
+    if (cacheable) {
+      // 换 updatedAt 的旧条目一并清掉，避免改工单后残留过期 key
+      const prefix = `${tenant}:${campaign.id}:`
+      for (const k of this.statsCache.keys()) if (k.startsWith(prefix) && k !== key) this.statsCache.delete(k)
+      this.statsCache.set(key, { stats, expiresAt: now + STATS_TTL_MS })
+    }
     return stats
   }
 }
