@@ -61,6 +61,7 @@ export function SettingsPage({
   const [outbound, setOutbound] = useState(tr.outboundEnabled)
   const [confirmSend, setConfirmSend] = useState(tr.confirmBeforeSend)
   const [syncMedia, setSyncMedia] = useState(settings.sync.uploadMedia)
+  const [cloudSync, setCloudSync] = useState(settings.sync.cloudSync !== false)
   const [tgApiId, setTgApiId] = useState(settings.platform.telegramApiId)
   const [tgApiHash, setTgApiHash] = useState(settings.platform.telegramApiHash)
   const [displayLang, setDisplayLang] = useState(tr.displayLang)
@@ -112,7 +113,7 @@ export function SettingsPage({
           googleCloud: { apiKey: gcKey.trim() },
           llm: { baseUrl: llmBaseUrl.trim(), apiKey: llmKey.trim(), model: llmModel.trim() }
         },
-        sync: { ...settings.sync, uploadMedia: syncMedia },
+        sync: { ...settings.sync, uploadMedia: syncMedia, cloudSync },
         platform: { telegramApiId: tgApiId.trim(), telegramApiHash: tgApiHash.trim() }
       })
       setSaved(true)
@@ -452,6 +453,15 @@ export function SettingsPage({
                 <span>{t('settings.syncMedia')}</span>
               </label>
               <p className="field-hint">{t('settings.syncHint')}</p>
+              <label className="field checkbox">
+                <input
+                  type="checkbox"
+                  checked={cloudSync}
+                  onChange={(e) => setCloudSync(e.target.checked)}
+                />
+                <span>{t('settings.cloudSync')}</span>
+              </label>
+              <p className="field-hint">{t('settings.cloudSyncHint')}</p>
               <button
                 type="button"
                 className="danger-btn"

@@ -129,6 +129,22 @@ export const emailCodes = sqliteTable('email_codes', {
   expiresAt: integer('expires_at').notNull()
 })
 
+/**
+ * 客户端配置云同步（跨设备漫游）。
+ * 每个客户端用户一条；blob 是「非敏感偏好白名单」的 JSON。
+ * 红线：绝不存平台账号凭证/会话/代理与登录令牌 —— 那些按设计留在各设备本地。
+ */
+export const clientConfigs = sqliteTable(
+  'client_configs',
+  {
+    tenant: text('tenant').notNull(),
+    userId: integer('user_id').notNull(),
+    blob: text('blob').notNull().default('{}'),
+    updatedAt: integer('updated_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.userId] })]
+)
+
 /** LINE 账号注册（客户端把 channelSecret 存到后台用于 Webhook 验签） */
 export const lineAccounts = sqliteTable('line_accounts', {
   tenant: text('tenant').notNull(),

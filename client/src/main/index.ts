@@ -28,6 +28,7 @@ import { installAppMenu } from './menu'
 import { TranslationPipeline } from './translation/pipeline'
 import { PassthroughTranslator } from './translation/passthrough-translator'
 import { configurePipeline, createTranslatorRegistry } from './translation/plugins'
+import { ConfigSync } from './sync/config-sync-service'
 import { AppTray } from './core/tray'
 import { AppUpdater, type UpdateState } from './core/updater'
 import { createMainWindow } from './window'
@@ -251,6 +252,12 @@ async function bootstrap(): Promise<void> {
   syncClient.start()
 
   const auth = new ClientAuth(settings, logger)
+  // 配置云同步：登录/启动 pull，偏好变更 push（只搬非敏感白名单）
+  const configSync = new ConfigSync(settings, {
+    logger,
+    onApplied: (updated) =>
+      configurePipeline(pipeline, translatorRegistry, updated.translation, pipelineExtras)
+  })
   // 工单数据落后台（看板要能被团队公开访问），复用同步配置里的地址与登录令牌
   const campaignApi = new CampaignApi(() => settings.get().sync, logger)
   const billingApi = new BillingApi(() => settings.get().sync, logger)
@@ -292,6 +299,7 @@ async function bootstrap(): Promise<void> {
     media,
     notifier,
     updater,
+    configSync,
     version: app.getVersion(),
     broadcast,
     onSettingsChanged: (updated) => {
@@ -320,6 +328,8 @@ async function bootstrap(): Promise<void> {
   })
 
   installAppMenu()
+  // 启动时若已登录，拉取云端偏好（登录路径的 pull 在 authLogin/authRegister 处）
+  void configSync.pull()
   const win = createMainWindow()
   // 关窗进托盘而不是退出：客服工具要保持后台在线收消息。
   // 从托盘选"退出"或 app 正在退出时放行。

@@ -169,6 +169,8 @@ export const en: Record<MessageKey, string> = {
   'settings.sync': 'Backend sync',
   'settings.syncMedia': 'Also upload media (images / audio / video)',
   'settings.syncHint': 'After login, chat history is archived to the backend (with translations) for query & AI intent analysis',
+  'settings.cloudSync': 'Roam preferences across devices (cloud sync)',
+  'settings.cloudSyncHint': 'Sync UI language / theme / translation preferences / notifications / auto-reply scripts to the backend so they follow you to another device. For security, platform credentials and engine API keys stay on this device only.',
   'auth.loginSub': 'Sign in to manage your platform accounts',
   'auth.registerSub': 'Create a new account',
   'auth.serverUrl': 'Backend URL',

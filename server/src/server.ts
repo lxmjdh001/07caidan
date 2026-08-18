@@ -19,6 +19,7 @@ import { CampaignRepo, type CampaignInput } from './campaign-repo.ts'
 import { isLibraryChannel, normalizeContactList } from './contact-id.ts'
 import { PERMISSIONS, ROLE_PRESETS, ROLES, type Permission } from './auth.ts'
 import { ClientAuthRepo, type ClientUser } from './client-auth.ts'
+import { ClientConfigRepo } from './client-config-repo.ts'
 import { CLIENT_PERMISSIONS } from './client-rbac.ts'
 import type { ServerConfig } from './config.ts'
 import { openDb } from './db.ts'
@@ -61,6 +62,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   const repo = new Repo(db)
   const auth = new AuthRepo(db)
   const clientAuth = new ClientAuthRepo(db)
+  const clientConfig = new ClientConfigRepo(db)
   const lineRelay = new LineRelay(db)
   const campaignRepo = new CampaignRepo(db)
   const billingRepo = new BillingRepo(db)
@@ -407,6 +409,29 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (!b.deviceId) return reply.code(400).send({ error: 'deviceId 必填' })
     const revoked = clientAuth.revokeDevice(ctx.clientUser, b.deviceId)
     return { ok: true, revoked }
+  })
+
+  // ── 配置云同步（跨设备漫游非敏感偏好；凭证/会话绝不入云）──
+  app.get('/api/client/settings', async (req, reply) => {
+    const ctx = ctxOf(req)
+    if (!ctx.clientUser) return reply.code(403).send({ error: '需要客户端账号登录' })
+    return clientConfig.get(ctx.clientUser.tenant, ctx.clientUser.id) ?? { blob: {}, updatedAt: 0 }
+  })
+
+  app.put('/api/client/settings', async (req, reply) => {
+    const ctx = ctxOf(req)
+    if (!ctx.clientUser) return reply.code(403).send({ error: '需要客户端账号登录' })
+    const b = (req.body ?? {}) as { blob?: unknown; updatedAt?: number }
+    if (!b.blob || typeof b.blob !== 'object' || Array.isArray(b.blob)) {
+      return reply.code(400).send({ error: 'blob 必须是对象' })
+    }
+    const updatedAt = typeof b.updatedAt === 'number' && b.updatedAt > 0 ? b.updatedAt : Date.now()
+    return clientConfig.put(
+      ctx.clientUser.tenant,
+      ctx.clientUser.id,
+      b.blob as Record<string, unknown>,
+      updatedAt
+    )
   })
 
   app.post('/api/client/logout', async (req) => {

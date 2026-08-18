@@ -94,6 +94,11 @@ export function openDb(dbPath: string): Db {
       token TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at INTEGER NOT NULL,
       device_id TEXT, device_name TEXT, last_seen_at INTEGER, created_at INTEGER
     );
+    CREATE TABLE IF NOT EXISTS client_configs (
+      tenant TEXT NOT NULL, user_id INTEGER NOT NULL,
+      blob TEXT NOT NULL DEFAULT '{}', updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, user_id)
+    );
     CREATE TABLE IF NOT EXISTS email_codes (
       email TEXT PRIMARY KEY, code TEXT NOT NULL, expires_at INTEGER NOT NULL
     );

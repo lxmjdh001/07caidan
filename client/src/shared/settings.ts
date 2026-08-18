@@ -56,6 +56,10 @@ export interface SyncConfig {
   role?: string
   /** 登录账号的有效权限（服务端下发；界面按此显隐，真正的强制在服务端） */
   permissions?: string[]
+  /** 是否把「非敏感偏好」云同步到后台，跨设备漫游（凭证/会话不上云） */
+  cloudSync?: boolean
+  /** 本地记账：上次与云端对齐的偏好版本时间戳（用于后写为准，不上云） */
+  settingsSyncedAt?: number
 }
 
 /** AI 自动回复（全局开关 + 话术；按会话再开一层，两层都开才生效） */
@@ -132,7 +136,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     cooldownSec: 20,
     handoffKeywords: '人工, 转人工, 真人, human, agent, operator'
   },
-  sync: { enabled: false, serverUrl: '', token: '', email: '', uploadMedia: true },
+  sync: { enabled: false, serverUrl: '', token: '', email: '', uploadMedia: true, cloudSync: true },
   platform: { telegramApiId: '', telegramApiHash: '' },
   accounts: { 'whatsapp:main': {} }
 }

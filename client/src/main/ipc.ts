@@ -7,6 +7,7 @@ import type { BillingApi } from './billing/billing-api'
 import { openCrispWindow } from './core/crisp'
 import { deviceId, osInfo } from './core/device-id'
 import type { CampaignApi } from './campaigns/campaign-api'
+import type { ConfigSync } from './sync/config-sync-service'
 import type { MediaStore } from './core/media-store'
 import type { Notifier } from './core/notifier'
 import type { AppUpdater } from './core/updater'
@@ -28,6 +29,7 @@ export interface IpcDeps {
   media: MediaStore
   notifier: Notifier
   updater: AppUpdater
+  configSync: ConfigSync
   version: string
   /** 设置更新后的回调（重新装配翻译管道等） */
   onSettingsChanged: (settings: AppSettings) => void
@@ -219,6 +221,8 @@ export function registerIpc(deps: IpcDeps): void {
   ipcMain.handle(IPC_METHODS.updateSettings, async (_e, patch: Partial<AppSettings>) => {
     const updated = await settings.update(patch)
     deps.onSettingsChanged(updated)
+    // 渲染进程改了偏好 → 防抖上云（服务会自行判断是否开启云同步）
+    deps.configSync.pushDebounced()
     return updated
   })
   ipcMain.handle(IPC_METHODS.listTranslators, () => translators.list())
@@ -288,8 +292,11 @@ export function registerIpc(deps: IpcDeps): void {
   )
   ipcMain.handle(
     IPC_METHODS.authRegister,
-    (_e, url: string, email: string, pw: string, code?: string) =>
-      auth.register(url, email, pw, code)
+    async (_e, url: string, email: string, pw: string, code?: string) => {
+      const r = await auth.register(url, email, pw, code)
+      if (r.ok) await deps.configSync.pull()
+      return r
+    }
   )
   ipcMain.handle(IPC_METHODS.authForgotPassword, (_e, serverUrl: string, email: string) =>
     deps.auth.forgotPassword(serverUrl, email)
@@ -299,8 +306,10 @@ export function registerIpc(deps: IpcDeps): void {
     (_e, serverUrl: string, email: string, code: string, password: string) =>
       deps.auth.resetPassword(serverUrl, email, code, password)
   )
-  ipcMain.handle(IPC_METHODS.authLogin, (_e, url: string, email: string, pw: string) =>
-    auth.login(url, email, pw)
-  )
+  ipcMain.handle(IPC_METHODS.authLogin, async (_e, url: string, email: string, pw: string) => {
+    const r = await auth.login(url, email, pw)
+    if (r.ok) await deps.configSync.pull()
+    return r
+  })
   ipcMain.handle(IPC_METHODS.authLogout, () => auth.logout())
 }

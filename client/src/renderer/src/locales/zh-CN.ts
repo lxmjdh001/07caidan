@@ -166,6 +166,8 @@ export const zhCN = {
   'settings.sync': '聊天记录后台同步',
   'settings.syncMedia': '同时上传媒体文件（图片/语音/视频）',
   'settings.syncHint': '登录账号后，聊天记录批量定时归档到后台（含译文），供查询与 AI 意向分析',
+  'settings.cloudSync': '云端漫游偏好设置（跨设备）',
+  'settings.cloudSyncHint': '把界面语言/主题/翻译偏好/通知/自动回复话术同步到后台，换设备登录自动带过来。为安全起见，平台账号凭证与各引擎密钥只留在本机，不上云。',
   'auth.loginSub': '登录你的账号以管理各平台账号',
   'auth.registerSub': '注册新账号',
   'auth.serverUrl': '后台地址',
