@@ -83,6 +83,7 @@
     --rail-text: #c6ccd6;
     --rail-text-dim: #8c95a3;
     --rail-text-faint: #6d7684;
+    --rail-strong: #ffffff;
     --rail-hover: rgb(255 255 255 / 0.06);
     --rail-active: rgb(255 255 255 / 0.12);
     --rail-chip: rgb(255 255 255 / 0.1);
@@ -123,6 +124,7 @@
   --rail-text: #c6ccd6;
   --rail-text-dim: #8c95a3;
   --rail-text-faint: #6d7684;
+  --rail-strong: #ffffff;
   --rail-hover: rgb(255 255 255 / 0.06);
   --rail-active: rgb(255 255 255 / 0.12);
   --rail-chip: rgb(255 255 255 / 0.1);
@@ -325,7 +327,7 @@ body {
 .account-list-title {
   font-size: 13px;
   font-weight: 700;
-  color: var(--on-accent);
+  color: var(--rail-strong);
 }
 
 .account-list-count {
@@ -354,7 +356,7 @@ body {
 
 .icon-btn:hover {
   background: var(--rail-chip);
-  color: var(--on-accent);
+  color: var(--rail-strong);
 }
 
 .account-list-search {
@@ -366,7 +368,7 @@ body {
   border: none;
   border-radius: 8px;
   background: var(--rail-hover);
-  color: var(--on-accent);
+  color: var(--rail-strong);
   font-size: 12.5px;
   padding: 7px 11px;
   outline: none;
@@ -422,6 +424,22 @@ body {
 .account-row.active {
   background: var(--rail-active);
 }
+.account-row.active .account-row-name {
+  color: var(--on-accent);
+}
+.account-row.active .account-row-status {
+  color: var(--on-accent);
+  opacity: 0.85;
+}
+.account-row.active .account-row-avatar.all {
+  background: rgb(255 255 255 / 0.2);
+  color: var(--on-accent);
+}
+/* 绿色活动行上的角标反白，否则绿上绿看不清 */
+.account-row.active .unread-badge {
+  background: var(--on-accent);
+  color: var(--accent);
+}
 
 .account-row-avatar {
   position: relative;
@@ -459,7 +477,7 @@ body {
 .account-row-name {
   font-size: 13.5px;
   font-weight: 600;
-  color: var(--on-accent);
+  color: var(--rail-strong);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
