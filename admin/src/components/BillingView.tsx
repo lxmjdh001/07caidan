@@ -89,6 +89,8 @@ function PlansTab({ client }: Props): React.JSX.Element {
   const [count, setCount] = useState('1')
   const [maxAccounts, setMaxAccounts] = useState('10')
   const [desc, setDesc] = useState('')
+  /** 正在编辑描述的套餐（弹窗多行编辑，预填当前内容） */
+  const [descEdit, setDescEdit] = useState<Plan | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -199,15 +201,7 @@ function PlansTab({ client }: Props): React.JSX.Element {
                   <td className="num">{p.maxAccounts}</td>
                   <td className="desc-cell" title={p.description || ''}>
                     <span>{(p.description || '').slice(0, 40) || '—'}</span>
-                    <button
-                      className="ghost small"
-                      onClick={async () => {
-                        const next = window.prompt(t('billing.planDescPrompt'), p.description || '')
-                        if (next === null) return
-                        await client.updatePlan(p.id, { description: next })
-                        await load()
-                      }}
-                    >
+                    <button className="ghost small" onClick={() => setDescEdit(p)}>
                       {t('common.edit')}
                     </button>
                   </td>
@@ -228,7 +222,69 @@ function PlansTab({ client }: Props): React.JSX.Element {
           </table>
         )}
       </section>
+
+      {descEdit && (
+        <DescModal
+          plan={descEdit}
+          onClose={() => setDescEdit(null)}
+          onSave={async (text) => {
+            await client.updatePlan(descEdit.id, { description: text })
+            setDescEdit(null)
+            await load()
+          }}
+        />
+      )}
     </>
+  )
+}
+
+/** 套餐描述编辑弹窗：多行 Markdown，预填当前内容 */
+function DescModal({
+  plan,
+  onClose,
+  onSave
+}: {
+  plan: Plan
+  onClose: () => void
+  onSave: (text: string) => Promise<void>
+}): React.JSX.Element {
+  const { t } = useI18n()
+  const [text, setText] = useState(plan.description || '')
+  const [busy, setBusy] = useState(false)
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()}>
+        <h3>
+          {t('billing.planDesc')} · {plan.name}
+        </h3>
+        <p className="muted small">{t('billing.planDescHint')}</p>
+        <textarea
+          rows={10}
+          value={text}
+          autoFocus
+          onChange={(e) => setText(e.target.value)}
+        />
+        <div className="modal-actions">
+          <button className="ghost" onClick={onClose}>
+            {t('common.cancel')}
+          </button>
+          <button
+            className="primary"
+            disabled={busy}
+            onClick={async () => {
+              setBusy(true)
+              try {
+                await onSave(text)
+              } finally {
+                setBusy(false)
+              }
+            }}
+          >
+            {t('common.save')}
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -900,7 +956,7 @@ function OrdersTab({ client }: Props): React.JSX.Element {
     <>
       <section className="card">
         <h3>{t('billing.adjust')}</h3>
-        <p className="hint">{t('billing.adjustHint')}</p>
+        <p className="muted small">{t('billing.adjustHint')}</p>
         <div className="form-row">
           <label>
             <span>{t('billing.userEmail')}</span>
@@ -951,11 +1007,11 @@ function OrdersTab({ client }: Props): React.JSX.Element {
             {t('common.save')}
           </button>
         </div>
-        {msg && <p className="ok-hint">{msg}</p>}
+        {msg && <p className="ok">{msg}</p>}
       </section>
 
       <section className="card">
-        <div className="toolbar">
+        <div className="log-toolbar">
           <h3>{t('billing.orders')}</h3>
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="pending">{t('billing.statusPending')}</option>
@@ -964,8 +1020,8 @@ function OrdersTab({ client }: Props): React.JSX.Element {
             <option value="">{t('billing.statusAll')}</option>
           </select>
         </div>
-        {err && <div className="error-banner">{err}</div>}
-        <table className="table">
+        {err && <p className="err">{err}</p>}
+        <table className="data-table">
           <thead>
             <tr>
               <th>{t('billing.orderTime')}</th>
@@ -1015,7 +1071,7 @@ function OrdersTab({ client }: Props): React.JSX.Element {
             ))}
             {orders.length === 0 && (
               <tr>
-                <td colSpan={7} className="hint">
+                <td colSpan={7} className="muted small">
                   {t('billing.noOrders')}
                 </td>
               </tr>

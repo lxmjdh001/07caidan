@@ -508,12 +508,16 @@ export class ApiClient {
     userId?: number
     deviceId?: string
     q?: string
-  }): Promise<{ logs: ClientLogRow[] }> {
+    limit?: number
+    offset?: number
+  }): Promise<{ logs: ClientLogRow[]; total: number }> {
     const qs = new URLSearchParams()
     if (filter.level) qs.set('level', filter.level)
     if (filter.userId !== undefined) qs.set('userId', String(filter.userId))
     if (filter.deviceId) qs.set('deviceId', filter.deviceId)
     if (filter.q) qs.set('q', filter.q)
+    if (filter.limit !== undefined) qs.set('limit', String(filter.limit))
+    if (filter.offset !== undefined) qs.set('offset', String(filter.offset))
     const suffix = qs.toString()
     return this.req(`/api/admin/logs${suffix ? `?${suffix}` : ''}`)
   }

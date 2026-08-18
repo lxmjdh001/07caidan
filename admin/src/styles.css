@@ -395,3 +395,75 @@ input { font-family: inherit; }
 .block-label textarea { width: 100%; box-sizing: border-box; resize: vertical; }
 .desc-cell { max-width: 220px; }
 .desc-cell span { display: inline-block; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; margin-inline-end: 6px; }
+
+/* ── 通用按钮（此前 .primary/.ghost 无视觉样式，控件裸奔） ── */
+button.primary, .primary-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+}
+button.primary:hover { filter: brightness(1.06); }
+button.primary:disabled { opacity: 0.55; cursor: default; }
+button.ghost {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 13px;
+}
+button.ghost:hover { border-color: var(--accent); color: var(--accent); }
+button.ghost.small, button.primary.small { padding: 4px 10px; font-size: 12px; }
+button.danger {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 13px;
+}
+.ok { color: var(--accent); font-size: 13px; margin-top: 8px; }
+.card select, .card input[type='text'], .card input:not([type]) {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 10px;
+  font-size: 13px;
+  background: var(--panel-alt);
+  color: var(--text);
+}
+.modal textarea {
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 8px 11px;
+  font-size: 13px;
+  outline: none;
+  background: var(--panel-alt);
+  color: var(--text);
+  font-family: inherit;
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
+.modal textarea:focus { border-color: var(--accent); }
+
+/* ── 日志页 ── */
+.log-level {
+  display: inline-block;
+  min-width: 44px;
+  text-align: center;
+  border-radius: 6px;
+  padding: 1px 7px;
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.log-level.debug { background: rgb(127 127 127 / 0.15); color: var(--muted); }
+.log-level.info { background: rgb(60 130 246 / 0.15); color: #3c82f6; }
+.log-level.warn { background: rgb(234 160 40 / 0.18); color: var(--warn); }
+.log-level.error { background: rgb(230 70 70 / 0.15); color: var(--danger); }
+.log-toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+.log-toolbar input { min-width: 220px; }
+.pager { display: flex; gap: 10px; align-items: center; justify-content: flex-end; margin-top: 10px; font-size: 12.5px; color: var(--muted); }

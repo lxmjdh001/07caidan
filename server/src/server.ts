@@ -79,7 +79,11 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
 
   const app = Fastify({ logger: true, bodyLimit: 64 * 1024 * 1024 })
   // 前后端分离：管理后台是独立前端（admin/），这里开放跨域即可
-  void app.register(cors, { origin: true })
+  // 默认只放 GET/HEAD/POST，管理后台的 PATCH/DELETE 会被预检拦死
+  void app.register(cors, {
+    origin: true,
+    methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']
+  })
 
   // 其它 content-type（图片上传等二进制）：不解析，原始流透传给路由
   // —— 否则 Fastify 对未注册类型直接 415，带 image/png 头的上传会被拒
@@ -485,15 +489,17 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   app.get('/api/admin/logs', async (req, reply) => {
     if (!requirePerm(req, reply, 'support:manage')) return
     const q = req.query as Record<string, string | undefined>
-    const rows = logRepo.list(ctxOf(req).tenant, {
+    const { logs, total } = logRepo.list(ctxOf(req).tenant, {
       level: q.level,
       userId: q.userId ? Number(q.userId) : undefined,
       deviceId: q.deviceId,
       q: q.q,
-      limit: q.limit ? Number(q.limit) : undefined
+      limit: q.limit ? Number(q.limit) : undefined,
+      offset: q.offset ? Number(q.offset) : undefined
     })
     return {
-      logs: rows.map((r) => ({
+      total,
+      logs: logs.map((r) => ({
         ...r,
         email: r.userId === null ? undefined : clientAuth.emailOf(r.userId)
       }))

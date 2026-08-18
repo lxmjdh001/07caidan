@@ -200,3 +200,21 @@ describe('客户端日志上报', () => {
     assert.ok(list.json.logs[0].message.length <= 2000)
   })
 })
+
+describe('日志分页', () => {
+  test('offset/limit 翻页且带 total', async () => {
+    await api('POST', '/api/logs', {
+      deviceId: DEVICE,
+      entries: Array.from({ length: 120 }, (_, i) => entry('warn', `m${i}`))
+    })
+    const admin = await adminToken()
+    const p1 = await api('GET', '/api/admin/logs?limit=50&offset=0', undefined, admin)
+    assert.equal(p1.json.total, 120)
+    assert.equal(p1.json.logs.length, 50)
+    const p3 = await api('GET', '/api/admin/logs?limit=50&offset=100', undefined, admin)
+    assert.equal(p3.json.logs.length, 20)
+    // 两页无重叠
+    const ids1 = new Set(p1.json.logs.map((l: any) => l.id))
+    assert.ok(p3.json.logs.every((l: any) => !ids1.has(l.id)))
+  })
+})

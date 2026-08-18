@@ -136,8 +136,9 @@ export class LogRepo {
       deviceId?: string
       q?: string
       limit?: number
+      offset?: number
     } = {}
-  ): ClientLogRow[] {
+  ): { logs: ClientLogRow[]; total: number } {
     const conds = [eq(clientLogs.tenant, tenant)]
     if (filter.level && isLogLevel(filter.level)) {
       // 选中某级别 = 该级别及以上（看 warn 自然也想看 error）
@@ -151,14 +152,23 @@ export class LogRepo {
         or(like(clientLogs.message, `%${filter.q}%`), like(clientLogs.scope, `%${filter.q}%`))!
       )
     }
-    const limit = Math.min(Math.max(filter.limit ?? 200, 1), 1000)
-    return this.db
+    const limit = Math.min(Math.max(filter.limit ?? 50, 1), 1000)
+    const offset = Math.max(filter.offset ?? 0, 0)
+    const where = and(...conds)
+    const total = this.db
+      .select({ n: sql<number>`count(*)` })
+      .from(clientLogs)
+      .where(where)
+      .get()!.n
+    const logs = this.db
       .select()
       .from(clientLogs)
-      .where(and(...conds))
+      .where(where)
       .orderBy(desc(clientLogs.createdAt), desc(clientLogs.id))
       .limit(limit)
+      .offset(offset)
       .all() as ClientLogRow[]
+    return { logs, total }
   }
 
   /** 概览：每个设备的最近上报（管理页顶部的设备/用户清单） */
