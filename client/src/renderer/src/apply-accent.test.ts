@@ -12,16 +12,18 @@ describe('accentVars（品牌主题色 → 强调色）', () => {
     expect(accentVars('purple')).toBeNull()
     expect(accentVars('#12')).toBeNull()
   })
-  it('自定义 6 位色 → 覆盖 accent + 半透明 soft', () => {
+  it('自定义 6 位色 → 覆盖 accent + 半透明 soft + Logo 渐变', () => {
     expect(accentVars('#7c3aed')).toEqual({
       accent: '#7c3aed',
-      accentSoft: 'rgba(124, 58, 237, 0.13)'
+      accentSoft: 'rgba(124, 58, 237, 0.13)',
+      logoGradient: 'linear-gradient(135deg, #7c3aed, rgb(84, 39, 161))'
     })
   })
   it('3 位色展开', () => {
     expect(accentVars('#f0a')).toEqual({
       accent: '#f0a',
-      accentSoft: 'rgba(255, 0, 170, 0.13)'
+      accentSoft: 'rgba(255, 0, 170, 0.13)',
+      logoGradient: 'linear-gradient(135deg, #f0a, rgb(173, 0, 116))'
     })
   })
 })

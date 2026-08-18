@@ -128,7 +128,7 @@ input { font-family: inherit; }
 .sidebar-logo { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; }
 .sidebar .logo {
   width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center;
-  background: linear-gradient(135deg, #22a06b, #1c8ad9); color: var(--on-accent); font-weight: 700; font-size: 13px;
+  background: var(--brand-logo, linear-gradient(135deg, #22a06b, #1c8ad9)); color: var(--on-accent); font-weight: 700; font-size: 13px;
 }
 .sidebar-title { font-size: 15px; font-weight: 600; color: var(--on-accent); }
 .sidebar-nav { display: flex; flex-direction: column; gap: 4px; }

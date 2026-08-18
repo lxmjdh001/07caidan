@@ -190,7 +190,7 @@ body {
   width: 44px;
   height: 44px;
   border-radius: 12px;
-  background: linear-gradient(135deg, #22a06b, #1c8ad9);
+  background: var(--brand-logo, linear-gradient(135deg, #22a06b, #1c8ad9));
   color: var(--on-accent);
   font-weight: 700;
   font-size: 15px;
