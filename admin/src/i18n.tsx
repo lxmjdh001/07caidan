@@ -49,6 +49,7 @@ const zhCN = {
   'chat.media': '媒体消息',
 
   'analysis.title': 'AI 意向分析',
+  'analysis.analyzedAt': '上次分析：{time}',
   'analysis.run': '分析该会话',
   'analysis.runContact': '分析该客户全部会话',
   'analysis.running': '分析中…',
@@ -343,6 +344,7 @@ const en: Partial<Record<MessageKey, string>> = {
   'chat.media': 'Media message',
 
   'analysis.title': 'AI intent analysis',
+  'analysis.analyzedAt': 'Analyzed: {time}',
   'analysis.run': 'Analyze this conversation',
   'analysis.runContact': 'Analyze all conversations of this customer',
   'analysis.running': 'Analyzing…',

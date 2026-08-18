@@ -12,14 +12,29 @@ interface Props {
 export function AnalysisPanel({ client, conversation, canAnalyze }: Props): React.JSX.Element {
   const { t } = useI18n()
   const [analysis, setAnalysis] = useState<IntentAnalysis | null>(null)
+  const [analyzedAt, setAnalyzedAt] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
-  // 切换会话时清空结果
+  // 切换会话时：清空并读取已落库的意向（自动打标签/上次深度分析），打开即展示，无需点按钮/无需 key
   useEffect(() => {
     setAnalysis(null)
+    setAnalyzedAt(null)
     setErr('')
-  }, [conversation.id])
+    let cancelled = false
+    void client
+      .getIntent(conversation.id)
+      .then((r) => {
+        if (cancelled || !r.intent) return
+        const { analyzedAt: at, ...a } = r.intent
+        setAnalysis(a)
+        setAnalyzedAt(at)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [conversation.id, client])
 
   const run = async (): Promise<void> => {
     setBusy(true)
@@ -30,6 +45,7 @@ export function AnalysisPanel({ client, conversation, canAnalyze }: Props): Reac
         ? await client.analyzeContact(conversation.contactId)
         : await client.analyzeConversation(conversation.id)
       setAnalysis(analysis)
+      setAnalyzedAt(Date.now())
     } catch (e) {
       const msg = (e as Error).message
       setErr(msg.includes('501') ? t('analysis.noKey') : msg)
@@ -64,6 +80,11 @@ export function AnalysisPanel({ client, conversation, canAnalyze }: Props): Reac
             <span className={`level ${analysis.intentLevel}`}>
               {INTENT_LABEL[analysis.intentLevel] ?? analysis.intentLevel}
             </span>
+            {analyzedAt && (
+              <span className="analysis-time">
+                {t('analysis.analyzedAt', { time: new Date(analyzedAt).toLocaleString() })}
+              </span>
+            )}
             <h4>{t('analysis.summary')}</h4>
             <p>{analysis.summary}</p>
             <h4>{t('analysis.signals')}</h4>

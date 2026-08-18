@@ -304,6 +304,11 @@ export class ApiClient {
     return this.req(`/api/analyze/conversation/${encodeURIComponent(id)}`, { method: 'POST' })
   }
 
+  /** 已落库的意向分析（自动打标签/深度分析结果），打开会话即读，无需 key */
+  getIntent(id: string): Promise<{ intent: (IntentAnalysis & { analyzedAt: number }) | null }> {
+    return this.req(`/api/conversations/${encodeURIComponent(id)}/intent`)
+  }
+
   analyzeContact(contactId: string): Promise<{ analysis: IntentAnalysis }> {
     return this.req(`/api/analyze/contact/${encodeURIComponent(contactId)}`, { method: 'POST' })
   }

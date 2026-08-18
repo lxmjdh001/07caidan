@@ -785,6 +785,24 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     return { messages: repo.listMessages(ctxOf(req).tenant, id, 500) }
   })
 
+  // 已落库的意向分析（实时自动打标签或按需深度分析的结果），供打开会话即展示
+  app.get('/api/conversations/:id/intent', async (req, reply) => {
+    if (!requirePerm(req, reply, 'conversations:read')) return
+    const id = (req.params as { id: string }).id
+    const s = intentRepo.get(ctxOf(req).tenant, id)
+    return {
+      intent: s
+        ? {
+            intentLevel: s.level,
+            summary: s.summary,
+            signals: s.signals,
+            suggestedAction: s.suggestedAction,
+            analyzedAt: s.analyzedAt
+          }
+        : null
+    }
+  })
+
   // ── LINE Webhook 中转 ──
   // 客户端注册 LINE 账号（存 channelSecret 用于验签），返回 Webhook 地址
   app.post('/api/line/register', async (req, reply) => {

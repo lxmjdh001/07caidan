@@ -168,6 +168,7 @@ input { font-family: inherit; }
 .intent-filter button:hover { border-color: var(--accent); }
 .intent-filter button.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .list-scroll { flex: 1; overflow-y: auto; }
+.analysis-time { display: block; font-size: 11px; color: var(--muted); margin: 6px 0 2px; }
 .conv { padding: 11px 14px; border-bottom: 1px solid var(--border); cursor: pointer; display: flex; gap: 11px; align-items: center; }
 .conv:hover { background: var(--panel-alt); }
 .conv.active { background: var(--accent-soft); }
