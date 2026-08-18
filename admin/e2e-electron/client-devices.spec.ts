@@ -45,5 +45,11 @@ test('客户端：注册登录 → 团队管理 → 登录设备（远程下线�
   await win.waitForTimeout(500)
   await win.screenshot({ path: `${SHOT_DIR}/client-01-devices.png` })
 
+  // 深色校对：模拟系统深色（客户端默认「跟随系统」），同页再截一张
+  await win.emulateMedia({ colorScheme: 'dark' })
+  await win.waitForTimeout(500)
+  await expect(win.getByText(/本机|This device/)).toBeVisible()
+  await win.screenshot({ path: `${SHOT_DIR}/client-02-devices-dark.png` })
+
   await app.close()
 })
