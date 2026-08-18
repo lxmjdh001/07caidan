@@ -32,6 +32,7 @@ import { SupportRepo } from './support/support-repo.ts'
 import { BATCH_MAX, LogRepo, isLogLevel, type LogEntryInput } from './logs/log-repo.ts'
 import type { SyncPayload } from './types.ts'
 import { brand } from './branding.ts'
+import { regionAllowed } from './geoip/geoip.ts'
 
 /** 请求上下文：要么是同步客户端（仅 tenant），要么是登录的管理员（含权限） */
 interface ReqCtx {
@@ -779,6 +780,10 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
         endAt: b.endAt ?? undefined,
         dedupLibraryIds: b.dedupLibraryIds ?? [],
         dedupBeforeAt: b.dedupBeforeAt,
+        dedupAccountIds: b.dedupAccountIds ?? [],
+        sourceCodes: b.sourceCodes ?? [],
+        allowCnIp: b.allowCnIp === true,
+        allowHkIp: b.allowHkIp === true,
         tzOffsetMinutes: b.tzOffsetMinutes
       },
       ctxOf(req).principal?.username
@@ -982,6 +987,10 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     const token = (req.params as { token: string }).token
     const r = campaignRepo.resolveLink(token)
     if (!r.ok) return reply.code(404).send({ error: r.reason })
+    // 地区限制：默认拒绝中国大陆与香港 IP，老板可在工单设置里逐项放开
+    if (!regionAllowed(req.ip, { allowCn: r.campaign.allowCnIp, allowHk: r.campaign.allowHkIp })) {
+      return reply.code(403).send({ error: 'region_blocked' })
+    }
     const stats = campaignRepo.statsOf(r.tenant, r.campaign)
     return {
       campaign: {
@@ -1000,7 +1009,18 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   })
 
   // 分享页本体：独立静态页，收件人打开一个 URL 就能看
-  app.get('/c/:token', async (_req, reply) => {
+  app.get('/c/:token', async (req, reply) => {
+    // 页面本身也拦：避免先展示壳子再由接口报 403 的体验
+    const r = campaignRepo.resolveLink((req.params as { token: string }).token)
+    if (
+      r.ok &&
+      !regionAllowed(req.ip, { allowCn: r.campaign.allowCnIp, allowHk: r.campaign.allowHkIp })
+    ) {
+      return reply
+        .code(403)
+        .type('text/html; charset=utf-8')
+        .send('<!doctype html><meta charset="utf-8"><title>403</title><p style="font-family:system-ui;text-align:center;margin-top:20vh">该链接在你所在的地区不可访问</p>')
+    }
     return reply.type('text/html; charset=utf-8').send(await readDashboardHtml())
   })
 

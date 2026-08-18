@@ -164,6 +164,10 @@ export const campaigns = sqliteTable(
     dedupAccountIds: text('dedup_account_ids').notNull().default('[]'),
     /** JSON：只统计这些投放来源码；空数组 = 全部来源 */
     sourceCodes: text('source_codes').notNull().default('[]'),
+    /** 公开看板是否允许中国大陆 IP 访问（默认不允许） */
+    allowCnIp: integer('allow_cn_ip').notNull().default(0),
+    /** 公开看板是否允许香港 IP 访问（默认不允许） */
+    allowHkIp: integer('allow_hk_ip').notNull().default(0),
     /** 看板时区偏移（分钟），默认 UTC+8 */
     tzOffsetMinutes: integer('tz_offset_minutes').notNull().default(480),
     createdBy: text('created_by'),

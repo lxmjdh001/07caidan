@@ -33,6 +33,9 @@ export interface Campaign {
   dedupAccountIds: string[]
   /** 只统计这些投放来源码；空 = 全部来源 */
   sourceCodes: string[]
+  /** 公开看板是否允许中国大陆 / 香港 IP（默认都不允许） */
+  allowCnIp: boolean
+  allowHkIp: boolean
   tzOffsetMinutes: number
   createdBy?: string
   createdAt: number
@@ -81,6 +84,8 @@ export interface CampaignInput {
   dedupBeforeAt?: number
   dedupAccountIds?: string[]
   sourceCodes?: string[]
+  allowCnIp?: boolean
+  allowHkIp?: boolean
   tzOffsetMinutes?: number
 }
 
@@ -114,6 +119,8 @@ export class CampaignRepo {
       dedupBeforeAt: input.dedupBeforeAt ?? null,
       dedupAccountIds: JSON.stringify(input.dedupAccountIds ?? []),
       sourceCodes: JSON.stringify(input.sourceCodes ?? []),
+      allowCnIp: input.allowCnIp ? 1 : 0,
+      allowHkIp: input.allowHkIp ? 1 : 0,
       tzOffsetMinutes: input.tzOffsetMinutes ?? 480,
       createdBy: createdBy ?? null,
       createdAt: now,
@@ -159,6 +166,8 @@ export class CampaignRepo {
       set.dedupAccountIds = JSON.stringify(patch.dedupAccountIds)
     }
     if (patch.sourceCodes !== undefined) set.sourceCodes = JSON.stringify(patch.sourceCodes)
+    if (patch.allowCnIp !== undefined) set.allowCnIp = patch.allowCnIp ? 1 : 0
+    if (patch.allowHkIp !== undefined) set.allowHkIp = patch.allowHkIp ? 1 : 0
     if (patch.tzOffsetMinutes !== undefined) set.tzOffsetMinutes = patch.tzOffsetMinutes
     const res = this.db
       .update(campaigns)
@@ -601,6 +610,8 @@ function toCampaign(r: typeof campaigns.$inferSelect): Campaign {
     dedupBeforeAt: r.dedupBeforeAt ?? undefined,
     dedupAccountIds: parseJsonArray(r.dedupAccountIds),
     sourceCodes: parseJsonArray(r.sourceCodes),
+    allowCnIp: r.allowCnIp === 1,
+    allowHkIp: r.allowHkIp === 1,
     tzOffsetMinutes: r.tzOffsetMinutes,
     createdBy: r.createdBy ?? undefined,
     createdAt: r.createdAt,

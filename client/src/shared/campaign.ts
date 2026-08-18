@@ -17,6 +17,9 @@ export interface Campaign {
   dedupAccountIds: string[]
   /** 只统计这些投放来源码；空 = 全部来源 */
   sourceCodes: string[]
+  /** 公开看板是否允许中国大陆 / 香港 IP（默认都不允许） */
+  allowCnIp: boolean
+  allowHkIp: boolean
   tzOffsetMinutes: number
   createdBy?: string
   createdAt: number
@@ -33,6 +36,8 @@ export interface CampaignInput {
   dedupBeforeAt?: number
   dedupAccountIds?: string[]
   sourceCodes?: string[]
+  allowCnIp?: boolean
+  allowHkIp?: boolean
   tzOffsetMinutes?: number
 }
 

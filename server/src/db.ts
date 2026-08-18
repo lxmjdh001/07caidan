@@ -115,6 +115,8 @@ export function openDb(dbPath: string): Db {
       dedup_library_ids TEXT NOT NULL DEFAULT '[]', dedup_before_at INTEGER,
       dedup_account_ids TEXT NOT NULL DEFAULT '[]',
       source_codes TEXT NOT NULL DEFAULT '[]',
+      allow_cn_ip INTEGER NOT NULL DEFAULT 0,
+      allow_hk_ip INTEGER NOT NULL DEFAULT 0,
       tz_offset_minutes INTEGER NOT NULL DEFAULT 480,
       created_by TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
       PRIMARY KEY (tenant, id)
@@ -319,6 +321,8 @@ function migrate(sqlite: BetterSqlite3.Database): void {
     ['campaigns', 'tz_offset_minutes', 'INTEGER NOT NULL DEFAULT 480'],
     ['campaigns', 'source_codes', `TEXT NOT NULL DEFAULT '[]'`],
     ['plans', 'description', `TEXT NOT NULL DEFAULT ''`],
+    ['campaigns', 'allow_cn_ip', 'INTEGER NOT NULL DEFAULT 0'],
+    ['campaigns', 'allow_hk_ip', 'INTEGER NOT NULL DEFAULT 0'],
     ['conversations', 'lead_source_code', 'TEXT'],
     ['conversations', 'lead_source_via', 'TEXT'],
     ['client_users', 'owner_id', 'INTEGER'],

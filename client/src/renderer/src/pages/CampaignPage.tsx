@@ -224,6 +224,9 @@ function CampaignForm({
   )
   /** 投放来源码，空格/逗号分隔；空 = 全部来源 */
   const [sources, setSources] = useState((editing?.sourceCodes ?? []).join(' '))
+  /** 公开看板地区限制：默认拒绝大陆与香港 */
+  const [allowCn, setAllowCn] = useState(editing?.allowCnIp ?? false)
+  const [allowHk, setAllowHk] = useState(editing?.allowHkIp ?? false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -299,6 +302,8 @@ function CampaignForm({
             ? []
             : dedupAccounts.map(toAccountId),
         sourceCodes: sources.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean),
+        allowCnIp: allowCn,
+        allowHkIp: allowHk,
         tzOffsetMinutes: -new Date().getTimezoneOffset()
       }
       if (editing) {
@@ -370,6 +375,27 @@ function CampaignForm({
           />
           <span className="field-hint">{t('campaign.sourcesHint')}</span>
         </label>
+
+        <div className="field">
+          <span>{t('campaign.regionLimit')}</span>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={allowCn}
+              onChange={(e) => setAllowCn(e.target.checked)}
+            />
+            <span>{t('campaign.allowCn')}</span>
+          </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={allowHk}
+              onChange={(e) => setAllowHk(e.target.checked)}
+            />
+            <span>{t('campaign.allowHk')}</span>
+          </label>
+          <span className="field-hint">{t('campaign.regionHint')}</span>
+        </div>
       </section>
 
       <section className="form-card">
