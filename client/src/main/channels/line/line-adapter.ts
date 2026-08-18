@@ -2,6 +2,8 @@ import type { ChannelStatus, UnifiedMessage } from '@shared/domain'
 import { ChannelAdapter, type OutboundResult } from '../../core/channel-adapter'
 import { noopLogger, type Logger } from '../../core/logger'
 import { extFromMime } from '../../core/mime'
+import { createDispatcher, withDispatcher } from '../../core/proxy'
+import type { Dispatcher } from 'undici'
 import {
   isLineGroup,
   lineChatId,
@@ -24,6 +26,8 @@ export interface LineAdapterOptions {
   getCreds: () => LineCreds
   /** 后台中转地址与令牌（收信必需：LINE 只支持公网 Webhook） */
   getBackend: () => { url?: string; token?: string }
+  /** 该账号代理（仅用于直连 LINE API，后台中转调用不走代理） */
+  getProxyUrl?: () => string | undefined
   saveMedia?: (data: Buffer, ext: string) => Promise<string>
   /** 整机共享的事件轮询协调器；所有 LINE 账号共用一个定时器 */
   poller: LinePollCoordinator
@@ -43,11 +47,14 @@ export class LineAdapter extends ChannelAdapter {
   private readonly log: Logger
   private readonly getCreds: () => LineCreds
   private readonly getBackend: () => { url?: string; token?: string }
+  private readonly getProxyUrl: () => string | undefined
   private readonly saveMedia?: (data: Buffer, ext: string) => Promise<string>
   private readonly poller: LinePollCoordinator
 
   private status: ChannelStatus = 'stopped'
   private stopping = false
+  /** 直连 LINE API 用的代理 dispatcher；start 时按账号配置重建 */
+  private dispatcher: Dispatcher | undefined
 
   constructor(opts: LineAdapterOptions) {
     super()
@@ -55,6 +62,7 @@ export class LineAdapter extends ChannelAdapter {
     this.log = (opts.logger ?? noopLogger).child(`line:${opts.accountId}`)
     this.getCreds = opts.getCreds
     this.getBackend = opts.getBackend
+    this.getProxyUrl = opts.getProxyUrl ?? (() => undefined)
     this.saveMedia = opts.saveMedia
     this.poller = opts.poller
   }
@@ -69,6 +77,13 @@ export class LineAdapter extends ChannelAdapter {
     const backend = this.getBackend()
     if (!backend.url || !backend.token) {
       this.setState('error', { detail: 'LINE 收信需先登录后台账号（收信经后台 Webhook 中转）' })
+      return
+    }
+    // 按账号代理重建 dispatcher（仅用于直连 LINE API）
+    try {
+      this.dispatcher = createDispatcher(this.getProxyUrl())
+    } catch (err) {
+      this.setState('error', { detail: err instanceof Error ? err.message : String(err) })
       return
     }
     this.setState('connecting')
@@ -136,10 +151,13 @@ export class LineAdapter extends ChannelAdapter {
     const token = this.getCreds().channelAccessToken
     if (!token) return
     try {
-      const res = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
-        headers: { authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(30_000)
-      })
+      const res = await fetch(
+        `https://api-data.line.me/v2/bot/message/${messageId}/content`,
+        withDispatcher(
+          { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(30_000) },
+          this.dispatcher
+        )
+      )
       if (!res.ok) return
       const buf = Buffer.from(await res.arrayBuffer())
       const mediaId = await this.saveMedia(buf, extFromMime(msg.body.mimeType))
@@ -152,12 +170,18 @@ export class LineAdapter extends ChannelAdapter {
   private async linePush(to: string, messages: unknown[]): Promise<void> {
     const token = this.getCreds().channelAccessToken
     if (!token) throw new Error('缺少 LINE channelAccessToken')
-    const res = await fetch('https://api.line.me/v2/bot/message/push', {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ to, messages }),
-      signal: AbortSignal.timeout(15_000)
-    })
+    const res = await fetch(
+      'https://api.line.me/v2/bot/message/push',
+      withDispatcher(
+        {
+          method: 'POST',
+          headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ to, messages }),
+          signal: AbortSignal.timeout(15_000)
+        },
+        this.dispatcher
+      )
+    )
     if (!res.ok) throw new Error(`LINE push HTTP ${res.status}`)
   }
 

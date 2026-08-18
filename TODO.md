@@ -46,7 +46,7 @@
 - [x] 后台 LINE 中转：注册（存 channelSecret）+ Webhook 验签（HMAC）+ 事件队列 + 客户端轮询拉取
 - [x] 会话来源标签已支持 telegram/line（品牌色）
 - [ ] LINE 生产验证（需真实 LINE 频道凭证 + 公网后台地址）
-- [ ] Telegram/LINE 代理支持（undici ProxyAgent）
+- [x] Telegram(Bot)/LINE 代理支持（undici Dispatcher：http/https 用 ProxyAgent，socks4/5 用自建 Agent + socks 拨号）；SOCKS5 真实回路集成测试。telegram-user(GramJS) 与 WhatsApp(Baileys) 本就有原生代理
 
 ## M5 — 后端（聊天记录归档 + AI 分析，前后端分离）
 > 技术栈：**Fastify 5** + **Drizzle ORM**（开发期 SQLite，schema 可平滑迁 PostgreSQL）

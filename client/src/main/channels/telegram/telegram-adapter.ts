@@ -3,6 +3,8 @@ import type { ChannelStatus, UnifiedMessage } from '@shared/domain'
 import { ChannelAdapter, type OutboundMedia, type OutboundResult } from '../../core/channel-adapter'
 import { noopLogger, type Logger } from '../../core/logger'
 import { extFromMime } from '../../core/mime'
+import { createDispatcher, withDispatcher } from '../../core/proxy'
+import type { Dispatcher } from 'undici'
 import {
   chatTitle,
   isGroupChat,
@@ -17,6 +19,8 @@ export interface TelegramAdapterOptions {
   logger?: Logger
   /** 读取 Bot Token（在账号设置里填）；空 = 需要填凭证 */
   getBotToken: () => string | undefined
+  /** 读取该账号代理地址（socks5/http）；空 = 走默认网络。做成函数以便改后重连生效 */
+  getProxyUrl?: () => string | undefined
   saveMedia?: (data: Buffer, ext: string) => Promise<string>
 }
 
@@ -33,6 +37,7 @@ export class TelegramAdapter extends ChannelAdapter {
 
   private readonly log: Logger
   private readonly getBotToken: () => string | undefined
+  private readonly getProxyUrl: () => string | undefined
   private readonly saveMedia?: (data: Buffer, ext: string) => Promise<string>
 
   private status: ChannelStatus = 'stopped'
@@ -41,12 +46,15 @@ export class TelegramAdapter extends ChannelAdapter {
   private offset = 0
   private selfId = 0
   private abort: AbortController | undefined
+  /** 当前连接使用的代理 dispatcher；start 时按账号配置重建 */
+  private dispatcher: Dispatcher | undefined
 
   constructor(opts: TelegramAdapterOptions) {
     super()
     this.accountId = opts.accountId
     this.log = (opts.logger ?? noopLogger).child(`telegram:${opts.accountId}`)
     this.getBotToken = opts.getBotToken
+    this.getProxyUrl = opts.getProxyUrl ?? (() => undefined)
     this.saveMedia = opts.saveMedia
   }
 
@@ -55,6 +63,15 @@ export class TelegramAdapter extends ChannelAdapter {
     const token = this.getBotToken()
     if (!token) {
       this.setState('need_credentials', { detail: '请在账号设置填写 Bot Token' })
+      return
+    }
+    // 按账号代理重建 dispatcher（非法代理地址直接置错误态）
+    try {
+      const proxy = this.getProxyUrl()
+      this.dispatcher = createDispatcher(proxy)
+      if (proxy) this.log.info('使用代理连接', { proxy: proxy.replace(/\/\/.*@/, '//***@') })
+    } catch (err) {
+      this.setState('error', { detail: err instanceof Error ? err.message : String(err) })
       return
     }
     this.setState('connecting')
@@ -150,7 +167,10 @@ export class TelegramAdapter extends ChannelAdapter {
       }
       const token = this.getBotToken()!
       const url = `https://api.telegram.org/file/bot${token}/${file.file_path}`
-      const res = await fetch(url, { signal: AbortSignal.timeout(30_000) })
+      const res = await fetch(
+        url,
+        withDispatcher({ signal: AbortSignal.timeout(30_000) }, this.dispatcher)
+      )
       if (!res.ok) return
       const buf = Buffer.from(await res.arrayBuffer())
       const mediaId = await this.saveMedia(buf, extFromMime(msg.body.mimeType))
@@ -169,23 +189,28 @@ export class TelegramAdapter extends ChannelAdapter {
   ): Promise<T> {
     const token = this.getBotToken()
     if (!token) throw new Error('缺少 Bot Token')
-    const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(params ?? {}),
-      signal: signal ?? AbortSignal.timeout(timeoutMs)
-    })
+    const res = await fetch(
+      `https://api.telegram.org/bot${token}/${method}`,
+      withDispatcher(
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(params ?? {}),
+          signal: signal ?? AbortSignal.timeout(timeoutMs)
+        },
+        this.dispatcher
+      )
+    )
     return this.parse<T>(res)
   }
 
   private async callForm<T>(method: string, form: FormData): Promise<T> {
     const token = this.getBotToken()
     if (!token) throw new Error('缺少 Bot Token')
-    const res = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
-      method: 'POST',
-      body: form,
-      signal: AbortSignal.timeout(60_000)
-    })
+    const res = await fetch(
+      `https://api.telegram.org/bot${token}/${method}`,
+      withDispatcher({ method: 'POST', body: form, signal: AbortSignal.timeout(60_000) }, this.dispatcher)
+    )
     return this.parse<T>(res)
   }
 

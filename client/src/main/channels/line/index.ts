@@ -29,6 +29,7 @@ export const linePlugin: ChannelPlugin = {
         providerId: ctx.getAccountConfig().credentials?.providerId
       }),
       getBackend: ctx.getBackend,
+      getProxyUrl: () => ctx.getAccountConfig().proxyUrl,
       saveMedia: ctx.saveMedia
     })
   }

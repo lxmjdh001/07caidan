@@ -19,6 +19,7 @@ export const telegramBotPlugin: ChannelPlugin = {
       accountId,
       logger: ctx.logger,
       getBotToken: () => ctx.getAccountConfig().credentials?.botToken,
+      getProxyUrl: () => ctx.getAccountConfig().proxyUrl,
       saveMedia: ctx.saveMedia
     })
   }
