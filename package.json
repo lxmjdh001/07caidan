@@ -1,0 +1,9 @@
+{
+  "name": "omnichat-monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "description": "OmniChat 白牌多平台聚合客服（client / server / admin）",
+  "scripts": {
+    "verify:brands": "node scripts/verify-brands.mjs"
+  }
+}

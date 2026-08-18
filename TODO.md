@@ -165,9 +165,15 @@
       随品牌走；品牌图标目录存在时自动使用；无证书时跳过签名自动发现
 - [x] 管理后台：登录页标题、侧栏 Logo/名称、浏览器标题（favicon/主题色预留）
 - [x] 后端：看板页标题占位符替换、验证码邮件署名（logo 预留）
-- [ ] logo 资源按品牌目录存放（`branding/<brand>/logo.svg`、`icon.icns`、`icon.ico`、`favicon`），
+- [~] logo 资源按品牌目录存放（`branding/<brand>/logo.svg`、`icon.icns`、`icon.ico`、`favicon`），
       构建脚本按需拷贝，缺失时回落到默认并给出告警
-- [ ] 校验：CI 里对每个品牌跑一次构建，防止某端漏读配置导致上线才发现还叫旧名字
+      已有：electron-builder 按 `branding/<brand>/icon.*` 存在与否选用，缺失回落默认并在构建日志提示。
+      待办：admin favicon / 客户端渲染层 logo.svg 的按品牌拷贝；themeColor 目前是"预留"（未接到 --accent）
+- [x] 校验：CI 对每个品牌校验配置，防止某端漏读配置导致上线才发现还叫旧名字
+      `scripts/verify-brands.mjs`（`npm run verify:brands`）+ `scripts/brand-schema.mjs`：
+      校验 branding/*.json 的所有端所需字段并集（appName/shortName/logoText/company/dashboardTitle/
+      apiUrl/themeColor 必填非空 + 格式；未知字段=拼写错误也挡下）。8 条单测锁定规则。
+      比"每个品牌全量构建"更快，且精准抓住"旧名字/漏读配置/apiUrl 空连不上后台"这类上线事故
 
 ## M9 — 引流工单（已完成主体）
 - [x] 工单数据模型 + 分享链接（多条、可设有效期 / 永不过期 / 手动停用）
