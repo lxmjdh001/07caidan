@@ -12,9 +12,11 @@ export default defineConfig({
   testDir: './e2e-electron',
   timeout: 120_000,
   fullyParallel: false,
-  // 顺序启动多个 Electron 时偶发启动/注册竞速超时（满负载下偶尔连败两次）；
-  // 套件已增至 ~39 个重量级 Electron 用例，重试两次稳定吸收启动竞速（非产品 bug）
-  retries: 2,
+  // 单 worker 顺序执行：并行启动多个 Electron + 共享后台会剧烈争抢，制造大面积
+  // 假性 flaky（各用例单独跑均通过）。顺序执行消除争抢，稳定且总时长可控。
+  workers: 1,
+  // 顺序下仍偶发启动/注册竞速，重试一次吸收（非产品 bug）
+  retries: 1,
   reporter: [['list']],
   webServer: [
     {
