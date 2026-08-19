@@ -43,9 +43,10 @@ test('客户端重粉库：从历史导出建库并在列表核对', async () =>
   await card.getByRole('button', { name: '导出建库' }).click()
 
   // 导出结果提示（新老板无历史时 0 个，共享租户可能有历史，故只校验文案形态）
-  await expect(card.getByText(/已导出 \d+ 个客户/)).toBeVisible({ timeout: 10_000 })
+  // 满负载连跑多个 Electron 时服务端往返偶发变慢，放宽超时
+  await expect(card.getByText(/已导出 \d+ 个客户/)).toBeVisible({ timeout: 20_000 })
   // 已有重粉库列表出现该库
-  await expect(win.getByText(libName).first()).toBeVisible({ timeout: 10_000 })
+  await expect(win.getByText(libName).first()).toBeVisible({ timeout: 15_000 })
 
   await win.waitForTimeout(300)
   await win.screenshot({ path: `${SHOT_DIR}/client-32-fanlib-export.png` })
