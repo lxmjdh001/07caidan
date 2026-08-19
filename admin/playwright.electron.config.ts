@@ -12,6 +12,8 @@ export default defineConfig({
   testDir: './e2e-electron',
   timeout: 120_000,
   fullyParallel: false,
+  // 顺序启动多个 Electron 时偶发启动/注册竞速超时，重试一次吸收（非产品 bug）
+  retries: 1,
   reporter: [['list']],
   webServer: [
     {

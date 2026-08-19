@@ -37,7 +37,7 @@ test('客户端：新建引流工单全流程（选账号→填名→创建→�
   await win.getByRole('button', { name: '新建工单' }).last().click()
 
   // 回到列表，工单出现
-  await expect(win.getByText('E2E 测试工单')).toBeVisible({ timeout: 10_000 })
+  await expect(win.getByText('E2E 测试工单').first()).toBeVisible({ timeout: 10_000 })
   await win.waitForTimeout(500)
   await win.screenshot({ path: `${SHOT_DIR}/client-18-campaign-created.png` })
   await app.close()

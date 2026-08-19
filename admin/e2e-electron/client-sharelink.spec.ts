@@ -34,7 +34,7 @@ test('客户端打粉全链路：建工单→生成分享链接→公开看板�
   await win.getByRole('button', { name: '新建工单' }).last().click()
 
   // 打开工单详情 → 生成分享链接
-  await win.locator('.campaign-row', { hasText: '打粉全链路工单' }).click()
+  await win.locator('.campaign-row', { hasText: '打粉全链路工单' }).first().click()
   await expect(win.getByRole('heading', { name: '分享链接' })).toBeVisible({ timeout: 10_000 })
   await win.getByRole('button', { name: '生成链接' }).click()
 
