@@ -40,7 +40,9 @@ test('后台聊天记录：打开会话显示收发消息气泡与译文', async
   await expect(page.locator('.sidebar-nav')).toBeVisible({ timeout: 15_000 })
 
   await page.getByRole('button', { name: /聊天记录|Chats/ }).click()
-  await page.locator('.conv', { hasText: title }).click()
+  // 先搜索过滤再点，避免共享租户会话多时列表拥挤/时序竞态
+  await page.locator('input[placeholder="搜索客户…"]').fill(title)
+  await page.locator('.conv', { hasText: title }).click({ timeout: 15_000 })
 
   // 入站气泡：原文 + 译文都在
   const inRow = page.locator('.row.in').filter({ hasText: '你好，这个还有货吗？' })

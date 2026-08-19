@@ -12,8 +12,11 @@ export default defineConfig({
   testDir: './e2e',
   timeout: 60_000,
   fullyParallel: false,
-  // 多用例共享同一租户且文件并行执行，个别全局单例配置(如到期提醒)偶发时序竞速；
-  // 重试一次吸收(孤立跑均通过，非产品 bug)
+  // 单 worker 顺序执行：并行跑多个浏览器+共享后台会争抢，共享租户会话变多时
+  // 聊天列表加载变慢，点会话偶发超时(与 electron 同因)。顺序执行消除争抢，
+  // 后台用例轻量，顺序仍很快且稳定。
+  workers: 1,
+  // 顺序下仍偶发时序竞速(如全局单例到期提醒)，重试一次吸收(非产品 bug)
   retries: 1,
   reporter: [['list']],
   use: {

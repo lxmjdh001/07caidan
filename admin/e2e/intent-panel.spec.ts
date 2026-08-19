@@ -49,7 +49,9 @@ test('打开会话即显示已存意向分析（无需点分析、无需 key）'
   await seed()
   await login(page)
   await page.getByRole('button', { name: /聊天记录|Chats/ }).click()
-  await page.locator('.conv', { hasText: '高意向客户' }).click()
+  // 先搜索过滤再点，避免共享租户会话多时列表拥挤/时序竞态
+  await page.locator('input[placeholder="搜索客户…"]').fill('高意向客户')
+  await page.locator('.conv', { hasText: '高意向客户' }).click({ timeout: 15_000 })
 
   // AnalysisPanel 自动读取并显示已落库意向，无需点「分析」
   await expect(page.locator('.analysis .level.high')).toHaveText('高意向', { timeout: 10_000 })
