@@ -60,8 +60,11 @@ test('客户端会话设置：手动指定客户语言并持久化', async () =>
   const langSel = popover.locator('select')
   await expect(langSel).toHaveValue('') // 默认自动
 
-  // 手动指定一个具体客户语言
+  // 手动指定一个具体客户语言。下拉是受控组件(value=conversation.langOverride)，
+  // 选中后要等主进程落库 + conversation:updated 事件回灌才稳定为该值——先等值落定再读，
+  // 否则会读到 React 用旧 prop 重渲染时的瞬时空值（满负载时序更易命中）
   await langSel.selectOption({ index: 1 })
+  await expect(langSel).not.toHaveValue('', { timeout: 10_000 })
   const chosen = await langSel.inputValue()
   expect(chosen).not.toBe('')
   // 等 conversation:updated 事件回灌，弹层内 AI 自动回复开关也在
