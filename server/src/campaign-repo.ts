@@ -227,7 +227,9 @@ export class CampaignRepo {
       .where(and(eq(campaignLinks.tenant, tenant), eq(campaignLinks.campaignId, campaignId)))
       .orderBy(sql`${campaignLinks.createdAt} DESC`)
       .all()
-      .map(toLink)
+      // 注意：不能写 .map(toLink) —— map 会把数组下标当作 toLink 的第二参 now，
+      // 导致 active 用 now=0 计算，过期链接被误判为有效。必须用箭头包一层。
+      .map((r) => toLink(r))
   }
 
   /** 手动失效，立即生效 */
@@ -493,7 +495,8 @@ export class CampaignRepo {
       .select()
       .from(entryLinks)
       .where(eq(entryLinks.tenant, tenant))
-      .orderBy(sql`${entryLinks.createdAt} DESC`)
+      // 同毫秒创建时 created_at 会打平，用 rowid(插入顺序)兜底，保证"新的在前"稳定
+      .orderBy(sql`${entryLinks.createdAt} DESC, rowid DESC`)
       .all()
   }
 

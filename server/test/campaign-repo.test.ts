@@ -144,6 +144,15 @@ describe('分享链接', () => {
     assert.equal(campaigns.resolveLink(link.token, 999).ok, true)
   })
 
+  test('listLinks 的 active 反映真实过期（防 .map(toLink) 把下标当 now 的回归）', () => {
+    const c = makeCampaign()
+    // expiresAt 设在很久以前 → 现在必然过期
+    campaigns.createLink(T, c.id, { label: '过期', expiresAt: 1000 })
+    const links = campaigns.listLinks(T, c.id)
+    assert.equal(links.length, 1)
+    assert.equal(links[0]!.active, false) // 曾因 .map(toLink) 用 now=0 误判为 true
+  })
+
   test('手动失效立即生效，且原因与过期区分开', () => {
     const c = makeCampaign()
     const link = campaigns.createLink(T, c.id)
