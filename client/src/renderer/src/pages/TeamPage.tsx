@@ -46,6 +46,8 @@ export function TeamPage(): React.JSX.Element {
   const [busy, setBusy] = useState(false)
   const [showAddMember, setShowAddMember] = useState(false)
   const [showAddRole, setShowAddRole] = useState(false)
+  // Electron 不支持 window.prompt（会抛 "prompt() is not supported."），改密码必须走应用内弹窗
+  const [resetMember, setResetMember] = useState<Member | null>(null)
 
   const reload = useCallback(async () => {
     try {
@@ -172,14 +174,7 @@ export function TeamPage(): React.JSX.Element {
                           type="button"
                           className="ghost-btn"
                           disabled={busy}
-                          onClick={() => {
-                            const pw = window.prompt(t('team.newPasswordPrompt'))
-                            if (pw) {
-                              void run(() =>
-                                api.billing('updateTeamMember', m.id, { password: pw })
-                              )
-                            }
-                          }}
+                          onClick={() => setResetMember(m)}
                         >
                           {t('team.resetPassword')}
                         </button>
@@ -315,6 +310,16 @@ export function TeamPage(): React.JSX.Element {
           }}
         />
       )}
+      {resetMember && (
+        <ResetPasswordModal
+          member={resetMember}
+          onClose={() => setResetMember(null)}
+          onDone={async () => {
+            setResetMember(null)
+            await reload()
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -409,6 +414,75 @@ function AddMemberModal({
             onClick={() => void submit()}
           >
             {t('team.create')}
+          </button>
+        </footer>
+      </div>
+    </div>
+  )
+}
+
+/** 改密码弹窗（Electron 无 window.prompt，必须应用内输入） */
+function ResetPasswordModal({
+  member,
+  onClose,
+  onDone
+}: {
+  member: Member
+  onClose: () => void
+  onDone: () => Promise<void>
+}): React.JSX.Element {
+  const { t } = useI18n()
+  const [password, setPassword] = useState('')
+  const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const submit = async (): Promise<void> => {
+    if (password.length < 8) {
+      setErr(t('team.newPasswordPrompt'))
+      return
+    }
+    setErr('')
+    setBusy(true)
+    try {
+      await api.billing('updateTeamMember', member.id, { password })
+      await onDone()
+    } catch (e) {
+      setErr(errText(e))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal modal-narrow" onClick={(e) => e.stopPropagation()}>
+        <h2>{t('team.resetPassword')}</h2>
+        <p className="form-hint">{member.email}</p>
+        <label className="field">
+          <span>{t('auth.password')}</span>
+          <input
+            type="password"
+            value={password}
+            autoFocus
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void submit()
+            }}
+          />
+          <span className="field-hint">{t('team.newPasswordPrompt')}</span>
+        </label>
+        {err && <div className="auth-err">{err}</div>}
+        <footer className="modal-footer">
+          <button type="button" className="ghost-btn" onClick={onClose}>
+            {t('settings.cancel')}
+          </button>
+          <button
+            type="button"
+            className="primary-btn"
+            disabled={busy || password.length < 8}
+            onClick={() => void submit()}
+          >
+            {t('settings.save')}
           </button>
         </footer>
       </div>
