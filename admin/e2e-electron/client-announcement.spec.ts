@@ -31,6 +31,7 @@ test('客户端启动公告：展示后台发布的公告并可关闭', async ()
     body: JSON.stringify({ title, body, audience: 'all' })
   })
   expect(create.ok).toBeTruthy()
+  const annId = (await create.json() as { announcement: { id: string } }).announcement.id
 
   const app = await electron.launch({ executablePath: ELECTRON_PATH, args: [MAIN, `--user-data-dir=${join(tmpdir(), 'omni-ann-ignored')}`], env: { ...process.env, OMNI_USER_DATA: USER_DATA } })
   const win = await app.firstWindow()
@@ -57,4 +58,9 @@ test('客户端启动公告：展示后台发布的公告并可关闭', async ()
   await expect(modal).toBeHidden({ timeout: 10_000 })
 
   await app.close()
+
+  // 清理：删除该全员公告，避免它在共享租户里对后续用例的新老板弹窗遮挡界面
+  await fetch(`${API}/api/admin/announcements/${annId}`, {
+    method: 'DELETE', headers: { authorization: `Bearer ${admin.token}` }
+  })
 })
