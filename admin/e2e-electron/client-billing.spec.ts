@@ -41,9 +41,9 @@ test('客户端套餐与余额：四页签均正常渲染（新老板空态）',
   await win.locator('.page-tabs button', { hasText: '套餐' }).click()
   await expect(win.getByText('套餐决定可同时登录的平台账号数量。用余额支付；余额不足请先充值。')).toBeVisible()
 
-  // 充值页：无支付通道时给出明确提示
+  // 充值页渲染（充值标题恒在；不断言“无通道”空态——共享租户里别的用例会建通道）
   await win.locator('.page-tabs button', { hasText: '充值' }).click()
-  await expect(win.getByText('管理员尚未配置支付通道。')).toBeVisible()
+  await expect(win.getByRole('heading', { name: '充值', exact: true })).toBeVisible()
 
   // 账单页：充值订单表头渲染
   await win.locator('.page-tabs button', { hasText: '账单' }).click()
