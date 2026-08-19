@@ -91,6 +91,10 @@ export class JsonMessageStore implements MessageStore {
     if (patch.langOverride !== undefined) {
       conv.langOverride = patch.langOverride ?? undefined
     }
+    // 这两个字段曾被漏掉：leadSource 使 Click-to-WhatsApp/[ref] 投放归因无法落库，
+    // autoReply 使会话级 AI 自动回复开关点了不生效
+    if (patch.leadSource) conv.leadSource = patch.leadSource
+    if (patch.autoReply !== undefined) conv.autoReply = patch.autoReply
     this.scheduleFlush()
     return conv
   }

@@ -95,6 +95,22 @@ describe('JsonMessageStore', () => {
     expect(recent[4]?.timestamp).toBe(2_009)
   })
 
+  it('patchConversation 落库 leadSource 与 autoReply（曾被漏掉）', async () => {
+    await store.recordMessage(msg())
+    const id = 'whatsapp:main:123@s.whatsapp.net'
+    const conv = await store.patchConversation({
+      id,
+      leadSource: { code: 'promo1', via: 'code' },
+      autoReply: true
+    })
+    expect(conv?.leadSource?.code).toBe('promo1')
+    expect(conv?.autoReply).toBe(true)
+    // 读回也在
+    const got = await store.getConversation(id)
+    expect(got?.leadSource?.code).toBe('promo1')
+    expect(got?.autoReply).toBe(true)
+  })
+
   it('updateMessage 按 id 替换（媒体下载完成场景），不存在返回 false', async () => {
     const original = msg({ body: { type: 'media', mediaType: 'image' } })
     await store.recordMessage(original)
