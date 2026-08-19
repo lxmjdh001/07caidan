@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron } from '@playwright/test'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { homedir, tmpdir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 const SHOT_DIR = process.env.SHOT_DIR || join(import.meta.dirname, '..', 'e2e', 'shots')
@@ -9,12 +9,12 @@ mkdirSync(SHOT_DIR, { recursive: true })
 const CLIENT_DIR = resolve(import.meta.dirname, '..', '..', 'client')
 const MAIN = join(CLIENT_DIR, 'out', 'main', 'index.js')
 const ELECTRON_PATH = createRequire(join(CLIENT_DIR, 'package.json'))('electron') as string
-const USER_DATA = join(homedir(), 'Library', 'Application Support', 'OmniChat E2E')
+const USER_DATA = mkdtempSync(join(tmpdir(), 'omni-e2e-'))
 
 test('客户端：新建引流工单全流程（选账号→填名→创建→列表出现）', async () => {
   mkdirSync(USER_DATA, { recursive: true })
   writeFileSync(join(USER_DATA, 'settings.json'), JSON.stringify({ locale: 'zh-CN' }), 'utf8')
-  const app = await electron.launch({ executablePath: ELECTRON_PATH, args: [MAIN, `--user-data-dir=${join(tmpdir(), 'omni-camp-ignored')}`] })
+  const app = await electron.launch({ executablePath: ELECTRON_PATH, args: [MAIN, `--user-data-dir=${join(tmpdir(), 'omni-camp-ignored')}`], env: { ...process.env, OMNI_USER_DATA: USER_DATA } })
   const win = await app.firstWindow()
   await win.waitForLoadState('domcontentloaded')
 

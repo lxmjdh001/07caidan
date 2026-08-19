@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron } from '@playwright/test'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { homedir, tmpdir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 const SHOT_DIR = process.env.SHOT_DIR || join(import.meta.dirname, '..', 'e2e', 'shots')
@@ -13,7 +13,7 @@ const clientRequire = createRequire(join(CLIENT_DIR, 'package.json'))
 const ELECTRON_PATH = clientRequire('electron') as string
 
 // BRAND=e2e 的 appName = 'OmniChat E2E'；应用固定把 userData 指到 appData/<appName>
-const USER_DATA = join(homedir(), 'Library', 'Application Support', 'OmniChat E2E')
+const USER_DATA = mkdtempSync(join(tmpdir(), 'omni-e2e-'))
 
 /** 预置一条阿拉伯语会话（含收发各一条），用于校验 RTL 气泡方向与时间戳位置 */
 function seedArabicConversation(): void {
@@ -70,7 +70,8 @@ test('客户端 RTL：阿拉伯语下气泡收发方向与时间戳镜像', asyn
   const userDataDir = join(tmpdir(), 'omni-rtl-ignored')
   const app = await electron.launch({
     executablePath: ELECTRON_PATH,
-    args: [MAIN, `--user-data-dir=${userDataDir}`]
+    args: [MAIN, `--user-data-dir=${userDataDir}`],
+    env: { ...process.env, OMNI_USER_DATA: USER_DATA }
   })
   const win = await app.firstWindow()
   await win.waitForLoadState('domcontentloaded')

@@ -18,7 +18,7 @@ test('客户端：注册登录 → 团队管理 → 登录设备（远程下线�
   const app = await electron.launch({
     executablePath: ELECTRON_PATH,
     args: [MAIN, `--user-data-dir=${userDataDir}`],
-    env: { ...process.env, OMNI_DISABLE_TRAY: '1' }
+    env: { ...process.env, OMNI_DISABLE_TRAY: '1', OMNI_USER_DATA: userDataDir }
   })
   const win = await app.firstWindow()
   await win.waitForLoadState('domcontentloaded')

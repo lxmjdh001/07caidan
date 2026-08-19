@@ -1,7 +1,7 @@
 import { test, expect, _electron as electron } from '@playwright/test'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { homedir, tmpdir } from 'node:os'
+import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 const SHOT_DIR = process.env.SHOT_DIR || join(import.meta.dirname, '..', 'e2e', 'shots')
@@ -11,7 +11,7 @@ const CLIENT_DIR = resolve(import.meta.dirname, '..', '..', 'client')
 const MAIN = join(CLIENT_DIR, 'out', 'main', 'index.js')
 const clientRequire = createRequire(join(CLIENT_DIR, 'package.json'))
 const ELECTRON_PATH = clientRequire('electron') as string
-const USER_DATA = join(homedir(), 'Library', 'Application Support', 'OmniChat E2E')
+const USER_DATA = mkdtempSync(join(tmpdir(), 'omni-e2e-'))
 
 test('客户端：设置里「云端漫游偏好」开关存在且默认开启', async () => {
   // 复位共享 userData 的 locale（前面的 RTL 用例留下了 locale=ar），保证英文界面可用结构选择器
@@ -19,7 +19,8 @@ test('客户端：设置里「云端漫游偏好」开关存在且默认开启',
   writeFileSync(join(USER_DATA, 'settings.json'), JSON.stringify({ locale: 'en' }), 'utf8')
   const app = await electron.launch({
     executablePath: ELECTRON_PATH,
-    args: [MAIN, `--user-data-dir=${join(tmpdir(), 'omni-cloudsync-ignored')}`]
+    args: [MAIN, `--user-data-dir=${join(tmpdir(), 'omni-cloudsync-ignored')}`],
+    env: { ...process.env, OMNI_USER_DATA: USER_DATA }
   })
   const win = await app.firstWindow()
   await win.waitForLoadState('domcontentloaded')

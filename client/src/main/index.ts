@@ -49,7 +49,11 @@ async function bootstrap(): Promise<void> {
   // 未打包时 Electron 默认把 userData 指到共享的 "Electron" 目录，显式固定到应用专属目录
   // 每个品牌独立的数据目录：贴牌版与原版共存时数据不能串
   app.setName(brand.appName)
-  app.setPath('userData', join(app.getPath('appData'), brand.appName || 'OmniChat'))
+  // OMNI_USER_DATA 覆盖数据目录（测试隔离用；未设置时用品牌专属目录）
+  app.setPath(
+    'userData',
+    process.env.OMNI_USER_DATA || join(app.getPath('appData'), brand.appName || 'OmniChat')
+  )
   await app.whenReady()
 
   const userData = app.getPath('userData')
