@@ -15,7 +15,7 @@ const here = dirname(fileURLToPath(import.meta.url))
 const localesDir = join(here, '..', 'client', 'src', 'renderer', 'src', 'locales')
 
 /** 必须保持 100% 的语言（跌破即失败） */
-const REQUIRED_COMPLETE = ['zh-CN', 'en', 'zh-TW', 'ja', 'ko', 'vi', 'id', 'ms', 'es']
+const REQUIRED_COMPLETE = ['zh-CN', 'en', 'zh-TW', 'ja', 'ko', 'vi', 'id', 'ms', 'es', 'pt-BR']
 
 const canonical = extractKeys(readFileSync(join(localesDir, 'zh-CN.ts'), 'utf8'))
 const files = readdirSync(localesDir)
