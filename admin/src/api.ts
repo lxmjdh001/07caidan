@@ -288,7 +288,12 @@ export class ApiClient {
         ...opts.headers
       }
     })
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    if (!res.ok) {
+      // 服务端的 error 文案往往是给运营看的（如「用户不存在」「余额不足，不能扣成负数」），
+      // 不能吞成 HTTP 400 —— 否则后台看不出失败原因
+      const body = (await res.json().catch(() => ({}))) as { error?: string }
+      throw new Error(body.error || `HTTP ${res.status}`)
+    }
     return res.json() as Promise<T>
   }
 
