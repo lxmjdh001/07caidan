@@ -20,22 +20,14 @@ interface Msg {
   createdAt: number
 }
 
-/** 受保护贴图：经主进程带令牌拉取后转对象 URL */
+/** 受保护贴图：经主进程带令牌拉取，返回 base64 data URL 直接作 img src */
 function TicketImage({ mediaId }: { mediaId: string }): React.JSX.Element {
   const [url, setUrl] = useState('')
   useEffect(() => {
-    let revoke = ''
     void api
-      .billing<{ data: Uint8Array; mimeType: string }>('fetchMedia', mediaId)
-      .then((r) => {
-        const blob = new Blob([new Uint8Array(r.data)], { type: r.mimeType })
-        revoke = URL.createObjectURL(blob)
-        setUrl(revoke)
-      })
+      .billing<{ dataUrl: string }>('fetchMedia', mediaId)
+      .then((r) => setUrl(r.dataUrl))
       .catch(() => setUrl(''))
-    return () => {
-      if (revoke) URL.revokeObjectURL(revoke)
-    }
   }, [mediaId])
   if (!url) return <span className="field-hint">[图片]</span>
   return <img className="ticket-img" src={url} alt="" />

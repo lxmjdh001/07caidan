@@ -96,7 +96,10 @@ export class BillingApi {
   }
 
   /** 拉取受保护媒体（工单里的图） */
-  async fetchMedia(mediaId: string): Promise<{ data: Uint8Array; mimeType: string }> {
+  // 返回 base64 data URL 字符串：跨 IPC/contextBridge 传二进制(Uint8Array)会被
+  // 结构化克隆损坏(渲染端 Blob 解码 EncodingError)，改传字符串则绝对可靠，
+  // 渲染端直接用作 <img src>，无需 Blob/objectURL。
+  async fetchMedia(mediaId: string): Promise<{ dataUrl: string }> {
     const cfg = this.getConfig()
     if (!cfg.serverUrl || !cfg.token) throw new Error('未登录后台')
     const res = await fetch(
@@ -104,10 +107,9 @@ export class BillingApi {
       { headers: { authorization: `Bearer ${cfg.token}` } }
     )
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    return {
-      data: new Uint8Array(await res.arrayBuffer()),
-      mimeType: res.headers.get('content-type') ?? 'image/png'
-    }
+    const b64 = Buffer.from(await res.arrayBuffer()).toString('base64')
+    const mimeType = res.headers.get('content-type') ?? 'image/png'
+    return { dataUrl: `data:${mimeType};base64,${b64}` }
   }
 
   // ── 团队管理（老板建客服子账号）──

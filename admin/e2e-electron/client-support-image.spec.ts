@@ -14,10 +14,10 @@ const USER_DATA = mkdtempSync(join(tmpdir(), 'omni-e2e-'))
 const API = 'http://127.0.0.1:8798'
 const ICON_BYTES = 56575 // branding/default/icon.png
 
-// M18 支持工单贴图 —— 鉴权媒体通道（红线：受保护图片仅带令牌可下载，且字节完整）：
-// 客户端提交工单 → 客服带图回复 → 后台 media 通道按令牌下载核对。
-// 注：本用例验证服务端鉴权下载通道；客户端渲染另见报告中记录的 fetchMedia blob 解码问题。
-test('M18 支持工单贴图：鉴权媒体下载通道按令牌返回完整图片字节', async () => {
+// M18 支持工单贴图：鉴权媒体通道（红线：受保护图片仅带令牌可下载，字节完整）
+// + 客户端经 fetchMedia(base64 data URL)渲染客服回复的图片（曾因 IPC 传二进制损坏
+// 而 EncodingError 空白，改传 data URL 字符串后修复，本用例回归钉死）。
+test('M18 支持工单贴图：鉴权下载通道 + 客户端渲染客服回复图片', async () => {
   mkdirSync(USER_DATA, { recursive: true })
   writeFileSync(join(USER_DATA, 'settings.json'), JSON.stringify({ locale: 'zh-CN' }), 'utf8')
   const app = await electron.launch({ executablePath: ELECTRON_PATH, args: [MAIN, `--user-data-dir=${join(tmpdir(), 'omni-supimg-ignored')}`], env: { ...process.env, OMNI_USER_DATA: USER_DATA } })
@@ -83,9 +83,15 @@ test('M18 支持工单贴图：鉴权媒体下载通道按令牌返回完整图�
   })
   expect(rep.ok).toBeTruthy()
 
-  // 客户端打开工单 → 客服带图回复的文本渲染（图片元素也已挂载并尝试拉取）
+  // 客户端打开工单 → 客服带图回复渲染：文本 + 图片真解码出像素
   await win.locator('.ticket-item, li, button', { hasText: title }).first().click()
   await expect(win.locator('.sup-msg.theirs').filter({ hasText: '这是问题截图' })).toBeVisible({ timeout: 10_000 })
+  const img = win.locator('.ticket-img')
+  await expect(img).toHaveAttribute('src', /^data:image\/png;base64,/, { timeout: 10_000 })
+  await expect(async () => {
+    const nw = await img.evaluate((el: HTMLImageElement) => el.naturalWidth)
+    expect(nw).toBeGreaterThan(0)
+  }).toPass({ timeout: 10_000 })
 
   await win.waitForTimeout(300)
   await win.screenshot({ path: `${SHOT_DIR}/client-47-support-image.png` })
