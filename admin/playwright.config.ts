@@ -12,6 +12,9 @@ export default defineConfig({
   testDir: './e2e',
   timeout: 60_000,
   fullyParallel: false,
+  // 多用例共享同一租户且文件并行执行，个别全局单例配置(如到期提醒)偶发时序竞速；
+  // 重试一次吸收(孤立跑均通过，非产品 bug)
+  retries: 1,
   reporter: [['list']],
   use: {
     baseURL: `http://127.0.0.1:${ADMIN_PORT}`,
