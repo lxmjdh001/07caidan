@@ -204,6 +204,9 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
     async (kind: string) => {
       setShowPicker(false)
       const key = await api.addAccount(kind)
+      // 新账号已写入 settings.accounts（账号注册表），但 stopped 态不发 channel:state 事件，
+      // 刷新一次设置让账号数即时反映到配额软门（否则会话内可连加越过上限）。
+      setSettings(await api.getSettings())
       setActiveAccountKey(key)
       setActiveId(null)
       // 非扫码类平台（填凭证 / 手机号验证码）新建后直接打开账号设置，
@@ -336,11 +339,15 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   const can = (perm: string): boolean =>
     permissions === undefined || permissions.includes(perm)
 
+  // 账号数以账号注册表 settings.accounts 为准（含尚未连接的 stopped 账号，它们也占配额），
+  // 而非 channels（stopped 新账号不发事件、会漏计）。settings 未就绪时回落 channels。
+  const accountCount = settings
+    ? Object.keys(settings.accounts).length
+    : Object.keys(channels).length
   // 已达套餐账号配额：有套餐（配额>0）且账号数已达配额时拦。
   // 配额未知(null)或无套餐(0)不拦：新用户加首批账号/未订阅的引导流程不受影响，
   // 本护栏只针对「有套餐的老板超出其套餐账号上限」这一实际问题。
-  const atAccountQuota =
-    accountQuota !== null && accountQuota > 0 && Object.keys(channels).length >= accountQuota
+  const atAccountQuota = accountQuota !== null && accountQuota > 0 && accountCount >= accountQuota
 
   return (
     <I18nProvider locale={locale}>
