@@ -8,7 +8,7 @@ mkdirSync(SHOT_DIR, { recursive: true })
 const API = 'http://127.0.0.1:8798'
 
 /** 注册老板 → 同步入站会话 → 建工单 → 建分享链接，返回公开 token 与灌入的号码 */
-async function seed(): Promise<{ token: string; phone: string }> {
+async function seed(): Promise<{ token: string; phone: string; srcCode: string }> {
   const email = `boss_${Date.now().toString(36)}@e2e.test`
   const reg = await fetch(`${API}/api/client/register`, {
     method: 'POST',
@@ -25,12 +25,13 @@ async function seed(): Promise<{ token: string; phone: string }> {
   const acct = `a_${TAG}`
   const phone = `wa:+1555${TAG.replace(/[^0-9]/g, '0')}`
   const convId = `whatsapp:${acct}:${phone}`
+  const srcCode = `src${TAG}`
   await fetch(`${API}/api/sync`, {
     method: 'POST',
     headers: auth,
     body: JSON.stringify({
       conversations: [
-        { id: convId, channel: 'whatsapp', accountId: acct, contactId: phone, title: 'C', isGroup: false, lastMessageAt: inAt }
+        { id: convId, channel: 'whatsapp', accountId: acct, contactId: phone, title: 'C', isGroup: false, lastMessageAt: inAt, leadSourceCode: srcCode, leadSourceVia: 'code' }
       ],
       messages: [
         { externalId: `${convId}:in`, conversationId: convId, channel: 'whatsapp', accountId: acct, direction: 'in', bodyType: 'text', text: 'hi', timestamp: inAt }
@@ -49,11 +50,11 @@ async function seed(): Promise<{ token: string; phone: string }> {
     headers: auth,
     body: JSON.stringify({ label: '演示' })
   }).then((r) => r.json() as Promise<{ link: { token: string } }>)
-  return { token: link.link.token, phone }
+  return { token: link.link.token, phone, srcCode }
 }
 
 test('公开看板 /c/:token：免登录聚合统计页渲染', async ({ page }) => {
-  const { token, phone } = await seed()
+  const { token, phone, srcCode } = await seed()
   await page.goto(`${API}/c/${token}`)
 
   // 页面拉 /public/campaign/:token 后渲染工单名与进线数字
@@ -69,6 +70,13 @@ test('公开看板 /c/:token：免登录聚合统计页渲染', async ({ page })
   await expect(acctRow).toBeVisible({ timeout: 10_000 })
   await expect(acctRow).toContainText('whatsapp')
   await expect(acctRow.locator('td.num').first()).toHaveText('1')
+
+  // 投放来源拆分（引流入口链接成效）：带 leadSourceCode 的进线要归到该来源。
+  // sourceRows() 此前无断言；这条端到端串起 sync(leadSourceCode)→bySource→看板渲染
+  const srcRow = page.locator('section', { hasText: '投放来源' }).locator('table tbody tr', { hasText: srcCode })
+  await expect(srcRow).toBeVisible({ timeout: 10_000 })
+  await expect(srcRow).toContainText('追踪码') // via='code' 渲染为追踪码
+  await expect(srcRow.locator('td.num').first()).toHaveText('1')
 
   // 红线：公开页绝不含粉丝身份（号码/contactId），账号列只出备注名
   const html = await page.content()
