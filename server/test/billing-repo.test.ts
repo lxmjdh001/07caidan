@@ -156,6 +156,20 @@ describe('购买与升降级', () => {
     assert.equal(repo.getBalance(T, U).balanceCents, 100)
   })
 
+  test('余额恰好等于应付净额：扣到 0 成功（护栏是 < net，不能误拒恰好够）', () => {
+    // 常见真实流程：用户充值到恰好一个套餐价再订阅。changePlan 预检是
+    // balanceCents < net，恰好相等应放行、扣到 0。既有用例只测远够(10000)与
+    // 远不够(100)，这条零点边界没测——若写成 <= 会拒掉"钱刚好够买"的用户。
+    const p = plan({ priceCents: 3000 })
+    topup(3000)
+    const r = repo.changePlan(T, U, p.id, NOW)
+    assert.equal(r.ok, true)
+    if (!r.ok) return
+    assert.equal(r.net, 3000)
+    assert.equal(r.balance.balanceCents, 0, '恰好够 → 余额扣到 0')
+    assert.equal(repo.getSubscription(T, U)?.planId, p.id, '订阅已生成')
+  })
+
   test('升级：旧套餐按剩余天数折算退回，只补差价', () => {
     const basic = plan({ name: '基础', priceCents: 3000, maxAccounts: 10 })
     const pro = plan({ name: '专业', priceCents: 30000, periodUnit: 'year', maxAccounts: 100 })
