@@ -4,6 +4,21 @@ import { join } from 'node:path'
 
 const SHOT_DIR = process.env.SHOT_DIR || join(import.meta.dirname, 'shots')
 mkdirSync(SHOT_DIR, { recursive: true })
+const API = 'http://127.0.0.1:8798'
+
+/** 兜底删该标题公告：new_users 公告会对新老板弹窗，中途失败遗留会污染 client 用例。 */
+async function purgeAnnouncement(title: string): Promise<void> {
+  try {
+    const at = (await fetch(`${API}/api/login`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'admin' })
+    }).then((r) => r.json())).token as string
+    const list = (await fetch(`${API}/api/admin/announcements`, { headers: { authorization: `Bearer ${at}` } }).then((r) => r.json())) as { announcements?: Array<{ id: string; title: string }> }
+    for (const a of (list.announcements ?? []).filter((x) => x.title === title)) {
+      await fetch(`${API}/api/admin/announcements/${a.id}`, { method: 'DELETE', headers: { authorization: `Bearer ${at}` } })
+    }
+  } catch { /* 兜底清理，失败忽略 */ }
+}
 
 async function login(page: Page): Promise<void> {
   await page.goto('/')
@@ -19,27 +34,31 @@ test('后台运营公告：定向新注册用户受众并核对', async ({ page 
   const title = `定向公告_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`
   page.on('dialog', (d) => void d.accept())
 
-  await login(page)
-  await page.getByRole('button', { name: /运营公告|Announcements/ }).click()
+  try {
+    await login(page)
+    await page.getByRole('button', { name: /运营公告|Announcements/ }).click()
 
-  const card = page.locator('section.card').filter({ hasText: /发布公告|New announcement/i })
-  await expect(card).toBeVisible({ timeout: 10_000 })
-  await card.locator('input').first().fill(title)
-  // 受众选「新注册用户」→ 出现天数输入 → 填 30
-  await card.locator('label', { hasText: '受众' }).locator('select').selectOption('new_users')
-  await card.locator('input[placeholder="7"]').fill('30')
-  await card.locator('textarea').first().fill('仅对近 30 天新注册用户展示的定向公告。')
-  await card.getByRole('button', { name: '发布' }).click()
+    const card = page.locator('section.card').filter({ hasText: /发布公告|New announcement/i })
+    await expect(card).toBeVisible({ timeout: 10_000 })
+    await card.locator('input').first().fill(title)
+    // 受众选「新注册用户」→ 出现天数输入 → 填 30
+    await card.locator('label', { hasText: '受众' }).locator('select').selectOption('new_users')
+    await card.locator('input[placeholder="7"]').fill('30')
+    await card.locator('textarea').first().fill('仅对近 30 天新注册用户展示的定向公告。')
+    await card.getByRole('button', { name: '发布' }).click()
 
-  // 列表出现该公告，受众列显示「注册 30 天内」
-  const row = page.locator('table tbody tr').filter({ hasText: title })
-  await expect(row).toBeVisible({ timeout: 10_000 })
-  await expect(row).toContainText('注册 30 天内')
+    // 列表出现该公告，受众列显示「注册 30 天内」
+    const row = page.locator('table tbody tr').filter({ hasText: title })
+    await expect(row).toBeVisible({ timeout: 10_000 })
+    await expect(row).toContainText('注册 30 天内')
 
-  await page.waitForTimeout(300)
-  await page.screenshot({ path: `${SHOT_DIR}/admin-announcement-audience.png`, fullPage: true })
+    await page.waitForTimeout(300)
+    await page.screenshot({ path: `${SHOT_DIR}/admin-announcement-audience.png`, fullPage: true })
 
-  // 自清理
-  await row.getByRole('button', { name: '删除' }).click()
-  await expect(page.locator('table tbody tr').filter({ hasText: title })).toHaveCount(0, { timeout: 10_000 })
+    // 自清理
+    await row.getByRole('button', { name: '删除' }).click()
+    await expect(page.locator('table tbody tr').filter({ hasText: title })).toHaveCount(0, { timeout: 10_000 })
+  } finally {
+    await purgeAnnouncement(title)
+  }
 })
