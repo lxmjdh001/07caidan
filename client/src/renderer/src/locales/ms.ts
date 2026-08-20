@@ -239,6 +239,7 @@ export const ms: Partial<Record<MessageKey, string>> = {
   'rail.accounts': 'Akaun',
   'rail.addAccount': 'Tambah akaun',
   'rail.searchAccounts': 'Cari akaun…',
+  'rail.accountQuotaFull': 'Had akaun dicapai — naik taraf pelan anda',
   'rail.noMatch': 'Tiada akaun sepadan',
   'account.settings': 'Tetapan akaun',
   'account.label': 'Nama panggilan',

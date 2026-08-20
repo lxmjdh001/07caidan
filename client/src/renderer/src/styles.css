@@ -359,6 +359,26 @@ body {
   color: var(--rail-strong);
 }
 
+.icon-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.icon-btn:disabled:hover {
+  background: transparent;
+  color: var(--rail-text-dim);
+}
+
+.account-quota-hint {
+  margin: 0 12px 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--rail-text-dim);
+  background: var(--rail-chip);
+  border-radius: 8px;
+}
+
 .account-list-search {
   padding: 4px 12px 8px;
 }

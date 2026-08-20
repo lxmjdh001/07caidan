@@ -239,6 +239,7 @@ export const vi: Partial<Record<MessageKey, string>> = {
   'rail.accounts': 'Tài khoản',
   'rail.addAccount': 'Thêm tài khoản',
   'rail.searchAccounts': 'Tìm tài khoản…',
+  'rail.accountQuotaFull': 'Đã đạt giới hạn tài khoản — nâng cấp gói của bạn',
   'rail.noMatch': 'Không có tài khoản phù hợp',
   'account.settings': 'Cài đặt tài khoản',
   'account.label': 'Tên gợi nhớ',

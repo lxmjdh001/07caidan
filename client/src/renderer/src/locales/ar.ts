@@ -32,6 +32,7 @@ export const ar: Partial<Record<MessageKey, string>> = {
   'rail.accounts': 'الحسابات',
   'rail.addAccount': 'إضافة حساب',
   'rail.searchAccounts': 'البحث في الحسابات…',
+  'rail.accountQuotaFull': 'تم بلوغ الحد الأقصى للحسابات — قم بترقية باقتك',
   'rail.noMatch': 'لا يوجد حساب مطابق',
   'account.settings': 'إعدادات الحساب',
   'account.label': 'الاسم المستعار',

@@ -51,6 +51,8 @@ interface Props {
   showBilling: boolean
   showTeam: boolean
   allowAddAccount: boolean
+  /** 已达套餐账号配额上限：有权限但不能再加，加号禁用并提示升级 */
+  atAccountQuota: boolean
   allowAccountSettings: boolean
 }
 
@@ -71,6 +73,7 @@ export function AccountList({
   showBilling,
   showTeam,
   allowAddAccount,
+  atAccountQuota,
   allowAccountSettings
 }: Props): React.JSX.Element {
   const { t } = useI18n()
@@ -93,7 +96,8 @@ export function AccountList({
         <button
           type="button"
           className="icon-btn"
-          title={t('rail.addAccount')}
+          title={atAccountQuota ? t('rail.accountQuotaFull') : t('rail.addAccount')}
+          disabled={atAccountQuota}
           onClick={onAddAccount}
         >
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -102,6 +106,9 @@ export function AccountList({
         </button>
         )}
       </header>
+      {allowAddAccount && atAccountQuota && (
+        <p className="account-quota-hint">{t('rail.accountQuotaFull')}</p>
+      )}
 
       {accounts.length > 6 && (
         <div className="account-list-search">

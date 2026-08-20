@@ -239,6 +239,7 @@ export const zhTW: Partial<Record<MessageKey, string>> = {
   'rail.accounts': '帳號',
   'rail.addAccount': '新增帳號',
   'rail.searchAccounts': '搜尋帳號…',
+  'rail.accountQuotaFull': '已達帳號上限，請升級方案',
   'rail.noMatch': '沒有符合的帳號',
   'account.settings': '帳號設定',
   'account.label': '備註名稱',

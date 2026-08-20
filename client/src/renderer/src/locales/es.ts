@@ -239,6 +239,7 @@ export const es: Partial<Record<MessageKey, string>> = {
   'rail.accounts': 'Cuentas',
   'rail.addAccount': 'Añadir cuenta',
   'rail.searchAccounts': 'Buscar cuentas…',
+  'rail.accountQuotaFull': 'Límite de cuentas alcanzado: mejora tu plan',
   'rail.noMatch': 'Ninguna cuenta coincide',
   'account.settings': 'Ajustes de la cuenta',
   'account.label': 'Alias',

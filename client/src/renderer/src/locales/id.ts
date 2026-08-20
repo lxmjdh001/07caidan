@@ -239,6 +239,7 @@ export const id: Partial<Record<MessageKey, string>> = {
   'rail.accounts': 'Akun',
   'rail.addAccount': 'Tambah akun',
   'rail.searchAccounts': 'Cari akun…',
+  'rail.accountQuotaFull': 'Batas akun tercapai — tingkatkan paket Anda',
   'rail.noMatch': 'Tidak ada akun yang cocok',
   'account.settings': 'Pengaturan akun',
   'account.label': 'Nama panggilan',

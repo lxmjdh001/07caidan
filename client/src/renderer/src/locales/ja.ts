@@ -239,6 +239,7 @@ export const ja: Partial<Record<MessageKey, string>> = {
   'rail.accounts': 'アカウント',
   'rail.addAccount': 'アカウントを追加',
   'rail.searchAccounts': 'アカウントを検索…',
+  'rail.accountQuotaFull': 'アカウント上限に達しました。プランをアップグレードしてください',
   'rail.noMatch': '該当するアカウントなし',
   'account.settings': 'アカウント設定',
   'account.label': '表示名',

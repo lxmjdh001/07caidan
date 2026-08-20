@@ -29,6 +29,7 @@ export const th: Partial<Record<MessageKey, string>> = {
   'rail.accounts': 'บัญชี',
   'rail.addAccount': 'เพิ่มบัญชี',
   'rail.searchAccounts': 'ค้นหาบัญชี…',
+  'rail.accountQuotaFull': 'ถึงขีดจำกัดบัญชีแล้ว — อัปเกรดแพ็กเกจของคุณ',
   'rail.noMatch': 'ไม่พบบัญชีที่ตรงกัน',
   'account.settings': 'ตั้งค่าบัญชี',
   'account.label': 'ชื่อเรียก',

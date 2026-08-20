@@ -239,6 +239,7 @@ export const ko: Partial<Record<MessageKey, string>> = {
   'rail.accounts': '계정',
   'rail.addAccount': '계정 추가',
   'rail.searchAccounts': '계정 검색…',
+  'rail.accountQuotaFull': '계정 한도에 도달했습니다. 요금제를 업그레이드하세요',
   'rail.noMatch': '일치하는 계정 없음',
   'account.settings': '계정 설정',
   'account.label': '표시 이름',

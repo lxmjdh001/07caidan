@@ -29,6 +29,7 @@ export const zhCN = {
   'rail.accounts': '账号',
   'rail.addAccount': '添加 WhatsApp 账号',
   'rail.searchAccounts': '搜索账号…',
+  'rail.accountQuotaFull': '已达账号上限，请升级套餐',
   'rail.noMatch': '无匹配账号',
   'account.settings': '账号设置',
   'account.label': '备注名',

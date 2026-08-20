@@ -37,6 +37,8 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
    * 数组 = 服务端下发的有效权限。界面按此显隐；真正的强制在服务端。
    */
   const [permissions, setPermissions] = useState<string[] | undefined>(undefined)
+  // 套餐账号配额（来自 /api/billing/me）；null = 未知/未取到 → 不拦（fail-open）
+  const [accountQuota, setAccountQuota] = useState<number | null>(null)
   /** 打开中的账号设置弹窗（channel key） */
   const [accountModalKey, setAccountModalKey] = useState<string | null>(null)
   const [plugins, setPlugins] = useState<ChannelPluginInfo[]>([])
@@ -51,6 +53,15 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
       return [...rest, conv].sort((a, b) => b.lastMessageAt - a.lastMessageAt)
     })
   }, [])
+
+  // 拉取套餐账号配额；随视图切换刷新，保证在套餐页改过套餐后账号上限即时更新。
+  // 取不到（子账号无 billing、离线等）→ null → 不拦（fail-open）。
+  useEffect(() => {
+    void api
+      .billing<{ accountQuota?: number }>('me')
+      .then((m) => setAccountQuota(typeof m.accountQuota === 'number' ? m.accountQuota : null))
+      .catch(() => setAccountQuota(null))
+  }, [view])
 
   useEffect(() => {
     // 先用本地缓存的权限秒开界面，再向后台刷新（角色被老板改过时生效）
@@ -325,6 +336,12 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   const can = (perm: string): boolean =>
     permissions === undefined || permissions.includes(perm)
 
+  // 已达套餐账号配额：有套餐（配额>0）且账号数已达配额时拦。
+  // 配额未知(null)或无套餐(0)不拦：新用户加首批账号/未订阅的引导流程不受影响，
+  // 本护栏只针对「有套餐的老板超出其套餐账号上限」这一实际问题。
+  const atAccountQuota =
+    accountQuota !== null && accountQuota > 0 && Object.keys(channels).length >= accountQuota
+
   return (
     <I18nProvider locale={locale}>
       <div className={`app platform-${api.platform}`}>
@@ -361,6 +378,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             showBilling={can('billing:manage')}
             showTeam={permissions !== undefined && permissions.includes('team:manage')}
             allowAddAccount={can('accounts:manage')}
+            atAccountQuota={atAccountQuota}
             allowAccountSettings={can('accounts:manage')}
           />
 

@@ -31,6 +31,7 @@ export const en: Record<MessageKey, string> = {
   'rail.accounts': 'Accounts',
   'rail.addAccount': 'Add WhatsApp account',
   'rail.searchAccounts': 'Search accounts…',
+  'rail.accountQuotaFull': 'Account limit reached — upgrade your plan',
   'rail.noMatch': 'No matching account',
   'account.settings': 'Account settings',
   'account.label': 'Nickname',
