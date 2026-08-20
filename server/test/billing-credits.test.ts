@@ -120,6 +120,21 @@ describe('deductCredits', () => {
     assert.equal(r.balanceCents, 5)
   })
 
+  test('自动补足边界：余额恰好够兑换差额时扣到 0 放行，差 1 分则失败', () => {
+    // 缺 150 分 → creditsToCents(150) = 15 美分。守护是 balanceCents < needCents，
+    // 「余额也不够」用例只测了远低于（5<15），恰好够(15)与差一分(14)的边界此前没测：
+    // 若写成 <= 会误拒「余额恰好够付这次 AI 调用」的用户。
+    const exact = deduct({ credits: 50, balanceCents: 15, cost: 200, autoTopUp: true })
+    assert.equal(exact.ok, true, '余额恰好够兑换 → 放行')
+    assert.equal(exact.centsUsed, 15)
+    assert.equal(exact.balanceCents, 0, '恰好够 → 余额扣到 0')
+
+    const short = deduct({ credits: 50, balanceCents: 14, cost: 200, autoTopUp: true })
+    assert.equal(short.ok, false)
+    assert.equal(short.reason, 'insufficient_balance')
+    assert.equal(short.balanceCents, 14, '差一分即失败且分文不动')
+  })
+
   test('零成本调用直接放行', () => {
     const r = deduct({ credits: 0, balanceCents: 0, cost: 0 })
     assert.equal(r.ok, true)
