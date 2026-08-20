@@ -70,6 +70,20 @@ describe('支持工单', () => {
     assert.equal((await api('GET', `/api/support/tickets/${t.id}`)).json.ticket.status, 'closed')
   })
 
+  test('创建校验：缺标题/描述 → 400；标题>200 或正文>8000 → 内容过长', async () => {
+    // 缺字段
+    assert.equal((await api('POST', '/api/support/tickets', { body: '只有描述' })).status, 400)
+    assert.equal((await api('POST', '/api/support/tickets', { title: '只有标题' })).status, 400)
+    assert.equal((await api('POST', '/api/support/tickets', { title: '  ', body: '  ' })).status, 400)
+    // 超长（防超大工单撑爆库）
+    const longTitle = await api('POST', '/api/support/tickets', { title: 'x'.repeat(201), body: 'ok' })
+    assert.equal(longTitle.status, 400)
+    assert.match(longTitle.json.error, /内容过长/)
+    assert.equal((await api('POST', '/api/support/tickets', { title: 'ok', body: 'y'.repeat(8001) })).status, 400)
+    // 刚好在上限内 → 通过
+    assert.equal((await api('POST', '/api/support/tickets', { title: 'x'.repeat(200), body: 'y'.repeat(8000) })).status, 200)
+  })
+
   test('closed 后用户追加消息 → 重新打开', async () => {
     const t = (await api('POST', '/api/support/tickets', { title: 'x', body: 'y' })).json.ticket
     await api('POST', `/api/support/tickets/${t.id}/close`)
