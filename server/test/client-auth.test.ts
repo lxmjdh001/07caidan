@@ -135,4 +135,30 @@ describe('开发模式固定验证码（HTTP 层见 team-rbac 附带用例）', 
     const rand = ca.issueCode('c@d.com')
     assert.match(rand, /^\d{6}$/)
   })
+
+  test('revokeDevice：吊销某设备会话 → 该令牌立即失效', () => {
+    const r = ca.register('t1', 'boss@t.com', 'secret', undefined, false, { deviceId: 'devA' })
+    assert.ok(r.ok)
+    if (!r.ok) return
+    assert.ok(ca.resolve(r.token), '吊销前令牌有效')
+    assert.equal(ca.revokeDevice(r.user, 'devA'), 1)
+    assert.equal(ca.resolve(r.token), null, '设备下线后令牌失效')
+  })
+
+  test('停用子账号 → 其会话立即吊销、且不能再登录', () => {
+    const boss = ca.register('t1', 'boss2@t.com', 'secret', undefined, false)
+    assert.ok(boss.ok)
+    if (!boss.ok) return
+    const m = ca.createMember(boss.user, 'agent1', 'agentpass1', 'agent')
+    assert.ok(m.ok)
+    if (!m.ok) return
+    const login = ca.login(m.member.email, 'agentpass1')
+    assert.ok(login && 'token' in login)
+    if (!login || !('token' in login)) return
+    assert.ok(ca.resolve(login.token), '停用前会话有效')
+    // 停用（updateMember enabled:false 会连带吊销会话）
+    assert.ok(ca.updateMember(boss.user, m.member.id, { enabled: false }).ok)
+    assert.equal(ca.resolve(login.token), null, '停用即吊销会话（防离职客服继续用旧令牌）')
+    assert.equal(ca.login(m.member.email, 'agentpass1'), null, '停用后不能再登录')
+  })
 })
