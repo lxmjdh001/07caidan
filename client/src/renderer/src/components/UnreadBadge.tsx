@@ -13,7 +13,8 @@ export function UnreadBadge({
   count: number
   dot?: boolean
 }): React.JSX.Element | null {
-  if (count <= 0) return null
+  // 用 !(count > 0) 而非 count <= 0：NaN/undefined 的比较恒为 false，会让脏数据渲染成 NaN 角标
+  if (!(count > 0)) return null
   if (dot) return <span className="unread-dot" aria-label={`${count}`} />
   return <span className="unread-badge">{count > 99 ? '99+' : count}</span>
 }

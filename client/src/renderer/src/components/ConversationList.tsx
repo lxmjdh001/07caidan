@@ -98,7 +98,7 @@ export function ConversationList({
                 )}
                 <span className="conversation-bottom">
                   <span className="conversation-preview">{c.lastMessagePreview}</span>
-                  <UnreadBadge count={c.unreadCount} />
+                  <UnreadBadge count={c.unreadCount || 0} />
                 </span>
               </span>
             </button>

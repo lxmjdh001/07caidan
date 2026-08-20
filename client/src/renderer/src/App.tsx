@@ -253,7 +253,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
     const map: Record<string, number> = {}
     for (const c of conversations) {
       const key = `${c.channel}:${c.accountId}`
-      map[key] = (map[key] ?? 0) + c.unreadCount
+      map[key] = (map[key] ?? 0) + (c.unreadCount || 0)
     }
     return map
   }, [conversations])
@@ -270,7 +270,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   }, [channels, accountLabels, unreadByAccount])
 
   const totalUnread = useMemo(
-    () => conversations.reduce((sum, c) => sum + c.unreadCount, 0),
+    () => conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0),
     [conversations]
   )
 
