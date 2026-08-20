@@ -136,6 +136,20 @@ describe('computeCampaignStats', () => {
     assert.deepEqual(s.duplicateBy, { library: 1, timeRange: 0 })
   })
 
+  test('跨平台隔离：WhatsApp 线索不被含同号码的 Telegram 库判为重复', () => {
+    // 平台隔离靠带前缀身份自然分割：wa: 与 tg: 字符串不相等 → 规则 A 不匹配。
+    // 否则同一号码跨平台会被误判重复，错误压低「有效」数——老板据此结算引流成效，
+    // 属钱相关红线。（channelOfContactId 是为此写的校验函数，实际靠前缀自隔离，未接线。）
+    const s = compute([lead({ contactId: 'wa:+8613800138000' })], {
+      rules: { libraryIds: ['L1'] },
+      libraryContacts: new Set(['tg:8613800138000'])
+    })
+    assert.equal(s.total, 1)
+    assert.equal(s.duplicate, 0, '跨平台库不得命中')
+    assert.equal(s.fresh, 1)
+    assert.equal(s.effective, 1)
+  })
+
   test('同一客户同时命中两种规则只计一次重复，但原因各记一次', () => {
     const s = compute([lead({ contactId: 'wa:+1' })], {
       rules: { libraryIds: ['L1'], beforeAt: T0 },
