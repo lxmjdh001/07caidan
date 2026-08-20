@@ -29,6 +29,15 @@ describe('pickSyncable —— 安全白名单', () => {
     expect(Object.keys(blob.translation).sort()).toEqual(
       ['confirmBeforeSend', 'displayLang', 'engine', 'inboundEnabled', 'outboundEnabled', 'targetLangDefault'].sort()
     )
+    // notifications/autoReply 是整体展开（{...s.xxx}），不像 translation 逐字段挑。
+    // 钉死其键集，一旦这两个配置类型日后新增字段（尤其密钥类，如推送 token / 每会话 apiKey），
+    // 本断言会红 → 强制开发者显式决定是否可同步，而不是被 spread 悄悄上云。
+    expect(Object.keys(blob.notifications).sort()).toEqual(
+      ['enabled', 'showPreview', 'sound'].sort()
+    )
+    expect(Object.keys(blob.autoReply).sort()).toEqual(
+      ['cooldownSec', 'enabled', 'handoffKeywords', 'systemPrompt'].sort()
+    )
   })
 
   it('抽取偏好值正确', () => {
