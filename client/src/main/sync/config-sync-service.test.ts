@@ -76,3 +76,41 @@ describe('ConfigSync.pull（跨设备漫游·后写为准）', () => {
     expect(settings.get().theme).toBe('light')
   })
 })
+
+describe('ConfigSync.push（上云·不带密钥）', () => {
+  it('上传的是 pickSyncable 白名单（密钥绝不上云）并按服务端返回推进水位', async () => {
+    // 本地埋一个翻译引擎密钥
+    await settings.update({
+      translation: { ...settings.get().translation, deepl: { ...settings.get().translation.deepl, apiKey: 'DEEPL-SECRET-KEY' } }
+    })
+    await enableSync(50)
+    let sentBody: { blob?: unknown; updatedAt?: number } | undefined
+    const fn = vi.fn(async (_url: string, opts: { body: string }) => {
+      sentBody = JSON.parse(opts.body)
+      return { ok: true, json: async () => ({ updatedAt: 999 }) } as unknown as Response
+    })
+    vi.stubGlobal('fetch', fn)
+
+    await new ConfigSync(settings).push()
+    expect(fn).toHaveBeenCalled()
+    // 红线：上云 blob 绝不含任何引擎密钥
+    expect(JSON.stringify(sentBody?.blob)).not.toContain('DEEPL-SECRET-KEY')
+    // 水位推进到服务端返回的 updatedAt
+    expect(settings.get().sync.settingsSyncedAt).toBe(999)
+  })
+
+  it('push 失败（!ok）→ 不推进水位、不崩', async () => {
+    await enableSync(50)
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, json: async () => ({}) }) as unknown as Response))
+    await expect(new ConfigSync(settings).push()).resolves.toBeUndefined()
+    expect(settings.get().sync.settingsSyncedAt).toBe(50)
+  })
+
+  it('cloudSync 关闭 → push 不发请求', async () => {
+    await enableSync(50, false)
+    const f = vi.fn(async () => ({ ok: true, json: async () => ({ updatedAt: 1 }) }) as unknown as Response)
+    vi.stubGlobal('fetch', f)
+    await new ConfigSync(settings).push()
+    expect(f).not.toHaveBeenCalled()
+  })
+})
