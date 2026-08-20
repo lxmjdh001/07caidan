@@ -43,29 +43,31 @@ test('客户端公告：点「我知道了」后该公告标记已读，不再�
   expect(await unreadHasMine()).toBe(true)
 
   const app = await electron.launch({ executablePath: ELECTRON_PATH, args: [MAIN, `--user-data-dir=${join(tmpdir(), 'omni-anndis-ignored')}`], env: { ...process.env, OMNI_USER_DATA: USER_DATA } })
-  const win = await app.firstWindow()
-  await win.waitForLoadState('domcontentloaded')
+  try {
+    const win = await app.firstWindow()
+    await win.waitForLoadState('domcontentloaded')
 
-  await win.locator('input[type="email"]').fill(email)
-  await win.locator('input[type="password"]').fill('secret123')
-  await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+    await win.locator('input[type="email"]').fill(email)
+    await win.locator('input[type="password"]').fill('secret123')
+    await win.locator('.auth-submit').click()
+    await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
 
-  // 公告弹窗出现并显示该公告
-  await expect(win.getByText(title)).toBeVisible({ timeout: 10_000 })
+    // 公告弹窗出现并显示该公告
+    await expect(win.getByText(title)).toBeVisible({ timeout: 10_000 })
 
-  await win.waitForTimeout(300)
-  await win.screenshot({ path: `${SHOT_DIR}/client-announcement-dismiss.png` })
+    await win.waitForTimeout(300)
+    await win.screenshot({ path: `${SHOT_DIR}/client-announcement-dismiss.png` })
 
-  // 点「我知道了」→ 标记已读
-  await win.getByRole('button', { name: '我知道了' }).click()
+    // 点「我知道了」→ 标记已读
+    await win.getByRole('button', { name: '我知道了' }).click()
 
-  // 服务端持久化：该公告不再进未读列表（不会再骚扰）
-  await expect.poll(unreadHasMine, { timeout: 10_000 }).toBe(false)
-
-  await app.close()
-  // 自清理：删掉这条活跃全员公告，避免遗留挡住别的用例
-  if (ann.announcement?.id) {
-    await fetch(`${API}/api/admin/announcements/${ann.announcement.id}`, { method: 'DELETE', headers: aAuth }).catch(() => undefined)
+    // 服务端持久化：该公告不再进未读列表（不会再骚扰）
+    await expect.poll(unreadHasMine, { timeout: 10_000 }).toBe(false)
+  } finally {
+    // 无论用例成败都清理：单条遗留的活跃全员公告会用居中弹层挡住整套用例的点击。
+    await app.close().catch(() => undefined)
+    if (ann.announcement?.id) {
+      await fetch(`${API}/api/admin/announcements/${ann.announcement.id}`, { method: 'DELETE', headers: aAuth }).catch(() => undefined)
+    }
   }
 })
