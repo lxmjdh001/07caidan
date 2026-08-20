@@ -391,6 +391,25 @@ describe('管理员手动补单与调余额', () => {
     )
   })
 
+  // 扣成负数的护栏是 nextBalance < 0（billing-repo），即扣到「恰好 0」应放行、
+  // 再扣 1 分才拒。既有用例从 -3000 直接跳到 -99999，这条零点边界（< 0 vs <= 0，
+  // 差一分就是"能否清零"与"是否允许负余额"的分界）此前没测。
+  test('调余额零点边界：扣到恰好 0 放行，再扣 1 分被拒', async () => {
+    // 先加到 2000
+    assert.equal(
+      (await api('POST', '/api/admin/balance-adjust', { email: 'u@test.com', deltaCents: 2000 }, adminToken)).json.balance.balanceCents,
+      2000
+    )
+    // 扣恰好 2000 → 余额 0，放行（0 不小于 0）
+    const toZero = await api('POST', '/api/admin/balance-adjust', { email: 'u@test.com', deltaCents: -2000 }, adminToken)
+    assert.equal(toZero.status, 200)
+    assert.equal(toZero.json.balance.balanceCents, 0)
+    // 从 0 再扣 1 分 → nextBalance = -1 < 0，被拒，余额保持 0
+    const below = await api('POST', '/api/admin/balance-adjust', { email: 'u@test.com', deltaCents: -1 }, adminToken)
+    assert.equal(below.status, 400)
+    assert.equal((await api('GET', '/api/billing/me')).json.balance.balanceCents, 0)
+  })
+
   test('普通同步令牌不能补单或调余额', async () => {
     assert.equal((await api('GET', '/api/admin/orders')).status, 403)
     assert.equal(
