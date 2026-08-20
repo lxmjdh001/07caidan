@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -15,6 +15,31 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true })
+})
+
+describe('SettingsStore init 容错', () => {
+  async function loadWith(content: string): Promise<{ dir: string; store: SettingsStore }> {
+    const d = await mkdtemp(join(tmpdir(), 'omnichat-settings-fault-'))
+    await writeFile(join(d, 'settings.json'), content, 'utf8')
+    const s = new SettingsStore(d)
+    await s.init() // 不得抛
+    return { dir: d, store: s }
+  }
+
+  it('损坏的 settings.json → 回落默认、不崩', async () => {
+    const { dir, store: s } = await loadWith('{ 这不是合法 JSON')
+    expect(s.get().locale).toBe('auto')
+    expect(s.get().translation.engine).toBe('google-free')
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('只含部分字段 → 存的保留、缺的深合并默认（含主账号）', async () => {
+    const { dir, store: s } = await loadWith(JSON.stringify({ locale: 'ja' }))
+    expect(s.get().locale).toBe('ja') // 存的字段保留
+    expect(s.get().translation.engine).toBe('google-free') // 缺的补默认
+    expect(s.get().accounts['whatsapp:main']).toBeDefined() // 主账号仍在
+    await rm(dir, { recursive: true, force: true })
+  })
 })
 
 describe('SettingsStore', () => {
