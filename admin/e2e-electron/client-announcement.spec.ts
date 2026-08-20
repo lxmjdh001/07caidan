@@ -34,33 +34,34 @@ test('客户端启动公告：展示后台发布的公告并可关闭', async ()
   const annId = (await create.json() as { announcement: { id: string } }).announcement.id
 
   const app = await electron.launch({ executablePath: ELECTRON_PATH, args: [MAIN, `--user-data-dir=${join(tmpdir(), 'omni-ann-ignored')}`], env: { ...process.env, OMNI_USER_DATA: USER_DATA } })
-  const win = await app.firstWindow()
-  await win.waitForLoadState('domcontentloaded')
+  try {
+    const win = await app.firstWindow()
+    await win.waitForLoadState('domcontentloaded')
 
-  const email = `boss_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}@e2e.test`
-  await win.locator('.auth-switch button').first().click()
-  await win.locator('input[type="email"]').fill(email)
-  await win.locator('input[type="password"]').fill('secret123')
-  await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+    const email = `boss_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}@e2e.test`
+    await win.locator('.auth-switch button').first().click()
+    await win.locator('input[type="email"]').fill(email)
+    await win.locator('input[type="password"]').fill('secret123')
+    await win.locator('.auth-submit').click()
+    await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
 
-  // 启动公告弹窗展示该公告标题与正文
-  const modal = win.locator('.modal-backdrop').filter({ hasText: '通知' })
-  await expect(modal).toBeVisible({ timeout: 15_000 })
-  await expect(win.locator('.notice-item h3', { hasText: title })).toBeVisible()
-  await expect(win.getByText(body)).toBeVisible()
+    // 启动公告弹窗展示该公告标题与正文
+    const modal = win.locator('.modal-backdrop').filter({ hasText: '通知' })
+    await expect(modal).toBeVisible({ timeout: 15_000 })
+    await expect(win.locator('.notice-item h3', { hasText: title })).toBeVisible()
+    await expect(win.getByText(body)).toBeVisible()
 
-  await win.waitForTimeout(300)
-  await win.screenshot({ path: `${SHOT_DIR}/client-50-announcement.png` })
+    await win.waitForTimeout(300)
+    await win.screenshot({ path: `${SHOT_DIR}/client-50-announcement.png` })
 
-  // 关闭即标已读 → 弹窗消失
-  await win.getByRole('button', { name: '我知道了' }).click()
-  await expect(modal).toBeHidden({ timeout: 10_000 })
-
-  await app.close()
-
-  // 清理：删除该全员公告，避免它在共享租户里对后续用例的新老板弹窗遮挡界面
-  await fetch(`${API}/api/admin/announcements/${annId}`, {
-    method: 'DELETE', headers: { authorization: `Bearer ${admin.token}` }
-  })
+    // 关闭即标已读 → 弹窗消失
+    await win.getByRole('button', { name: '我知道了' }).click()
+    await expect(modal).toBeHidden({ timeout: 10_000 })
+  } finally {
+    // 无论成败都删掉这条活跃全员公告：遗留会用弹窗遮挡后续所有用例的点击（已知污染源）。
+    await app.close().catch(() => undefined)
+    await fetch(`${API}/api/admin/announcements/${annId}`, {
+      method: 'DELETE', headers: { authorization: `Bearer ${admin.token}` }
+    }).catch(() => undefined)
+  }
 })
