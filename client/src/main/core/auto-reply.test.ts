@@ -189,6 +189,36 @@ describe('转人工', () => {
     expect(generated).toBe(0)
   })
 
+  it('转人工优先于冷却：冷却期内客户喊人仍立刻停机+提醒，不被冷却吞掉', async () => {
+    const paused: string[] = []
+    let notified = 0
+    let generated = 0
+    const svc = new AutoReplyService({
+      getConfig: () => ({ enabled: true, systemPrompt: '客服', cooldownSec: 20, handoffKeywords: '人工' }),
+      getMessages: async () => [msg()], // 非空历史，最后一条是客户消息 → 生成路径可触发
+      generate: async () => {
+        generated++
+        return { text: 'x' }
+      },
+      send: async () => {},
+      pauseConversation: async (id) => {
+        paused.push(id)
+      },
+      notifyHandoff: () => {
+        notified++
+      }
+    })
+    // 先一条普通消息触发自动回复 → 进入冷却
+    await svc.onInbound(msg({ body: { type: 'text', text: '多少钱' } }), conv())
+    expect(generated).toBe(1)
+    expect(svc.shouldReply(msg(), conv())).toBe(false) // 确认此刻在冷却期
+    // 冷却期内客户喊「转人工」：仍立刻停机+提醒（转人工优先于一切），且不生成新回复
+    await svc.onInbound(msg({ body: { type: 'text', text: '给我转人工' } }), conv())
+    expect(paused).toEqual(['c1'])
+    expect(notified).toBe(1)
+    expect(generated).toBe(1) // 没因喊人再生成，冷却没吞掉转人工
+  })
+
   it('语音转写文本同样能触发转人工', async () => {
     const paused: string[] = []
     const svc = new AutoReplyService({
