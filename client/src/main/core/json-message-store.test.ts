@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -32,6 +32,42 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(dir, { recursive: true, force: true })
+})
+
+describe('init 容错与数据安全', () => {
+  async function withStore(fileContent: string | null): Promise<{ dir: string; store: JsonMessageStore }> {
+    const d = await mkdtemp(join(tmpdir(), 'omnichat-store-fault-'))
+    if (fileContent !== null) await writeFile(join(d, 'store.json'), fileContent, 'utf8')
+    const s = new JsonMessageStore(d)
+    await s.init() // 不得抛
+    return { dir: d, store: s }
+  }
+
+  it('无法识别的版本 → 忽略旧数据、回落空库、不崩', async () => {
+    // 未来版本或旧格式：version!==1 一律不加载，避免按错结构读脏数据
+    const { dir, store: s } = await withStore(
+      JSON.stringify({ version: 2, conversations: { x: { id: 'x' } }, messages: {} })
+    )
+    expect(await s.listConversations()).toEqual([])
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('损坏 JSON → 回落空库、不崩、之后仍可正常记录', async () => {
+    const { dir, store: s } = await withStore('{ 这不是合法 JSON')
+    expect(await s.listConversations()).toEqual([])
+    const { conversation } = await s.recordMessage(msg())
+    expect(conversation.id).toBe('whatsapp:main:123@s.whatsapp.net')
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('损坏文件在 init 时不被覆盖（防瞬时读错毁掉旧库，直到下次写入）', async () => {
+    const bad = '{ 损坏但可能可救的旧数据'
+    const { dir, store: s } = await withStore(bad)
+    // init 只读不写：损坏文件应原样保留（不因一次读失败就清空用户历史）
+    expect(await readFile(join(dir, 'store.json'), 'utf8')).toBe(bad)
+    void s
+    await rm(dir, { recursive: true, force: true })
+  })
 })
 
 describe('JsonMessageStore', () => {
