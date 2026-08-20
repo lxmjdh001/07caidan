@@ -17,6 +17,28 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true })
 })
 
+describe('MediaStore resolvePath 安全（防路径穿越）', () => {
+  // 红线：mediaId 来自消息/外部，绝不能借它读到 baseDir 之外的任意文件
+  it('路径穿越的 mediaId 一律返回 null', async () => {
+    expect(store.resolvePath('../../etc/passwd')).toBeNull()
+    expect(store.resolvePath('../secret')).toBeNull()
+    expect(store.resolvePath('sub/dir/file.jpg')).toBeNull() // 子目录也不允许
+    expect(store.resolvePath('/etc/passwd')).toBeNull() // 绝对路径
+    expect(store.resolvePath('')).toBeNull() // 空
+  })
+
+  it('合法 basename（即使文件不存在）返回 baseDir 内的路径', async () => {
+    const p = store.resolvePath('abc123.jpg')
+    expect(p).not.toBeNull()
+    expect(p!.startsWith(dir)).toBe(true) // 落在 baseDir 内
+  })
+
+  it('save 出来的 mediaId 能被 resolvePath 接受', async () => {
+    const id = await store.save(Buffer.from('x'), '.png')
+    expect(store.resolvePath(id)).not.toBeNull()
+  })
+})
+
 describe('MediaStore', () => {
   it('save 后可通过 resolvePath 读回', async () => {
     const mediaId = await store.save(Buffer.from('img-bytes'), '.jpg')
