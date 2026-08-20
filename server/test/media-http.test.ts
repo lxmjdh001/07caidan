@@ -64,3 +64,33 @@ describe('/api/media/:mediaId 安全护栏', () => {
     assert.equal(r.status, 404)
   })
 })
+
+describe('PUT /api/media/:mediaId 上传写入安全', () => {
+  test('无令牌上传 → 401', async () => {
+    const r = await app.inject({
+      method: 'PUT', url: '/api/media/x.jpg', payload: 'bytes',
+      headers: { 'content-type': 'image/jpeg' }
+    })
+    assert.equal(r.statusCode, 401)
+  })
+
+  test('非法 mediaId 上传 → 400（防写到租户目录外的任意路径）', async () => {
+    const r = await app.inject({
+      method: 'PUT', url: '/api/media/bad%20id', payload: 'bytes',
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'image/jpeg' }
+    })
+    assert.equal(r.statusCode, 400)
+    assert.match(r.body, /invalid mediaId/)
+  })
+
+  test('合法上传（同步令牌）→ 200，且能按同 id 取回', async () => {
+    const up = await app.inject({
+      method: 'PUT', url: '/api/media/e2e-up.jpg', payload: 'the-bytes',
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'image/jpeg' }
+    })
+    assert.equal(up.statusCode, 200)
+    const get = await app.inject({ method: 'GET', url: '/api/media/e2e-up.jpg', headers: { authorization: `Bearer ${TOKEN}` } })
+    assert.equal(get.statusCode, 200)
+    assert.equal(get.body, 'the-bytes')
+  })
+})
