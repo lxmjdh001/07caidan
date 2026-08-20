@@ -248,6 +248,39 @@ describe('分享链接与公开看板', () => {
     assert.equal(pub.json.stats.total, 1)
   })
 
+  // 最新功能（IP 地区限制）：默认拒绝中国大陆/香港 IP，老板可逐项放开。
+  // geoip.test 只测判定函数，路由把 req.ip 接进去这条 HTTP 闭环此前没测。
+  // inject 的 remoteAddress 会成为 req.ip（未开 trustProxy），可据此模拟来访地区。
+  const CN_IP = '1.0.1.1'
+  const HK_IP = '1.36.0.1'
+  const US_IP = '8.8.8.8'
+  const pubFrom = (token: string, ip: string) =>
+    app.inject({ method: 'GET', url: `/public/campaign/${token}`, remoteAddress: ip })
+
+  test('公开看板：默认拒绝中国大陆/香港 IP，放行其他地区', async () => {
+    const { link } = await setup()
+    // 默认（allowCnIp/allowHkIp 均 false）→ CN/HK 被拦 403 region_blocked
+    const cn = await pubFrom(link.token, CN_IP)
+    assert.equal(cn.statusCode, 403)
+    assert.equal(cn.json().error, 'region_blocked')
+    assert.equal((await pubFrom(link.token, HK_IP)).statusCode, 403)
+    // 其他地区放行
+    assert.equal((await pubFrom(link.token, US_IP)).statusCode, 200)
+    // 看板 HTML 页 /c/:token 同样对 CN 直接 403（避免先出壳子再报错）
+    const html = await app.inject({ method: 'GET', url: `/c/${link.token}`, remoteAddress: CN_IP })
+    assert.equal(html.statusCode, 403)
+    assert.match(html.body, /地区不可访问/)
+  })
+
+  test('公开看板：老板放开 CN 后该地区可访问、HK 仍拦', async () => {
+    const { campaign, link } = await setup()
+    assert.equal((await pubFrom(link.token, CN_IP)).statusCode, 403)
+    await api('PATCH', `/api/campaigns/${campaign.id}`, { allowCnIp: true })
+    // 逐项放开：CN 放行、HK 未开仍拦
+    assert.equal((await pubFrom(link.token, CN_IP)).statusCode, 200)
+    assert.equal((await pubFrom(link.token, HK_IP)).statusCode, 403)
+  })
+
   test('公开看板绝不返回聊天内容或粉丝身份', async () => {
     const { link } = await setup()
     const res = await app.inject({ method: 'GET', url: `/public/campaign/${link.token}` })
