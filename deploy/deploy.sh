@@ -11,6 +11,22 @@ SERVER="${OMNI_SSH:-root@187.77.129.250}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# ── SSH 连接复用（ControlMaster）──
+# 服务器装了 fail2ban：短时间多次新建 22 端口连接会被判为暴力破解并封 IP（握手即断）。
+# deploy 有 8+ 次 ssh/scp/rsync，逐个新建连接必被封。这里先建一条 master 长连接，
+# 后续所有 ssh/scp/rsync 都复用它（-o ControlPath），全程只有 1 次 TCP 握手 + 1 次鉴权，
+# fail2ban 看不到连接风暴。ControlPersist 让 socket 在收尾后仍存活一会儿。
+SOCK="${OMNI_SSH_SOCK:-/tmp/omni-deploy-%r@%h:%p}"
+SSHM=(-o ControlMaster=auto -o "ControlPath=$SOCK" -o ControlPersist=300 \
+      -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null)
+ssh() { command ssh "${SSHM[@]}" "$@"; }
+scp() { command scp "${SSHM[@]}" "$@"; }
+RSH="command ssh ${SSHM[*]}"
+cleanup() { command ssh "${SSHM[@]}" -O exit "$SERVER" 2>/dev/null || true; }
+trap cleanup EXIT
+echo "==> [0] 建立复用连接（ControlMaster，避免 fail2ban 因连接风暴封 IP）"
+ssh -o ConnectTimeout=15 "$SERVER" 'echo master-up' >/dev/null
+
 echo "==> [1/6] 检查服务器前置（node/caddy/编译工具）"
 ssh "$SERVER" 'set -e
   command -v node >/dev/null || { echo "缺 node，请先装 Node ≥ 22.18"; exit 1; }
@@ -23,7 +39,7 @@ ssh "$SERVER" 'set -e
 
 echo "==> [2/6] 同步后端代码到 /opt/omnichat/server"
 ssh "$SERVER" 'mkdir -p /opt/omnichat/server /var/lib/omnichat'
-rsync -az --delete \
+rsync -az --delete -e "$RSH" \
   --exclude node_modules --exclude data --exclude '*.db' \
   server/ "$SERVER:/opt/omnichat/server/"
 
@@ -33,7 +49,7 @@ ssh "$SERVER" 'cd /opt/omnichat/server && npm install --omit=dev'
 echo "==> [4/6] 本地构建管理后台（BRAND=prod）并同步到 /var/www/omnichat-admin"
 ( cd admin && BRAND=prod npm install && BRAND=prod npm run build )
 ssh "$SERVER" 'mkdir -p /var/www/omnichat-admin'
-rsync -az --delete admin/dist/ "$SERVER:/var/www/omnichat-admin/"
+rsync -az --delete -e "$RSH" admin/dist/ "$SERVER:/var/www/omnichat-admin/"
 
 echo "==> [5/6] 安装/更新 systemd 单元与 Caddyfile"
 scp deploy/omnichat.service "$SERVER:/etc/systemd/system/omnichat.service"
