@@ -146,6 +146,8 @@ describe('错误信息提取', () => {
     assert.equal(parseErrorMessage({ error: { message: '额度不足' } }, 400), '额度不足')
     assert.equal(parseErrorMessage({ error: 'bad key' }, 401), 'bad key')
     assert.equal(parseErrorMessage({ message: 'oops' }, 500), 'oops')
+    // detail 分支：FastAPI 风格网关回 { detail } —— 兜底链最后一环，缺了这类错误只显示 HTTP 码
+    assert.equal(parseErrorMessage({ detail: '请求太频繁' }, 429), '请求太频繁')
   })
   test('认不出来时退回状态码，不返回 [object Object]', () => {
     assert.equal(parseErrorMessage({ weird: 1 }, 502), 'HTTP 502')
