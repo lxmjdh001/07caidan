@@ -23,6 +23,7 @@
     "@types/node": "^24.0.0",
     "@types/nodemailer": "^8.0.1",
     "drizzle-kit": "^0.31.10",
+    "pino": "^10.3.1",
     "typescript": "^5.9.0"
   }
 }
