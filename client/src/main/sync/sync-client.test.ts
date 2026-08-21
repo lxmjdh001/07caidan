@@ -173,4 +173,26 @@ describe('SyncClient', () => {
     const sc = new SyncClient({ store, getConfig: () => CFG, persistRecord: async () => {} })
     expect(await sc.runOnce()).toBeNull()
   })
+
+  it('可重入保护：一次同步进行中，并发再调直接返回 null（不重叠上传、不抢水位）', async () => {
+    // 定时器每 N 秒触发一次 runOnce；若上一次还没跑完（网络慢），这一次必须直接跳过，
+    // 否则两趟同步会并发上传、争抢水位状态，导致重传或漏传。running 标志就是这个保护。
+    await store.recordMessage(msg({ externalId: 'M1', timestamp: 1000 }))
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const f = vi.fn(async () => {
+      await gate // 卡住第一趟同步的 POST
+      return { ok: true, json: async () => ({ ok: true, missing: [] }) } as unknown as Response
+    })
+    vi.stubGlobal('fetch', f)
+    const sc = new SyncClient({ store, getConfig: () => CFG, persistRecord: async () => {} })
+    const p1 = sc.runOnce() // 进入，running=true，卡在 POST 的 gate
+    const p2 = await sc.runOnce() // running 已 true → 直接返回 null
+    expect(p2).toBeNull()
+    release()
+    await p1
+    expect(f).toHaveBeenCalledTimes(1) // 只有第一趟真的发了请求，第二趟被挡下
+  })
 })
