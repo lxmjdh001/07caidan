@@ -90,6 +90,27 @@ describe('LogUploader', () => {
     expect(up.pending()).toBeLessThanOrEqual(500)
   })
 
+  test('冲刷进行中新增的日志不被清掉（成功只删已发批次，而非清空缓冲）', async () => {
+    // flush 成功后只 splice 掉「已发出的那一批」，不是清空整个 buffer —— 否则上传耗时期间
+    // 新产生的日志会被连坐丢掉。这里在 fetch 进行中追加一条，断言它在冲刷成功后仍留在缓冲里。
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const up = makeUploader({
+      fetchImpl: (async () => {
+        up.add('error', '', 'during-flight') // fetch 进行中新来的日志
+        await gate
+        return okResponse()
+      }) as unknown as typeof fetch
+    })
+    up.add('error', '', 'batch1') // 待发的一条
+    const p = up.flush() // 发出 batch1，fetch 中又追加 during-flight
+    release()
+    await p
+    expect(up.pending()).toBe(1) // 只删了 batch1；during-flight 保留（未被整体清空连坐）
+  })
+
   test('未配置后台地址时静默不发', async () => {
     const fetchMock = vi.fn()
     const up = makeUploader({ fetchImpl: fetchMock as unknown as typeof fetch, serverUrl: '' })
