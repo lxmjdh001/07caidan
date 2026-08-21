@@ -21,11 +21,21 @@ export interface CrispSessionData {
   data: Array<[string, string]>
 }
 
+/**
+ * 内联 <script> 里嵌 JSON：JSON.stringify 不转义 `</script>`（`/` 不在转义集），
+ * HTML 解析器遇到字符串里的 `</script>` 会提前关闭脚本块 → 后面可塞入可执行标签（注入）。
+ * 把 `<` 转成 `<`（仍是合法 JSON、语义不变）即可杜绝 `</script>` 与 `<!--` 突破。
+ * session.data 里含管理员可配的套餐名等，属可控输入，必须走这里。
+ */
+function jsonForScript(v: unknown): string {
+  return JSON.stringify(v).replace(/</g, '\\u003c')
+}
+
 /** 生成独立客服窗口加载的 HTML（纯函数，便于测试） */
 export function buildCrispHtml(websiteId: string, session: CrispSessionData): string {
-  const pairs = JSON.stringify(session.data)
+  const pairs = jsonForScript(session.data)
   const emailPush = session.email
-    ? `$crisp.push(["set","user:email",[${JSON.stringify(session.email)}]]);`
+    ? `$crisp.push(["set","user:email",[${jsonForScript(session.email)}]]);`
     : ''
   // websiteId 只允许 UUID 形态，杜绝注入
   if (!/^[a-f0-9-]{10,64}$/i.test(websiteId)) throw new Error('非法的 Crisp Website ID')
