@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { errText } from '../errors'
+import { estimatePayable, usd } from '../billing-format'
 import { Markdown } from '../components/Markdown'
 import { useI18n } from '../i18n'
 
@@ -58,14 +59,6 @@ interface LedgerRow {
 interface PaymentInfo {
   payUrl?: string
   payload?: Record<string, string>
-}
-
-/** 应付估算（gross-up 口径与后端一致，仅作展示） */
-function estimatePayable(channel: PayChannel, amountCents: number): number {
-  if (channel.feePaidBy !== 'customer' || !Number.isFinite(amountCents) || amountCents <= 0) {
-    return amountCents
-  }
-  return Math.ceil((amountCents + channel.feeFixedCents) / (1 - channel.feeRate))
 }
 
 /** 支付通道卡片列表：把各通道手续费亮出来，用户自己挑最划算的 */
@@ -149,11 +142,6 @@ function PaymentResult({ payment }: { payment: PaymentInfo | null }): React.JSX.
   )
 }
 
-function usd(cents: number): string {
-  const sign = cents < 0 ? '-' : ''
-  const abs = Math.abs(Math.round(cents))
-  return `${sign}$${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`
-}
 
 function fmt(ts?: number): string {
   return ts ? new Date(ts).toLocaleString() : '—'
