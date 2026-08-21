@@ -477,11 +477,8 @@ function TopupTab({ onChanged }: { onChanged: () => Promise<void> }): React.JSX.
 
   const channel = channels.find((c) => c.id === channelId)
   const amountCents = Math.round(Number(amount) * 100)
-  // 客户承担手续费时预估应付（gross-up 口径与后端一致，仅作展示）
-  const estimate =
-    channel && channel.feePaidBy === 'customer' && Number.isFinite(amountCents) && amountCents > 0
-      ? Math.ceil((amountCents + channel.feeFixedCents) / (1 - channel.feeRate))
-      : amountCents
+  // 客户承担手续费时预估应付（gross-up 口径与后端一致，含费率钳制，仅作展示）
+  const estimate = channel ? estimatePayable(channel, amountCents) : amountCents
 
   return (
     <div className="form-page">
