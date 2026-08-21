@@ -9,10 +9,18 @@ import { join } from 'node:path'
  */
 export default function globalTeardown(): void {
   const db = join(process.env.E2E_DATA_DIR || '/private/tmp/omnichat-e2e-data', 'omnichat.db')
+  // 该库是纯 E2E 数据库，用例各自自成一体（不跨用例共享数据）。跑完把累积的事务性数据
+  // 清空，防跨运行无限累积拖慢扫全表的查询（如 fanlib-export 的历史导出扫会话、设备总览扫用户）。
+  // 只清事务数据，保留 schema 与后台管理员账号。
   const sql = [
-    "DELETE FROM fan_library_entries WHERE library_id IN (SELECT id FROM fan_libraries WHERE name LIKE '%E2E%')",
-    "DELETE FROM fan_libraries WHERE name LIKE '%E2E%'",
-    "DELETE FROM announcements WHERE title LIKE '%E2E%' OR title LIKE '%测试%'"
+    'DELETE FROM fan_library_entries',
+    'DELETE FROM fan_libraries',
+    'DELETE FROM announcements',
+    'DELETE FROM conversations',
+    'DELETE FROM messages',
+    'DELETE FROM client_logs',
+    'DELETE FROM client_sessions',
+    'DELETE FROM client_users'
   ].join('; ')
   try {
     execSync(`sqlite3 "${db}" "${sql}"`, { stdio: 'ignore' })
