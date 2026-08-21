@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, beforeEach, describe, test } from 'node:test'
 import { AuthRepo } from '../src/auth-repo.ts'
-import { effectivePermissions, hashPassword, verifyPassword } from '../src/auth.ts'
+import { PERMISSIONS, ROLE_PRESETS, effectivePermissions, hashPassword, verifyPassword } from '../src/auth.ts'
 import { openDb } from '../src/db.ts'
 
 let dir: string
@@ -24,6 +24,19 @@ describe('auth 基础', () => {
 
   test('owner 角色含全部权限', () => {
     assert.equal(effectivePermissions('owner', []).includes('users:manage'), true)
+  })
+
+  test('安全不变式：任何含 users:manage 的角色必须拥有全部权限（否则可越权造号）', () => {
+    // 后台建用户路由不做委派校验（不像客户端 canDelegate）。这是安全的前提是：
+    // 只有「已拥有全部权限」的角色才有 users:manage —— 否则它能造出权限比自己大的号（提权）。
+    // 若日后有人给某角色加 users:manage 却不给全权，这条会红，挡住提权漏洞。
+    for (const [role, perms] of Object.entries(ROLE_PRESETS)) {
+      if ((perms as string[]).includes('users:manage')) {
+        for (const p of PERMISSIONS) {
+          assert.ok((perms as string[]).includes(p), `角色 ${role} 有 users:manage 却缺 ${p} → 可越权造号`)
+        }
+      }
+    }
   })
 })
 
