@@ -10,6 +10,9 @@ const DATA_DIR = process.env.E2E_DATA_DIR || '/private/tmp/omnichat-e2e-data'
 
 export default defineConfig({
   testDir: './e2e',
+  // 跑完把共享持久库重置到只剩引导管理员，清掉后台套件累积的套餐/通道/工单/订单/用户等，
+  // 防跨运行无限累积拖慢列表渲染类用例（与电子端 teardown 同一治理）
+  globalTeardown: './e2e/global-teardown.ts',
   timeout: 60_000,
   fullyParallel: false,
   // 单 worker 顺序执行：并行跑多个浏览器+共享后台会争抢，共享租户会话变多时
