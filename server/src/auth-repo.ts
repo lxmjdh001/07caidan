@@ -101,6 +101,11 @@ export class AuthRepo {
       .set(set)
       .where(and(eq(adminUsers.tenant, tenant), eq(adminUsers.id, id)))
       .run()
+    // 改密或停用后吊销该用户已发出的全部会话：改密的动机常是"号可能被盗"，留着旧会话等于白改；
+    // 停用虽在 resolve 时也会被 enabled 挡下，但一并删掉更干净、也不留可复活的悬空会话。
+    if (res.changes > 0 && (patch.password !== undefined || patch.enabled === false)) {
+      this.db.delete(sessions).where(eq(sessions.userId, id)).run()
+    }
     return res.changes > 0
   }
 

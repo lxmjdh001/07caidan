@@ -58,4 +58,28 @@ describe('AuthRepo 会话生命周期与安全', () => {
     auth.logout(r.token)
     assert.equal(auth.resolve(r.token), null)
   })
+
+  test('改密后旧会话立即吊销（改密动机常是号被盗，留旧会话等于白改）', () => {
+    const r = auth.login('admin', 'pw123456')!
+    assert.ok(auth.resolve(r.token)) // 改密前有效
+    auth.updateUser(T, userId, { password: 'newpw678901' })
+    assert.equal(auth.resolve(r.token), null, '改密必须吊销旧会话')
+    // 会话行也确实被删（不是只靠 resolve 挡）
+    assert.equal(db.select().from(sessions).where(eq(sessions.userId, userId)).all().length, 0)
+    // 新密码可正常登录
+    assert.ok(auth.login('admin', 'newpw678901'))
+  })
+
+  test('停用会连带删除其会话行（不留悬空会话）', () => {
+    const r = auth.login('admin', 'pw123456')!
+    auth.updateUser(T, userId, { enabled: false })
+    assert.equal(auth.resolve(r.token), null)
+    assert.equal(db.select().from(sessions).where(eq(sessions.userId, userId)).all().length, 0)
+  })
+
+  test('只改角色/权限不动会话（不该无谓踢人下线）', () => {
+    const r = auth.login('admin', 'pw123456')!
+    auth.updateUser(T, userId, { role: 'admin' })
+    assert.ok(auth.resolve(r.token), '改权限不该吊销会话')
+  })
 })
