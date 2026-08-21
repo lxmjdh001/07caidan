@@ -91,7 +91,9 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     enabled: !!config.autoTag
   })
 
-  const app = Fastify({ logger: true, bodyLimit: 64 * 1024 * 1024 })
+  // trustProxy：前置反代（Caddy/nginx）终止 TLS 时，让 req.ip 取自 X-Forwarded-For，
+  // 否则公开看板的地区限制会看到回环地址而全部放行。直连部署保持 false（默认）以防 XFF 伪造。
+  const app = Fastify({ logger: true, bodyLimit: 64 * 1024 * 1024, trustProxy: config.trustProxy })
   // 前后端分离：管理后台是独立前端（admin/），这里开放跨域即可
   // 默认只放 GET/HEAD/POST，管理后台的 PATCH/DELETE 会被预检拦死
   void app.register(cors, {

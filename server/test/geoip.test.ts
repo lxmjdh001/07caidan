@@ -7,6 +7,7 @@ import { after, before, beforeEach, describe, test } from 'node:test'
 import type { FastifyInstance } from 'fastify'
 import type { ServerConfig } from '../src/config.ts'
 import { regionAllowed, regionOf } from '../src/geoip/geoip.ts'
+import { parseTrustProxy } from '../src/config.ts'
 import { buildServer } from '../src/server.ts'
 
 const RANGES_PATH = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'geoip', 'ranges.json')
@@ -78,6 +79,27 @@ describe('geoip 数据不变式与边界', () => {
   })
 })
 
+describe('parseTrustProxy', () => {
+  test('空/未设→false（直连安全默认）', () => {
+    assert.equal(parseTrustProxy(undefined), false)
+    assert.equal(parseTrustProxy(''), false)
+    assert.equal(parseTrustProxy('   '), false)
+  })
+  test('布尔字面量', () => {
+    assert.equal(parseTrustProxy('true'), true)
+    assert.equal(parseTrustProxy('1'), true)
+    assert.equal(parseTrustProxy('false'), false)
+    assert.equal(parseTrustProxy('0'), false)
+    assert.equal(parseTrustProxy('TRUE'), true)
+  })
+  test('跳数转数字，其余原样透传给 proxy-addr', () => {
+    assert.equal(parseTrustProxy('2'), 2)
+    assert.equal(parseTrustProxy('loopback'), 'loopback')
+    assert.equal(parseTrustProxy('127.0.0.1'), '127.0.0.1')
+    assert.equal(parseTrustProxy('10.0.0.0/8'), '10.0.0.0/8')
+  })
+})
+
 describe('regionAllowed', () => {
   test('默认拒绝 CN/HK，放行其他；开关逐项生效', () => {
     const deny = { allowCn: false, allowHk: false }
@@ -93,7 +115,7 @@ describe('公开看板地区限制（HTTP）', () => {
   let dir: string
   let app: FastifyInstance
 
-  function makeConfig(dbPath: string): ServerConfig {
+  function makeConfig(dbPath: string, trustProxy?: boolean | string | number): ServerConfig {
     return {
       port: 0,
       host: '127.0.0.1',
@@ -109,6 +131,7 @@ describe('公开看板地区限制（HTTP）', () => {
       clientTenant: TOKEN,
       smtp: undefined,
       publicUrl: 'http://localhost:8787',
+      trustProxy,
       updatesDir: join(dir, 'updates'),
       crispWebsiteId: undefined
     }
@@ -184,5 +207,48 @@ describe('公开看板地区限制（HTTP）', () => {
       (await app.inject({ url: `/public/campaign/${token}`, remoteAddress: HK_IP })).statusCode,
       200
     )
+  })
+
+  // 生产是「Caddy 终止 TLS → 反代到本服务」。此时 socket 源地址是回环，真实客户端 IP 只在
+  // X-Forwarded-For 里。若不开 trustProxy，地区限制会永远看到回环(=other)而全部放行——形同虚设。
+  // 这组用例锁死：trustProxy 开 → XFF 权威；关 → XFF 被忽略（防伪造），两向都验。
+  test('trustProxy 开：XFF 里的 CN IP 被判属地→403（回环 socket 也拦住）', async () => {
+    await app.close()
+    app = buildServer(makeConfig(join(dir, `${Math.random().toString(36).slice(2)}.db`), true))
+    await app.ready()
+    const token = await makeLink()
+    // socket 来自回环（模拟同机反代），真实客户端在 XFF 里
+    const res = await app.inject({
+      url: `/public/campaign/${token}`,
+      remoteAddress: '127.0.0.1',
+      headers: { 'x-forwarded-for': CN_IP }
+    })
+    assert.equal(res.statusCode, 403)
+    assert.equal(res.json().error, 'region_blocked')
+    // 海外 XFF 照常放行
+    const us = await app.inject({
+      url: `/public/campaign/${token}`,
+      remoteAddress: '127.0.0.1',
+      headers: { 'x-forwarded-for': US_IP }
+    })
+    assert.equal(us.statusCode, 200)
+  })
+
+  test('trustProxy 关（默认）：XFF 被忽略，只认 socket 源地址（防伪造绕过）', async () => {
+    // 默认 app（beforeEach 已建，trustProxy 未开）。海外 socket + 伪造 CN 的 XFF → 仍放行
+    const token = await makeLink()
+    const spoof = await app.inject({
+      url: `/public/campaign/${token}`,
+      remoteAddress: US_IP,
+      headers: { 'x-forwarded-for': CN_IP }
+    })
+    assert.equal(spoof.statusCode, 200)
+    // 反过来 CN socket 直连仍被拦（XFF 说自己海外也没用）
+    const direct = await app.inject({
+      url: `/public/campaign/${token}`,
+      remoteAddress: CN_IP,
+      headers: { 'x-forwarded-for': US_IP }
+    })
+    assert.equal(direct.statusCode, 403)
   })
 })

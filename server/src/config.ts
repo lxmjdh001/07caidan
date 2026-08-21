@@ -32,6 +32,14 @@ export interface ServerConfig {
   smtp: { host: string; port: number; user: string; pass: string; from: string } | undefined
   /** 对外可访问的公网地址（生成 LINE Webhook 地址用） */
   publicUrl: string
+  /**
+   * Fastify trustProxy：置真后 req.ip 取自 X-Forwarded-For（反代传来的真实客户端 IP）。
+   * 公开看板的地区限制靠 req.ip 判属地——若前置 Caddy/nginx 终止 TLS 而这里不信任代理，
+   * req.ip 会是回环地址，地区限制形同虚设。仅当本服务只被同机反代访问时开启（否则 XFF 可伪造）。
+   * 取值：'true'→true（信任所有跳）；'loopback'/'127.0.0.1'/网段/跳数→原样透传给 proxy-addr；空→false。
+   * 可选：省略等同 false（直连，不信任 XFF）。loadConfig 总会显式赋值。
+   */
+  trustProxy?: boolean | string | number
   /** 客户端自动更新产物目录（latest*.yml + 安装包）；发布 = 把文件拷进来 */
   updatesDir: string
   /** Crisp 在线客服 Website ID；未配置则客户端隐藏在线客服入口 */
@@ -72,7 +80,23 @@ export function loadConfig(): ServerConfig {
     publicUrl:
       process.env.OMNI_PUBLIC_URL ||
       `http://localhost:${Number(process.env.PORT || 8787)}`,
+    trustProxy: parseTrustProxy(process.env.OMNI_TRUST_PROXY),
     updatesDir: process.env.OMNI_UPDATES_DIR || join(dataDir, 'updates'),
     crispWebsiteId: process.env.OMNI_CRISP_WEBSITE_ID || undefined
   }
+}
+
+/**
+ * 解析 OMNI_TRUST_PROXY：空/未设→false（安全默认，直连时 XFF 不可信）；
+ * 'true'/'1'→true；'false'/'0'→false；其余非空值（'loopback'、'127.0.0.1'、'10.0.0.0/8'、跳数）原样透传。
+ * 纯数字字符串转成跳数（proxy-addr 语义）。
+ */
+export function parseTrustProxy(raw: string | undefined): boolean | string | number {
+  const v = (raw ?? '').trim()
+  if (!v) return false
+  const low = v.toLowerCase()
+  if (low === 'true' || low === '1') return true
+  if (low === 'false' || low === '0') return false
+  if (/^\d+$/.test(v)) return Number(v)
+  return v
 }
