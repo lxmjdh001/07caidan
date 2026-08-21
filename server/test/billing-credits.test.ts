@@ -67,6 +67,9 @@ describe('积分与余额换算', () => {
     assert.equal(centsToCredits(100, rate), 1000)
     assert.equal(centsToCredits(15, rate), 150)
     assert.equal(centsToCredits(1, rate), 10)
+    // 上面 rate=1000 下都整除，验不出取整方向。构造非整除：(50/100)*3 = 1.5 → 必须向下取整成 1。
+    // 若写成 round/ceil 会给 2 —— 用户凭同样的钱多拿积分，系统贴钱。
+    assert.equal(centsToCredits(50, { creditsPerUsd: 3 }), 1, '1.5 积分必须向下取整为 1，不多送')
   })
 
   test('非法兑换比例兜底为 1，不会除零', () => {
