@@ -10,6 +10,8 @@ const DATA_DIR = process.env.E2E_DATA_DIR || '/private/tmp/omnichat-e2e-data'
 
 export default defineConfig({
   testDir: './e2e-electron',
+  // 跑完清掉共享持久库里 E2E 遗留的重粉库/公告，防跨运行累积拖慢或污染后续用例
+  globalTeardown: './e2e-electron/global-teardown.ts',
   timeout: 120_000,
   fullyParallel: false,
   // 单 worker 顺序执行：并行启动多个 Electron + 共享后台会剧烈争抢，制造大面积
