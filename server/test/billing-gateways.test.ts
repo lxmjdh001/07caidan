@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { describe, test } from 'node:test'
 import { PaypalGateway, paypalAmountToMinor } from '../src/billing/gateways/paypal.ts'
-import { UsdtGateway, amountOffset, uniqueAmount } from '../src/billing/gateways/usdt.ts'
+import { UsdtGateway, amountOffset, formatUsdt, uniqueAmount } from '../src/billing/gateways/usdt.ts'
 import {
   YipayGateway,
   buildSignString,
@@ -226,6 +226,19 @@ describe('USDT', () => {
     const ids = Array.from({ length: 50 }, (_, i) => `order-${i}`)
     const amounts = new Set(ids.map((id) => uniqueAmount(1000, id)))
     assert.ok(amounts.size > 30, `唯一金额过少：${amounts.size}`)
+  })
+
+  test('formatUsdt：分补零到两位小数 —— 用户要照抄这个金额转账，差一位就对不上单', () => {
+    // 这是展示给用户、要精确转账的金额字符串。小数位不补零(如 10.05 写成 10.5)，用户就会
+    // 多转/少转，唯一化匹配直接失败、订单卡死。padStart 是这里的命门。
+    assert.equal(formatUsdt(1000), '10.00')
+    assert.equal(formatUsdt(1005), '10.05') // 关键：不能是 '10.5'
+    assert.equal(formatUsdt(1050), '10.50')
+    assert.equal(formatUsdt(1), '0.01')
+    assert.equal(formatUsdt(99), '0.99')
+    assert.equal(formatUsdt(100), '1.00')
+    // 唯一化后的金额同样要能精确显示
+    assert.equal(formatUsdt(uniqueAmount(1000, 'o1')), formatUsdt(1000 + amountOffset('o1')))
   })
 
   test('建单返回收款地址与精确金额', () => {
