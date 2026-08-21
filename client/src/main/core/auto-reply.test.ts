@@ -89,6 +89,30 @@ describe('冷却与并发', () => {
     expect(sent.length).toBe(1)
   })
 
+  it('并发双消息只回一次 —— inFlight 挡住生成期内的第二条(冷却拦不住)', async () => {
+    // 两条入站几乎同时到达：第一条还在 generate() 期间，第二条就进来了。此时冷却拦不住
+    // ——lastReplyAt 要等 generate 完成才写(见实现 line 85)，生成窗口内它仍是旧值、冷却判定通过。
+    // 唯一挡住重复回复的是 inFlight。缺了它，客户会瞬间收到两条 AI 回复、老板双份烧积分。
+    let generated = 0
+    let releaseGate!: () => void
+    const gate = new Promise<void>((r) => {
+      releaseGate = r
+    })
+    const { svc, sent } = makeService({
+      generate: async () => {
+        generated++
+        await gate // 卡住第一条的生成，模拟真实网络耗时
+        return { text: 'AI 回复' }
+      }
+    })
+    const p1 = svc.onInbound(msg(), conv()) // 同步跑到 inFlight.add 后停在 generate 的 gate
+    const p2 = svc.onInbound(msg(), conv()) // 此刻 inFlight 已含 c1 → 直接短路返回
+    releaseGate()
+    await Promise.all([p1, p2])
+    expect(generated).toBe(1) // 第二条被 inFlight 挡下，没进生成
+    expect(sent.length).toBe(1) // 只回一条
+  })
+
   it('生成失败不影响收消息，且不记冷却（下条消息还能触发）', async () => {
     let calls = 0
     const { svc, sent } = makeService({
