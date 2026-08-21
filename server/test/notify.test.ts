@@ -195,6 +195,28 @@ describe('到期提醒巡检', () => {
     assert.equal(notify.unreadNotices(T, 9).length, 1)
   })
 
+  test('多档递进：随到期临近逐档各发一次(7→3→1)，绝不漏掉最后一档', async () => {
+    // 多档提醒的价值就在「递进」：老板 7 天前收一次、3 天前再收一次、1 天前最后催一次。
+    // 去重键含档位(threshold)，所以三档各发一次。若哪天有人把去重键退化成(用户,到期时间)，
+    // 就只会发第一档、后续更紧急的 3/1 天档永远不发 —— 用户错过最后催缴。原有用例都只在
+    // 单一时刻建单扫一次，抓不到这个递进链路。这里推进时间跨越档位边界，钉死逐档触达。
+    await setupSub(7) // 7 天后到期
+    notify.updateReminderConfig(T, { enabled: true, daysBefore: [7, 3, 1] })
+    const d = deps()
+
+    // ① 此刻剩 7 天 → 只发 7 天档
+    assert.equal(await sweepReminders(d, NOW), 1, '7 天档应发')
+    assert.equal(await sweepReminders(d, NOW), 0, '同档不重发')
+    // ② 推进到剩 ~2.5 天(落在 3 天档窗口内) → 发 3 天档(新的一条)
+    assert.equal(await sweepReminders(d, NOW + 4.5 * DAY), 1, '3 天档应发')
+    assert.equal(await sweepReminders(d, NOW + 4.5 * DAY), 0, '3 天档不重发')
+    // ③ 推进到剩 ~0.5 天(1 天档窗口) → 发最后一档 1 天档
+    assert.equal(await sweepReminders(d, NOW + 6.5 * DAY), 1, '1 天档(最后催缴)必须发')
+
+    // 三档共 3 条站内通知，逐级递进、无一遗漏
+    assert.equal(notify.unreadNotices(T, 9).length, 3, '应累计 7/3/1 三档共三条')
+  })
+
   test('关邮件开关只发站内', async () => {
     await setupSub(3)
     notify.updateReminderConfig(T, { enabled: true, emailEnabled: false })
