@@ -123,8 +123,31 @@ export class IntentAnalyzer {
     })
 
     const block = res.content.find((b) => b.type === 'text')
-    const text = block && block.type === 'text' ? block.text : '{}'
-    const parsed = JSON.parse(text) as IntentAnalysis
-    return parsed
+    const text = block && block.type === 'text' ? block.text : ''
+    return normalizeAnalysis(text)
+  }
+}
+
+/**
+ * 把模型返回的文本稳成合法 IntentAnalysis：解析失败/字段非法/截断一律降级到 unknown，
+ * 绝不让一次坏响应抛异常或把 undefined 字段塞给调用方（意向面板/自动打标签都读这些字段）。
+ */
+export function normalizeAnalysis(text: string): IntentAnalysis {
+  let o: Partial<IntentAnalysis>
+  try {
+    o = JSON.parse(text) as Partial<IntentAnalysis>
+    if (!o || typeof o !== 'object') throw new Error('not an object')
+  } catch {
+    return { intentLevel: 'unknown', summary: '分析结果解析失败', signals: [], suggestedAction: '' }
+  }
+  const level = o.intentLevel
+  return {
+    intentLevel:
+      level === 'high' || level === 'medium' || level === 'low' || level === 'unknown'
+        ? level
+        : 'unknown',
+    summary: typeof o.summary === 'string' ? o.summary : '',
+    signals: Array.isArray(o.signals) ? o.signals.filter((s): s is string => typeof s === 'string') : [],
+    suggestedAction: typeof o.suggestedAction === 'string' ? o.suggestedAction : ''
   }
 }

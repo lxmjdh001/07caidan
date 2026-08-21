@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, beforeEach, describe, test } from 'node:test'
-import { StubAnalyzer, type Analyzer, type IntentAnalysis } from '../src/analyzer.ts'
+import { StubAnalyzer, normalizeAnalysis, type Analyzer, type IntentAnalysis } from '../src/analyzer.ts'
 import { AutoTagger } from '../src/auto-tagger.ts'
 import { openDb } from '../src/db.ts'
 import { IntentRepo } from '../src/intent-repo.ts'
@@ -145,5 +145,40 @@ describe('AutoTagger', () => {
     for (let i = 0; i < 5; i++) seedInbound(`c${i}`, '多少钱', 100)
     const tagger = new AutoTagger(repo, intents, { analyzer: new StubAnalyzer(), enabled: true, maxPerRun: 2 })
     assert.equal(await tagger.tag(T, ['c0', 'c1', 'c2', 'c3', 'c4']), 2)
+  })
+})
+
+// IntentAnalyzer 走 Claude 时，之前 JSON.parse 无 try/catch、且不校验字段——坏响应会抛异常
+// 或把 undefined 字段塞给意向面板/自动打标签。normalizeAnalysis 把一切坏输入稳成合法结构。
+describe('normalizeAnalysis 稳态解析', () => {
+  test('合法 JSON 原样返回', () => {
+    const r = normalizeAnalysis('{"intentLevel":"high","summary":"强","signals":["价格"],"suggestedAction":"报价"}')
+    assert.deepEqual(r, { intentLevel: 'high', summary: '强', signals: ['价格'], suggestedAction: '报价' })
+  })
+  test('坏 JSON / 空串 / 截断 → 降级 unknown，不抛异常', () => {
+    assert.equal(normalizeAnalysis('{oops').intentLevel, 'unknown')
+    assert.equal(normalizeAnalysis('').intentLevel, 'unknown')
+    assert.equal(normalizeAnalysis('{"intentLevel":"high"').intentLevel, 'unknown') // 截断
+  })
+  test('非法 intentLevel → unknown，其余合法字段保留', () => {
+    const r = normalizeAnalysis('{"intentLevel":"very high","summary":"s","signals":[],"suggestedAction":"a"}')
+    assert.equal(r.intentLevel, 'unknown')
+    assert.equal(r.summary, 's')
+  })
+  test('缺字段 / 类型不对 → 补默认（不塞 undefined）', () => {
+    const r = normalizeAnalysis('{"intentLevel":"low"}')
+    assert.deepEqual(r, { intentLevel: 'low', summary: '', signals: [], suggestedAction: '' })
+    const r2 = normalizeAnalysis('{"intentLevel":"low","signals":"不是数组","summary":123}')
+    assert.deepEqual(r2.signals, [])
+    assert.equal(r2.summary, '')
+  })
+  test('signals 里的非字符串项被过滤', () => {
+    const r = normalizeAnalysis('{"intentLevel":"high","signals":["ok",1,null,"good"]}')
+    assert.deepEqual(r.signals, ['ok', 'good'])
+  })
+  test('JSON 是非对象（数组/字符串/null）→ unknown', () => {
+    assert.equal(normalizeAnalysis('[]').intentLevel, 'unknown')
+    assert.equal(normalizeAnalysis('"hi"').intentLevel, 'unknown')
+    assert.equal(normalizeAnalysis('null').intentLevel, 'unknown')
   })
 })
