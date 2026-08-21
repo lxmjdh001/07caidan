@@ -4,6 +4,7 @@ import { app, BrowserWindow, net, protocol } from 'electron'
 import { OMNI_EVENT_CHANNEL, type OmniEvent } from '@shared/ipc'
 import { JsonContactStore } from './core/contact-store'
 import { MediaStore } from './core/media-store'
+import { mimeFromPath } from './core/mime'
 import { SyncClient } from './sync/sync-client'
 import { ClientAuth } from './auth/client-auth'
 import { BillingApi } from './billing/billing-api'
@@ -39,29 +40,14 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'omni-media', privileges: { stream: true, supportFetchAPI: true } }
 ])
 
-/** 按 mediaId 扩展名推断 Content-Type —— 缺了它 <video>/<img> 会黑屏/不显示 */
+/**
+ * 按 mediaId 扩展名推断 Content-Type —— 缺了它 <video>/<img> 会黑屏/不显示。
+ * 复用 core/mime 的单一映射表（覆盖比手写更全：.mkv/.avi/.3gp 等）；
+ * 无法识别（octet-stream）时返回 undefined，让协议层跳过显式 MIME、交给浏览器嗅探。
+ */
 function mediaMimeType(mediaId: string): string | undefined {
-  const i = mediaId.lastIndexOf('.')
-  const ext = i >= 0 ? mediaId.slice(i).toLowerCase() : ''
-  const map: Record<string, string> = {
-    '.mp4': 'video/mp4',
-    '.m4v': 'video/mp4',
-    '.mov': 'video/quicktime',
-    '.webm': 'video/webm',
-    '.3gp': 'video/3gpp',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png': 'image/png',
-    '.gif': 'image/gif',
-    '.webp': 'image/webp',
-    '.ogg': 'audio/ogg',
-    '.opus': 'audio/ogg',
-    '.m4a': 'audio/mp4',
-    '.mp3': 'audio/mpeg',
-    '.wav': 'audio/wav',
-    '.pdf': 'application/pdf'
-  }
-  return map[ext]
+  const mime = mimeFromPath(mediaId)
+  return mime === 'application/octet-stream' ? undefined : mime
 }
 
 if (!app.requestSingleInstanceLock()) {
