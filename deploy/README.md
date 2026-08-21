@@ -8,15 +8,16 @@
 
 ## 首次准备（一次性）
 
-```bash
-# 1) 初始化服务器：装 Node22 + 编译工具 + Caddy，建目录（自动识别 apt/dnf/yum，幂等）
-ssh root@187.77.129.250 'bash -s' < deploy/bootstrap.sh
-#   —— 若 SSH 也连不上，把 deploy/bootstrap.sh 内容贴进服务器厂商的 VNC/控制台执行
+只需放好环境变量；**Node/编译工具/Caddy 的安装已并入 deploy.sh 自动完成**（首次自动 bootstrap）。
 
-# 2) 放好环境变量（照模板填强密码/令牌）
+```bash
+# 放好环境变量（照模板填强密码/令牌）
 scp deploy/omnichat.env.example root@187.77.129.250:/etc/omnichat/omnichat.env
 #   然后编辑该文件，填 OMNI_ADMIN_PASSWORD / OMNI_TOKENS（其余按需）
 ```
+
+> 若 SSH 完全连不上（如 fail2ban 封了你的 IP），先把 `deploy/bootstrap.sh` 内容贴进
+> 服务器厂商的 VNC/控制台跑一次，再从能连的机器跑 deploy.sh。
 
 ## 部署 / 更新（本地仓库根运行，幂等）
 

@@ -27,15 +27,23 @@ trap cleanup EXIT
 echo "==> [0] 建立复用连接（ControlMaster，避免 fail2ban 因连接风暴封 IP）"
 ssh -o ConnectTimeout=15 "$SERVER" 'echo master-up' >/dev/null
 
-echo "==> [1/6] 检查服务器前置（node/caddy/编译工具）"
+echo "==> [1/6] 检查服务器前置（node/caddy/编译工具）；缺则自动 bootstrap"
+# 先看缺什么。缺 Node/编译工具/Caddy 就跑 bootstrap.sh（同一 socket，幂等）。env 必须用户先填好。
+NEED_BOOT=$(ssh "$SERVER" 'ok=1
+  command -v node >/dev/null && node -e "process.exit(process.versions.node.split(\".\").map(Number)[0]>=22?0:1)" || ok=0
+  command -v gcc >/dev/null && command -v make >/dev/null || ok=0
+  command -v caddy >/dev/null || ok=0
+  echo $ok') || true
+if [ "${NEED_BOOT:-0}" != "1" ]; then
+  echo "  前置不全，自动执行 bootstrap（首次会装几分钟）…"
+  ssh "$SERVER" 'bash -s' < "$REPO_ROOT/deploy/bootstrap.sh"
+fi
 ssh "$SERVER" 'set -e
-  command -v node >/dev/null || { echo "缺 node，请先装 Node ≥ 22.18"; exit 1; }
+  command -v node >/dev/null || { echo "bootstrap 后仍缺 node"; exit 1; }
   node -e "process.exit(process.versions.node.split(\".\").map(Number)[0] >= 22 ? 0 : 1)" \
     || { echo "Node 版本过低（需 ≥22.18）"; exit 1; }
-  command -v caddy >/dev/null || echo "警告：未装 caddy，稍后需手动装并加载 Caddyfile"
-  command -v make  >/dev/null || echo "警告：缺 build-essential，better-sqlite3 可能编译失败"
-  test -f /etc/omnichat/omnichat.env || { echo "缺 /etc/omnichat/omnichat.env（照 deploy/omnichat.env.example 填）"; exit 1; }
-  echo "  前置 OK：$(node -v)"'
+  test -f /etc/omnichat/omnichat.env || { echo "缺 /etc/omnichat/omnichat.env（照 deploy/omnichat.env.example 填好强密码/令牌）"; exit 1; }
+  echo "  前置 OK：$(node -v)$(command -v caddy >/dev/null && echo " + caddy" || echo " (无 caddy)")"'
 
 echo "==> [2/6] 同步后端代码到 /opt/omnichat/server"
 ssh "$SERVER" 'mkdir -p /opt/omnichat/server /var/lib/omnichat'
