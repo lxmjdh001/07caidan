@@ -105,10 +105,14 @@ export class SyncClient {
     for (let i = 0; i < allNew.length; i += BATCH_SIZE) {
       const batch = allNew.slice(i, i + BATCH_SIZE)
       const convIds = new Set(batch.map((m) => m.conversationId))
+      // 首批带上全量会话列表（不止本批有新消息的那些）：客户端连接后会回填历史会话的
+      // contactId 并刷新昵称/头像，但这些会话若无新消息，原本永远传不上去。服务端 /api/sync
+      // 对会话是 COALESCE upsert（不会用空值回退已有数据），首批全量即可把回填的身份与元信息
+      // 一并同步过去。后续批只带本批相关会话，避免重复。
+      const convsForBatch =
+        i === 0 ? conversations : conversations.filter((c) => convIds.has(c.id))
       const payload = {
-        conversations: conversations
-          .filter((c) => convIds.has(c.id))
-          .map(mapConversation),
+        conversations: convsForBatch.map(mapConversation),
         messages: batch.map(mapMessage)
       }
       await this.post(cfg, '/api/sync', payload)

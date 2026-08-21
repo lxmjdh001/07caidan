@@ -96,6 +96,27 @@ describe('SyncClient', () => {
     expect(persisted[0]).toBe(1000) // 水位推进到最大 timestamp
   })
 
+  it('首批带全量会话列表：无新消息的历史会话也随首批同步（回填的 contactId 才传得上去）', async () => {
+    // 建立两个会话 A、B 各一条消息，首次全同步
+    await store.recordMessage(msg({ externalId: 'A1', conversationId: 'whatsapp:main:A', timestamp: 1000 }))
+    await store.recordMessage(msg({ externalId: 'B1', conversationId: 'whatsapp:main:B', timestamp: 1000 }))
+    const sc = new SyncClient({ store, getConfig: () => CFG, persistRecord: async () => {} })
+    mockFetch()
+    await sc.runOnce() // 水位=1000，A、B 都传过
+    // 之后只有 A 收到新消息；B 无新消息（但回填/刷新了元信息，需要能同步上去）
+    await store.recordMessage(msg({ externalId: 'A2', conversationId: 'whatsapp:main:A', timestamp: 2000 }))
+    const f = mockFetch()
+    await sc.runOnce()
+    const body = JSON.parse((f.mock.calls[0]![1] as { body: string }).body)
+    // 只有 A2 一条新消息
+    expect(body.messages.map((m: { externalId: string }) => m.externalId)).toEqual(['A2'])
+    // 但首批会话是全量：B 虽无新消息也带上（否则它回填的 contactId 永远传不上去）
+    expect(body.conversations.map((c: { id: string }) => c.id).sort()).toEqual([
+      'whatsapp:main:A',
+      'whatsapp:main:B'
+    ])
+  })
+
   it('水位推进后不再重复上传旧消息', async () => {
     await store.recordMessage(msg({ externalId: 'M1', timestamp: 1000 }))
     const f = mockFetch()
