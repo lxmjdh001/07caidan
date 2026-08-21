@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { LinePollCoordinator } from './poll-coordinator'
 
 function coordinator(
@@ -97,5 +97,54 @@ describe('LinePollCoordinator', () => {
     c.unregister('a1')
     c.unregister('a2')
     expect(c.size()).toBe(0)
+  })
+
+  it('轮询进行中并发再拉直接跳过 —— polling 锁防重叠(慢网络下不重复拉/不打爆后台)', async () => {
+    // 上一条 size 用例只看计数，没验「定时器真停」；这条与下一条把两个易漏的行为补上。
+    // polling 锁：第一次 poll 还在等 fetch 时，第二次 poll 必须直接返回，否则慢网络下会
+    // 叠出多个并发请求、同批事件被重复分发。锁在首个 await 前同步置位，故第二次同步进来即被挡。
+    let fetchCount = 0
+    let release!: () => void
+    const gate = new Promise<void>((r) => {
+      release = r
+    })
+    const c = new LinePollCoordinator(backend, undefined, (async () => {
+      fetchCount++
+      await gate // 卡住第一次拉取，制造并发窗口
+      return { ok: true, status: 200, json: async () => ({ events: {} }) }
+    }) as unknown as typeof fetch)
+    c.register('a1', () => {})
+    const p1 = c.poll() // 进入，polling=true，停在 gate
+    const p2 = c.poll() // polling 已 true → 直接返回，不发第二次请求
+    release()
+    await Promise.all([p1, p2])
+    expect(fetchCount).toBe(1) // 第二次被 polling 锁挡下
+    c.unregister('a1')
+  })
+
+  it('定时器生命周期：首个注册启一个、后续不重复起（单例）、末个注销才清（不泄漏）', () => {
+    // size 归零 ≠ 定时器已清 —— poll() 对空 handlers 会自我早退，所以「没拉取」根本证明不了
+    // 定时器停了(这条曾用 fetchCount 写法验不出泄漏)。直接监视 setInterval/clearInterval 的调用
+    // 才是真信号：整机单例(两次注册只起一个)、还有账号在不清、末个注销清且仅清一次。
+    const setSpy = vi.spyOn(globalThis, 'setInterval')
+    const clearSpy = vi.spyOn(globalThis, 'clearInterval')
+    try {
+      const c = new LinePollCoordinator(backend, undefined, (async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({ events: {} })
+      })) as unknown as typeof fetch)
+      c.register('a1', () => {})
+      expect(setSpy).toHaveBeenCalledTimes(1) // 首个注册启动定时器
+      c.register('a2', () => {})
+      expect(setSpy).toHaveBeenCalledTimes(1) // 第二个不再起新定时器（整机单例）
+      c.unregister('a1')
+      expect(clearSpy).not.toHaveBeenCalled() // 还有 a2 在，不清
+      c.unregister('a2')
+      expect(clearSpy).toHaveBeenCalledTimes(1) // 末个注销 → 清理定时器且仅一次
+    } finally {
+      setSpy.mockRestore()
+      clearSpy.mockRestore()
+    }
   })
 })
