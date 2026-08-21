@@ -107,6 +107,17 @@ describe('找回密码', () => {
     assert.equal(ca.resetPassword('u@test.com', code, 'again789xx').ok, false)
   })
 
+  test('重新请求验证码后旧码立即作废（每邮箱只留最新一码，防旧码被重放）', () => {
+    ca.register('t1', 'u@test.com', 'oldpass123', undefined, false)
+    const codeA = ca.issueCode('u@test.com', 'AAAAAA')
+    const codeB = ca.issueCode('u@test.com', 'BBBBBB') // 再次请求 → upsert 覆盖，只留 B
+    assert.notEqual(codeA, codeB)
+    // 旧码 A 必须失效（否则被人看到过的旧码在用户重发后仍能改密）
+    assert.equal(ca.resetPassword('u@test.com', codeA, 'newpass456').ok, false)
+    // 新码 B 有效
+    assert.equal(ca.resetPassword('u@test.com', codeB, 'newpass456').ok, true)
+  })
+
   test('弱密码被拒且验证码不被消耗', () => {
     ca.register('t1', 'u@test.com', 'oldpass123', undefined, false)
     const code = ca.issueCode('u@test.com')
