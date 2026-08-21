@@ -1,0 +1,23 @@
+[Unit]
+Description=OmniChat backend (Fastify + SQLite)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# 代码放这里（deploy.sh 会把 server/ rsync 到 /opt/omnichat/server）
+WorkingDirectory=/opt/omnichat/server
+EnvironmentFile=/etc/omnichat/omnichat.env
+# 需 Node ≥ 22.18（--experimental-strip-types 稳定）；nvm 安装时改成绝对路径
+ExecStart=/usr/bin/node --experimental-strip-types src/index.ts
+Restart=always
+RestartSec=3
+# 数据目录需可写（OMNI_DATA_DIR）
+StateDirectory=omnichat
+# 基本加固
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

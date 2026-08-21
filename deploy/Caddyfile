@@ -1,0 +1,20 @@
+# OmniChat 生产反向代理 —— Caddy 自动申请/续期 Let's Encrypt 证书（HTTPS）。
+# 前提：wzzapp.cloud 与 *.wzzapp.cloud 的 A 记录都指向本机公网 IP（已就绪）。
+#
+# 安全要点：后端只监听 127.0.0.1:8787（见 omnichat.env HOST），外网只能经 Caddy 进来。
+# 因此后端开 OMNI_TRUST_PROXY=true 后，X-Forwarded-For 一定由 Caddy 写入、不可被外部伪造，
+# 公开看板的地区限制才成立（否则 req.ip=回环，限制形同虚设）。
+
+# API + 公开引流看板（短链接 wzzapp.cloud/c/<token> 直接分享给打粉团队）
+wzzapp.cloud {
+	encode gzip zstd
+	reverse_proxy 127.0.0.1:8787
+}
+
+# 管理后台（独立前端 SPA，静态托管；构建产物 rsync 到 /var/www/omnichat-admin）
+admin.wzzapp.cloud {
+	encode gzip zstd
+	root * /var/www/omnichat-admin
+	try_files {path} /index.html
+	file_server
+}
