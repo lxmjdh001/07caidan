@@ -68,3 +68,28 @@ describe('MediaStore', () => {
     expect(store.resolvePath('')).toBeNull()
   })
 })
+
+describe('MediaStore.save 扩展名处理', () => {
+  it('不带点的扩展名也保留（语音发送传 ogg/webm，不该丢成 .bin）', async () => {
+    expect(await store.save(Buffer.from('a'), 'ogg')).toMatch(/\.ogg$/)
+    expect(await store.save(Buffer.from('a'), 'webm')).toMatch(/\.webm$/)
+    expect(await store.save(Buffer.from('a'), 'm4a')).toMatch(/\.m4a$/)
+  })
+
+  it('带点的扩展名同样认', async () => {
+    expect(await store.save(Buffer.from('a'), '.jpg')).toMatch(/\.jpg$/)
+    expect(await store.save(Buffer.from('a'), '.PNG')).toMatch(/\.png$/) // 归一小写
+  })
+
+  it('非法/缺失扩展名回落 .bin（不让脏输入进文件名）', async () => {
+    expect(await store.save(Buffer.from('a'), 'bad!ext')).toMatch(/\.bin$/)
+    expect(await store.save(Buffer.from('a'), '')).toMatch(/\.bin$/)
+    expect(await store.save(Buffer.from('a'), '../x')).toMatch(/\.bin$/)
+  })
+
+  it('保存后可按返回的 mediaId 取回内容', async () => {
+    const id = await store.save(Buffer.from('voice-bytes'), 'ogg')
+    const p = store.resolvePath(id)!
+    expect((await readFile(p)).toString()).toBe('voice-bytes')
+  })
+})

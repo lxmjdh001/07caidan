@@ -14,7 +14,10 @@ export class MediaStore {
   }
 
   async save(data: Buffer, ext: string): Promise<string> {
-    const safeExt = /^\.[a-z0-9]{1,8}$/i.test(ext) ? ext.toLowerCase() : '.bin'
+    // 容忍带点或不带点的扩展名（'ogg' 与 '.ogg' 都认）——语音发送传的是 'ogg'，
+    // 之前因缺前导点被判非法一律落成 .bin，语音文件丢了真实扩展名。非法/缺失才回落 .bin。
+    const dotted = ext.startsWith('.') ? ext : `.${ext}`
+    const safeExt = /^\.[a-z0-9]{1,8}$/i.test(dotted) ? dotted.toLowerCase() : '.bin'
     const mediaId = `${randomUUID()}${safeExt}`
     await writeFile(join(this.baseDir, mediaId), data)
     return mediaId

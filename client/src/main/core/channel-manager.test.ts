@@ -373,8 +373,11 @@ describe('ChannelManager', () => {
       fileName: 'voice.ogg',
       durationSec: 1
     })
-    // 媒体确实落库
-    if (msg.body.type === 'media') expect(media.resolvePath(msg.body.mediaId!)).toBeTruthy()
+    // 媒体确实落库，且 mediaId 保留真实扩展名（.ogg，不是丢成 .bin）
+    if (msg.body.type === 'media') {
+      expect(media.resolvePath(msg.body.mediaId!)).toBeTruthy()
+      expect(msg.body.mediaId).toMatch(/\.ogg$/)
+    }
     const call = adapter.sendMedia.mock.calls[0]!
     expect(call[1].ptt).toBe(true) // 关键：语音条标记
     expect(call[1].mediaType).toBe('audio')
