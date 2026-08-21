@@ -293,6 +293,35 @@ describe('分享链接与公开看板', () => {
     assert.equal(raw.includes('wa:'), false)
   })
 
+  test('红线：公开分享令牌不能升级成管理凭证去读明细', async () => {
+    // setup() 已灌入号码 8613800138000 / 昵称张三 / 正文「你好我想了解一下」
+    const { link } = await setup()
+    const t = link.token
+    // 先证明这确实是个有效的分享令牌：公开端点认它、返回 200
+    assert.equal((await api('GET', `/public/campaign/${link.token}`, undefined, null)).status, 200)
+
+    // 拿它当 Bearer 打各类管理/明细接口。分享令牌与同步/会话令牌是两个命名空间(它只存在于
+    // campaign_share_links，既不在 tokens[] 也不在会话表)——全局鉴权 hook 认不出它，直接 401，
+    // 请求根本进不到路由处理器(比 requireSync 更靠前的纵深防线)。绝不能借它读工单列表/逐条
+    // 统计/会话明细/重粉库内容
+    for (const [method, url] of [
+      ['GET', '/api/campaigns'],
+      ['GET', '/api/conversations?limit=500'],
+      ['GET', '/api/fan-libraries']
+    ] as const) {
+      const r = await api(method, url, undefined, t)
+      assert.ok(r.status >= 400, `${url} 用分享令牌竟返回 ${r.status}（应 4xx 拒绝）`)
+      const raw = JSON.stringify(r.json)
+      assert.equal(raw.includes('8613800138000'), false, `${url} 泄露了号码`)
+      assert.equal(raw.includes('你好我想了解一下'), false, `${url} 泄露了正文`)
+      assert.equal(raw.includes('张三'), false, `${url} 泄露了昵称`)
+    }
+    // 逐条统计接口(requireSync)同样拒分享令牌
+    const list = await api('GET', '/api/campaigns') // 用合法同步令牌拿到 id
+    const id = list.json.campaigns[0].id
+    assert.ok((await api('GET', `/api/campaigns/${id}/stats`, undefined, t)).status >= 400)
+  })
+
   test('撤销后立即不可访问', async () => {
     const { link } = await setup()
     await api('POST', `/api/campaigns/links/${link.token}/revoke`)
