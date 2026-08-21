@@ -114,3 +114,46 @@ describe('ConfigSync.push（上云·不带密钥）', () => {
     expect(f).not.toHaveBeenCalled()
   })
 })
+
+describe('ConfigSync.pushDebounced（1.5s 防抖）', () => {
+  function countingFetch() {
+    const f = vi.fn(async () => ({ ok: true, json: async () => ({ updatedAt: 999 }) }) as unknown as Response)
+    vi.stubGlobal('fetch', f)
+    return f
+  }
+
+  it('1.5s 内多次改动只推一次（合并，省流量/避免抖动）', async () => {
+    await enableSync(50)
+    const f = countingFetch()
+    vi.useFakeTimers()
+    try {
+      const cs = new ConfigSync(settings)
+      cs.pushDebounced()
+      cs.pushDebounced()
+      cs.pushDebounced()
+      expect(f).not.toHaveBeenCalled() // 还没到 1.5s，一次都没推
+      await vi.advanceTimersByTimeAsync(1500)
+      expect(f).toHaveBeenCalledTimes(1) // 三次合并成一次
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('新改动重置计时（是 debounce 不是 throttle）', async () => {
+    await enableSync(50)
+    const f = countingFetch()
+    vi.useFakeTimers()
+    try {
+      const cs = new ConfigSync(settings)
+      cs.pushDebounced()
+      await vi.advanceTimersByTimeAsync(1000) // 距上次 1s
+      cs.pushDebounced() // 重置计时
+      await vi.advanceTimersByTimeAsync(1000) // 距最后一次改动才 1s → 不该推
+      expect(f).not.toHaveBeenCalled()
+      await vi.advanceTimersByTimeAsync(500) // 满 1.5s
+      expect(f).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
