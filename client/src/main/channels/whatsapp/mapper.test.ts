@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  extractAdReply,
   extractBody,
   isGroupJid,
   mapWaMessage,
@@ -206,5 +207,34 @@ describe('isGroupJid', () => {
   it('区分群聊与私聊', () => {
     expect(isGroupJid('123-456@g.us')).toBe(true)
     expect(isGroupJid('123@s.whatsapp.net')).toBe(false)
+  })
+})
+
+// extractAdReply：从入站消息里找 Click-to-WhatsApp 广告上下文（externalAdReply）。
+// 这是投放归因的取数第一步——广告上下文可能挂在任意消息节点(文本/图片/视频…)的
+// contextInfo 下，必须通用扫描找到它。此前零覆盖(fromAdReply 有测，但"从哪找出来"没测)。
+describe('extractAdReply', () => {
+  const ad = { sourceId: 'ad-123', ctwaClid: 'clk', sourceUrl: 'https://fb/ad' }
+
+  it('从文本消息节点的 contextInfo 里取出广告上下文', () => {
+    const msg = { extendedTextMessage: { text: 'hi', contextInfo: { externalAdReply: ad } } }
+    expect(extractAdReply(msg)).toEqual(ad)
+  })
+
+  it('挂在图片消息节点也能找到（通用扫描，不限节点类型）', () => {
+    const msg = { imageMessage: { caption: 'x', contextInfo: { externalAdReply: ad } } }
+    expect(extractAdReply(msg)).toEqual(ad)
+  })
+
+  it('无广告上下文 → undefined', () => {
+    expect(extractAdReply({ conversation: '普通消息' })).toBeUndefined()
+    expect(extractAdReply({ imageMessage: { contextInfo: {} } })).toBeUndefined()
+  })
+
+  it('null / undefined / 非对象节点不崩', () => {
+    expect(extractAdReply(null)).toBeUndefined()
+    expect(extractAdReply(undefined)).toBeUndefined()
+    // conversation 是字符串（非对象），不能让扫描崩掉
+    expect(extractAdReply({ conversation: 'hi', messageContextInfo: null })).toBeUndefined()
   })
 })
