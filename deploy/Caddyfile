@@ -11,10 +11,18 @@ wzzapp.cloud {
 	reverse_proxy 127.0.0.1:8787
 }
 
-# 管理后台（独立前端 SPA，静态托管；构建产物 rsync 到 /var/www/omnichat-admin）
+# 管理后台：静态 SPA + 同源 API 反代。
+# admin 的 API_BASE 生产回落到 window.location.origin（见 admin/src/config.ts 注释「生产用反代」），
+# 即它会打 admin.wzzapp.cloud/api/*，所以这里必须把 /api/* 反代到后端，否则后台所有请求 404。
+# 同源好处：不依赖 CORS、不涉及跨站 Cookie。公开看板短链在 apex（wzzapp.cloud/c/<token>），此处不放行。
 admin.wzzapp.cloud {
 	encode gzip zstd
-	root * /var/www/omnichat-admin
-	try_files {path} /index.html
-	file_server
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8787
+	}
+	handle {
+		root * /var/www/omnichat-admin
+		try_files {path} /index.html
+		file_server
+	}
 }
