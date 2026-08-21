@@ -117,6 +117,44 @@ describe('SyncClient', () => {
     expect(f).not.toHaveBeenCalled()
   })
 
+  it('同秒边界：水位停在某秒后，同一秒新到的消息(新 externalId)仍上传、不漏、不重传', async () => {
+    // 边界水位算法的存在意义：时间戳精确到秒，同一秒的消息可能跨多次同步到达。
+    // 「严格晚于水位」会把同秒新消息永远漏掉(数据丢失)；只靠时间戳又会重传已发的同秒消息。
+    // 靠 boundaryIds(水位那一秒已发的 externalId 集)区分。这条把这套核心去重钉死。
+    const f = mockFetch()
+    let record = { lastSyncedAt: 0, boundaryIds: [] as string[] }
+    const make = () =>
+      new SyncClient({
+        store,
+        getConfig: () => CFG,
+        initialRecord: record,
+        persistRecord: async (r) => {
+          record = r
+        }
+      })
+    // 第一批：M1 @ 1000 → 水位到 1000，边界集含 M1
+    await store.recordMessage(msg({ externalId: 'M1', timestamp: 1000 }))
+    await make().runOnce()
+    expect(record.lastSyncedAt).toBe(1000)
+    expect(record.boundaryIds).toContain('M1')
+    f.mockClear()
+
+    // 同一秒又来 M2 @ 1000（新 externalId）→ 必须上传(否则永久丢失)，但不能重传 M1
+    await store.recordMessage(msg({ externalId: 'M2', timestamp: 1000 }))
+    const res = await make().runOnce()
+    expect(res?.messages).toBe(1)
+    const sent = JSON.parse((f.mock.calls[0]![1] as { body: string }).body)
+    expect(sent.messages.map((m: { externalId: string }) => m.externalId)).toEqual(['M2'])
+    // 边界集累积成 M1+M2（union，见实现 line 127）
+    expect(new Set(record.boundaryIds)).toEqual(new Set(['M1', 'M2']))
+    f.mockClear()
+
+    // 第三次：无新消息 → 不再传（M1/M2 都在边界集里）
+    const res3 = await make().runOnce()
+    expect(res3?.messages ?? 0).toBe(0)
+    expect(f).not.toHaveBeenCalled()
+  })
+
   it('无 externalId 的消息不上传', async () => {
     await store.recordMessage(msg({ externalId: undefined }))
     const f = mockFetch()
