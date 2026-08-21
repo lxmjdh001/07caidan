@@ -39,6 +39,31 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'omni-media', privileges: { stream: true, supportFetchAPI: true } }
 ])
 
+/** 按 mediaId 扩展名推断 Content-Type —— 缺了它 <video>/<img> 会黑屏/不显示 */
+function mediaMimeType(mediaId: string): string | undefined {
+  const i = mediaId.lastIndexOf('.')
+  const ext = i >= 0 ? mediaId.slice(i).toLowerCase() : ''
+  const map: Record<string, string> = {
+    '.mp4': 'video/mp4',
+    '.m4v': 'video/mp4',
+    '.mov': 'video/quicktime',
+    '.webm': 'video/webm',
+    '.3gp': 'video/3gpp',
+    '.jpg': 'image/jpeg',
+    '.jpeg': 'image/jpeg',
+    '.png': 'image/png',
+    '.gif': 'image/gif',
+    '.webp': 'image/webp',
+    '.ogg': 'audio/ogg',
+    '.opus': 'audio/ogg',
+    '.m4a': 'audio/mp4',
+    '.mp3': 'audio/mpeg',
+    '.wav': 'audio/wav',
+    '.pdf': 'application/pdf'
+  }
+  return map[ext]
+}
+
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
@@ -101,11 +126,33 @@ async function bootstrap(): Promise<void> {
   const contacts = new JsonContactStore(join(userData, 'data'))
   await contacts.init()
 
-  protocol.handle('omni-media', (request) => {
+  const mediaLog = logger.child('media')
+  protocol.handle('omni-media', async (request) => {
     const mediaId = decodeURIComponent(new URL(request.url).pathname.replace(/^\//, ''))
     const abs = media.resolvePath(mediaId)
-    if (!abs) return new Response('not found', { status: 404 })
-    return net.fetch(pathToFileURL(abs).toString())
+    if (!abs) {
+      // 路径穿越/非法 id 或文件不在库里 —— 视频/图片会因此黑屏，这里必须留痕
+      mediaLog.warn('omni-media 解析失败（非法 id 或不在媒体库）', { mediaId })
+      return new Response('not found', { status: 404 })
+    }
+    try {
+      const res = await net.fetch(pathToFileURL(abs).toString())
+      // 关键：按扩展名显式补 Content-Type。file:// 取回的响应常缺/错 MIME，
+      // <video>/<img> 拿不到正确类型就黑屏（尤其扩展名是 .bin 或缺失的历史文件）。
+      const type = mediaMimeType(mediaId)
+      const headers = new Headers(res.headers)
+      if (type) headers.set('content-type', type)
+      const finalType = headers.get('content-type') ?? '(none)'
+      if (!type && !res.headers.get('content-type')) {
+        mediaLog.warn('omni-media 无法判定 MIME（扩展名缺失/未知），可能导致黑屏', { mediaId, abs })
+      } else {
+        mediaLog.debug('omni-media 提供文件', { mediaId, contentType: finalType, status: res.status })
+      }
+      return new Response(res.body, { status: res.status, headers })
+    } catch (err) {
+      mediaLog.warn('omni-media 读取文件失败', { mediaId, abs, err: String(err) })
+      return new Response('read error', { status: 500 })
+    }
   })
 
   const translatorRegistry = createTranslatorRegistry()

@@ -149,13 +149,36 @@ function MediaContent({
     )
   }
   const url = `omni-media://local/${body.mediaId}`
+  // 媒体加载/播放失败时打日志方便排查（尤其视频黑屏：MediaError code 4 = 格式/MIME 不支持）
+  const onImgError = (): void =>
+    console.warn('[media] 图片加载失败', { mediaId: body.mediaId, mimeType: body.mimeType, src: url })
+  const onVideoError = (e: React.SyntheticEvent<HTMLVideoElement>): void => {
+    const el = e.currentTarget
+    console.warn('[media] 视频加载/播放失败（黑屏）', {
+      mediaId: body.mediaId,
+      mimeType: body.mimeType,
+      src: url,
+      errorCode: el.error?.code, // 1=aborted 2=network 3=decode 4=src/MIME 不支持
+      errorMessage: el.error?.message,
+      networkState: el.networkState,
+      readyState: el.readyState
+    })
+  }
   switch (body.mediaType) {
     case 'image':
-      return <img className="media-img" src={url} alt={body.caption ?? ''} />
+      return <img className="media-img" src={url} alt={body.caption ?? ''} onError={onImgError} />
     case 'sticker':
-      return <img className="media-sticker" src={url} alt="" />
+      return <img className="media-sticker" src={url} alt="" onError={onImgError} />
     case 'video':
-      return <video className="media-video" src={url} controls preload="metadata" />
+      return (
+        <video
+          className="media-video"
+          src={url}
+          controls
+          preload="metadata"
+          onError={onVideoError}
+        />
+      )
     case 'audio':
       return (
         <>
