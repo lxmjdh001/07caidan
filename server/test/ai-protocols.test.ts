@@ -43,6 +43,16 @@ describe('OpenAI 协议', () => {
     assert.equal(r.text, '你好呀')
     assert.deepEqual(r.usage, { inputTokens: 12, outputTokens: 34 })
   })
+
+  test('openai 型响应若回 Anthropic 风格 input/output_tokens 也能取到（兼容中转网关，防漏计费）', () => {
+    // 有些 OpenAI 兼容网关(尤其代理 Anthropic 模型的)回的是 input_tokens/output_tokens。
+    // 解析处有 prompt_tokens ?? input_tokens 的兜底，若被删掉，这类网关会按 0 token 计费 → 系统漏收。
+    const r = parseChatResponse('openai', {
+      choices: [{ message: { content: 'x' } }],
+      usage: { input_tokens: 7, output_tokens: 9 }
+    })
+    assert.deepEqual(r.usage, { inputTokens: 7, outputTokens: 9 })
+  })
 })
 
 describe('Anthropic 协议', () => {
