@@ -24,6 +24,12 @@ describe('localIntent（客户端本地关键词意向）', () => {
     expect(localIntent([msg('out', '多少钱')])).toBeNull()
     expect(localIntent([])).toBeNull()
   })
+  it('只看客户入站：客服自己说「价格/下单」不把标签带成 high（与服务端同口径）', () => {
+    // 客户只说「你好」，客服回复含「多少钱/下单」。意向是客户的意向——不能被客服用词带高，
+    // 否则客服接待时头部标签乱亮高意向。这条对应服务端 StubAnalyzer 已修的同类问题。
+    const r = localIntent([msg('in', '你好'), msg('out', '这个多少钱，随时可以下单')])
+    expect(r).toBe('low')
+  })
   it('媒体 caption 也纳入', () => {
     const m = { ...msg('in', ''), body: { type: 'media', mediaType: 'image', caption: '多少钱' } } as UnifiedMessage
     expect(localIntent([m])).toBe('high')
