@@ -44,6 +44,17 @@ describe('StubAnalyzer 关键词意向', () => {
   test('只有出站/无内容 → unknown', async () => {
     assert.equal((await a.analyze([])).intentLevel, 'unknown')
   })
+
+  test('只看客户入站：客服自己说「价格/下单」不能把线索带成 high', async () => {
+    // 意向是「客户的」意向。客户只说了「你好」，客服回复里含价格/下单类词——若把出站也计入，
+    // 老板的「一键聚焦高意向」列表会被客服自己的用词污染，混进根本没意向的客户。
+    const mixed = [
+      { conversationId: 'c', channel: 'whatsapp', accountId: 'a1', direction: 'in', bodyType: 'text', text: '你好', timestamp: 1, externalId: 'e1', status: 'delivered' },
+      { conversationId: 'c', channel: 'whatsapp', accountId: 'a1', direction: 'out', bodyType: 'text', text: '我们的价格是100，随时可以下单购买', timestamp: 2, externalId: 'e2', status: 'delivered' }
+    ] as unknown as StoredMessage[]
+    // 只有客户的「你好」被计入 → low（不是被客服的「价格/下单」带成 high）
+    assert.equal((await a.analyze(mixed)).intentLevel, 'low')
+  })
 })
 
 describe('IntentRepo', () => {
