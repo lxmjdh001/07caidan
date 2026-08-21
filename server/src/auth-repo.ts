@@ -114,6 +114,11 @@ export class AuthRepo {
       .delete(adminUsers)
       .where(and(eq(adminUsers.tenant, tenant), eq(adminUsers.id, id)))
       .run()
+    // 连带清掉其会话（与客户端删子账号口径一致）。resolve 本就会因查不到用户而拒绝这些悬空会话，
+    // 且 id 自增不复用、不会张冠李戴，所以这不是安全修复而是清理——避免删号后留下永不失效的孤儿行。
+    if (res.changes > 0) {
+      this.db.delete(sessions).where(eq(sessions.userId, id)).run()
+    }
     return res.changes > 0
   }
 

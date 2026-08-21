@@ -82,4 +82,11 @@ describe('AuthRepo 会话生命周期与安全', () => {
     auth.updateUser(T, userId, { role: 'admin' })
     assert.ok(auth.resolve(r.token), '改权限不该吊销会话')
   })
+
+  test('删除用户连带清掉其会话行（不留孤儿会话）', () => {
+    const r = auth.login('admin', 'pw123456')!
+    auth.deleteUser(T, userId)
+    assert.equal(auth.resolve(r.token), null) // 用户没了，resolve 本就拒
+    assert.equal(db.select().from(sessions).where(eq(sessions.userId, userId)).all().length, 0)
+  })
 })
