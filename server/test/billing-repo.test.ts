@@ -294,6 +294,17 @@ describe('积分', () => {
     assert.equal(r.balance.credits, 10000)
   })
 
+  test('兑换积分非整除时向下取整，不多送（真实兑换路径）', () => {
+    // 上面用 RATE=1000、整额，恒整除，验不出取整方向。exchangeCredits 内联了自己的 floor，
+    // 与纯函数 centsToCredits 是两条路径，必须单独钉死：(50/100)*3 = 1.5 → 只给 1 积分。
+    // 若这条写成 round/ceil，用户凭 50 分能多兑出 1 个积分、系统贴钱。
+    topup(10000)
+    const r = repo.exchangeCredits(T, U, 50, { creditsPerUsd: 3 }, NOW)
+    assert.equal(r.ok, true)
+    assert.equal(r.balance.credits, 1, '1.5 向下取整为 1')
+    assert.equal(r.balance.balanceCents, 9950, '扣掉兑换用的 50 分')
+  })
+
   test('积分够时只扣积分', () => {
     topup(10000)
     repo.exchangeCredits(T, U, 1000, RATE, NOW)
