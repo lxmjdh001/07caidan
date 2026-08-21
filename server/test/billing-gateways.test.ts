@@ -269,4 +269,14 @@ describe('USDT', () => {
     assert.equal(r.paid, true)
     assert.equal(r.amountLocal, 1050)
   })
+
+  test('确认数恰好达到门槛即算已支付（>= 边界，不是 >）', () => {
+    // minConfirmations=2；确认数恰好 2 必须算已支付。原用例只有 1(不足)/3(有余)，都区分不出
+    // >= 与 > —— 若哪天把 >= 写成 >，恰好凑够确认数的付款会卡着永不入账，客户钱转了却没到账。
+    const r = gw.verifyCallback(
+      { params: { secret: 's3cret', order_id: 'o1', amount_minor: '1050', confirmations: '2' } },
+      config
+    )
+    assert.equal(r.paid, true, '确认数=门槛(2) 必须算已支付')
+  })
 })
