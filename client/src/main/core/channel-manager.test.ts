@@ -356,4 +356,43 @@ describe('ChannelManager', () => {
     expect(msg.status).toBe('failed')
     expect(msg.body).toMatchObject({ mediaType: 'video' })
   })
+
+  it('sendVoice：带 ptt 语音条标记发出、ext 按 mime、时长下限 1s、入库广播', async () => {
+    // ptt=true 是语音条的关键标记 —— 缺了 WhatsApp 会把它渲染成普通音频文件附件而非语音气泡。
+    // durationSec 0.3 → max(1,round)=1（下限 1 秒，避免 0 秒条）。ogg mime → voice.ogg。
+    const msg = await manager.sendVoice(
+      'whatsapp:main:42@s.whatsapp.net',
+      new Uint8Array([1, 2, 3]),
+      'audio/ogg; codecs=opus',
+      0.3
+    )
+    expect(msg.status).toBe('sent')
+    expect(msg.body).toMatchObject({
+      type: 'media',
+      mediaType: 'audio',
+      fileName: 'voice.ogg',
+      durationSec: 1
+    })
+    // 媒体确实落库
+    if (msg.body.type === 'media') expect(media.resolvePath(msg.body.mediaId!)).toBeTruthy()
+    const call = adapter.sendMedia.mock.calls[0]!
+    expect(call[1].ptt).toBe(true) // 关键：语音条标记
+    expect(call[1].mediaType).toBe('audio')
+    expect(call[1].fileName).toBe('voice.ogg')
+    expect(call[1].durationSec).toBe(1)
+    expect(events.some((e) => e.type === 'message:new')).toBe(true)
+  })
+
+  it('sendVoice：webm mime → voice.webm；发送失败仍入库', async () => {
+    adapter.sendMedia.mockRejectedValueOnce(new Error('net down'))
+    const msg = await manager.sendVoice(
+      'whatsapp:main:42@s.whatsapp.net',
+      new Uint8Array([9]),
+      'audio/webm',
+      5
+    )
+    expect(msg.status).toBe('failed')
+    expect(msg.body).toMatchObject({ mediaType: 'audio', fileName: 'voice.webm', durationSec: 5 })
+    expect(await store.listMessages('whatsapp:main:42@s.whatsapp.net')).toHaveLength(1)
+  })
 })
