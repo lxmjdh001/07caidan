@@ -96,6 +96,45 @@ describe('Repo', () => {
     assert.equal(stored?.translationText, '你好')
   })
 
+  // 投放归因：leadSource 的 upsert 用 COALESCE(既有, 新值) —— 既有优先，与 contactId 的
+  // COALESCE(新值, 既有) 顺序相反(那个是客户端后补身份、新值该赢)。这个非对称是刻意的：
+  // 首条入站识别到来源后就锁定，客户日后带别的追踪码再来也不改写首次归因，否则工单按来源
+  // 拆分的统计会被后到的会话污染。谁"顺手统一"成和 contactId 一样的顺序，这两条会红。
+  function convWithSource(code?: string, via?: 'code' | 'ad'): SyncPayload {
+    return payload({
+      conversations: [
+        {
+          id: 'whatsapp:main:42@lid',
+          channel: 'whatsapp',
+          accountId: 'main',
+          contactId: 'wa:+17759276114',
+          title: 'x',
+          isGroup: false,
+          lastMessageAt: 1000,
+          ...(code !== undefined ? { leadSourceCode: code, leadSourceVia: via } : {})
+        }
+      ]
+    })
+  }
+
+  test('投放来源首次识别后不再被覆盖（COALESCE 保留既有归因）', () => {
+    repo.ingest('t1', convWithSource('ad_A', 'code')) // 首条带来源 A
+    repo.ingest('t1', convWithSource('ad_B', 'ad')) // 客户再来、带了不同来源 B —— 不得改写
+    let c = repo.listConversations('t1')[0]
+    assert.equal(c?.leadSourceCode, 'ad_A', '不同来源二次同步不得覆盖首次归因')
+    assert.equal(c?.leadSourceVia, 'code')
+    repo.ingest('t1', convWithSource(undefined)) // 再来一条完全不带来源
+    c = repo.listConversations('t1')[0]
+    assert.equal(c?.leadSourceCode, 'ad_A', '空来源同步不得把已归因清成 null')
+  })
+
+  test('投放来源可后补：首次无来源、后续识别到即写入（一次性）', () => {
+    repo.ingest('t1', convWithSource(undefined)) // 首次没识别到来源
+    assert.equal(repo.listConversations('t1')[0]?.leadSourceCode, undefined)
+    repo.ingest('t1', convWithSource('ad_X', 'code')) // 后续识别到 → 从 null 补上
+    assert.equal(repo.listConversations('t1')[0]?.leadSourceCode, 'ad_X')
+  })
+
   test('媒体登记与去重探测', () => {
     assert.equal(repo.hasMedia('t1', 'a.jpg'), false)
     repo.recordMedia('t1', 'a.jpg', 'image/jpeg', '/tmp/a.jpg', 100)
