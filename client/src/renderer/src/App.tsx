@@ -10,14 +10,19 @@ import { TeamPage } from './pages/TeamPage'
 import { SupportPage } from './pages/SupportPage'
 import { CampaignPage } from './pages/CampaignPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { HomePage } from './pages/HomePage'
+import { ManagementPage } from './pages/ManagementPage'
 import { ChannelPicker } from './components/ChannelPicker'
 import { ChatView } from './components/ChatView'
 import { ConversationList } from './components/ConversationList'
 import { QrPanel } from './components/QrPanel'
-import { brand } from '@shared/branding'
+import { TopToolbar } from './components/TopToolbar'
 import { I18nProvider, localeDir, resolveLocale, type Locale } from './i18n'
+import type { ThemeMode } from '@shared/settings'
 
 const api = window.omni
+
+type MainView = 'home' | 'chat' | 'campaigns' | 'billing' | 'support' | 'settings' | 'team' | 'management'
 
 export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element {
   const [channels, setChannels] = useState<Record<string, ChannelState>>({})
@@ -29,9 +34,11 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   const [settings, setSettings] = useState<AppSettings | null>(null)
   const [translators, setTranslators] = useState<TranslatorInfo[]>([])
   /** 主视图：聊天 / 工单 / 设置。工单与设置做成整页，弹窗里放不下 */
-  const [view, setView] = useState<
-    'chat' | 'campaigns' | 'billing' | 'support' | 'settings' | 'team'
-  >('chat')
+  const [view, setView] = useState<MainView>('home')
+  const [viewHistory, setViewHistory] = useState<MainView[]>([])
+  const [viewFuture, setViewFuture] = useState<MainView[]>([])
+  const [homeRefreshKey, setHomeRefreshKey] = useState(0)
+  const [loginZoom, setLoginZoom] = useState(100)
   /**
    * 客户端 RBAC：undefined = 旧后台/未登录（不限制，兼容静态令牌），
    * 数组 = 服务端下发的有效权限。界面按此显隐；真正的强制在服务端。
@@ -46,6 +53,51 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   const noticeState = useNotices()
   const activeIdRef = useRef<string | null>(null)
   activeIdRef.current = activeId
+
+  const navigateTo = useCallback((next: MainView) => {
+    setView((current) => {
+      if (current === next) return current
+      setViewHistory((prev) => [...prev, current])
+      setViewFuture([])
+      return next
+    })
+  }, [])
+
+  const goBack = useCallback(() => {
+    setViewHistory((prev) => {
+      const last = prev[prev.length - 1]
+      if (!last) return prev
+      setViewFuture((future) => [view, ...future])
+      setView(last)
+      return prev.slice(0, -1)
+    })
+  }, [view])
+
+  const goForward = useCallback(() => {
+    setViewFuture((prev) => {
+      const next = prev[0]
+      if (!next) return prev
+      setViewHistory((history) => [...history, view])
+      setView(next)
+      return prev.slice(1)
+    })
+  }, [view])
+
+  const refreshData = useCallback(async () => {
+    const [channelList, conversationList, currentSettings, translatorList, pluginList] = await Promise.all([
+      api.listChannels(),
+      api.listConversations(),
+      api.getSettings(),
+      api.listTranslators(),
+      api.listChannelPlugins()
+    ])
+    setChannels(Object.fromEntries(channelList.map((s) => [`${s.kind}:${s.accountId}`, s])))
+    setConversations(conversationList)
+    setSettings(currentSettings)
+    setTranslators(translatorList)
+    setPlugins(pluginList)
+    setHomeRefreshKey((key) => key + 1)
+  }, [])
 
   const upsertConversation = useCallback((conv: Conversation) => {
     setConversations((prev) => {
@@ -88,7 +140,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
           break
         case 'conversation:open':
           // 点击系统通知跳转过来：切回聊天视图并打开该会话
-          setView('chat')
+          navigateTo('chat')
           setActiveAccountKey(null)
           void selectConversation(evt.conversationId)
           break
@@ -130,7 +182,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
         }
       }
     })
-  }, [upsertConversation])
+  }, [navigateTo, upsertConversation])
 
   const selectConversation = useCallback(
     (id: string) => {
@@ -352,16 +404,31 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   return (
     <I18nProvider locale={locale}>
       <div className={`app platform-${api.platform}`}>
-        <header className="titlebar">
-          <span className="titlebar-title">{brand.appName}</span>
-        </header>
+        <TopToolbar
+          canBack={viewHistory.length > 0}
+          canForward={viewFuture.length > 0}
+          theme={settings?.theme ?? 'system'}
+          locale={locale}
+          zoom={loginZoom}
+          onHome={() => {
+            setActiveId(null)
+            navigateTo('home')
+          }}
+          onBack={goBack}
+          onForward={goForward}
+          onRefresh={() => void refreshData()}
+          onTheme={(theme: ThemeMode) => void saveSettings({ theme })}
+          onLocale={(nextLocale) => void saveSettings({ locale: nextLocale })}
+          onZoom={(delta) => setLoginZoom((value) => Math.max(70, Math.min(140, value + delta)))}
+          onResetZoom={() => setLoginZoom(100)}
+        />
         <div className="app-body">
           <AccountList
             accounts={accountRows}
             totalUnread={totalUnread}
             activeKey={activeAccountKey}
             onSelect={(key) => {
-              setView('chat')
+              navigateTo('chat')
               selectAccount(key)
               if (key) {
                 const st = channels[key]
@@ -374,22 +441,84 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
               }
             }}
             onAccountSettings={(key) => setAccountModalKey(key)}
+            onReconnect={(key) => void api.startChannel(key)}
+            onMarkAccountRead={(key) => {
+              const accountConversations = conversations.filter((conversation) => `${conversation.channel}:${conversation.accountId}` === key)
+              for (const conversation of accountConversations) void api.markRead(conversation.id)
+              setConversations((prev) => prev.map((conversation) => `${conversation.channel}:${conversation.accountId}` === key ? { ...conversation, unreadCount: 0 } : conversation))
+            }}
+            onLogoutAccount={(key) => {
+              if (window.confirm('确定退出这个账号？本地登录凭证将被清除。')) void api.logoutChannel(key)
+            }}
+            onRemoveAccount={(key) => {
+              if (!window.confirm('确定删除这个账号？账号会从列表移除，聊天记录会保留。')) return
+              void api.removeAccount(key).then(async () => {
+                const updated = await api.getSettings()
+                setSettings(updated)
+                setChannels((prev) => {
+                  const next = { ...prev }
+                  delete next[key]
+                  return next
+                })
+                if (activeAccountKey === key) setActiveAccountKey(null)
+              })
+            }}
             onAddAccount={() => setShowPicker(true)}
-            onOpenSettings={() => setView(view === 'settings' ? 'chat' : 'settings')}
-            onOpenCampaigns={() => setView(view === 'campaigns' ? 'chat' : 'campaigns')}
-            onOpenBilling={() => setView(view === 'billing' ? 'chat' : 'billing')}
-            onOpenSupport={() => setView(view === 'support' ? 'chat' : 'support')}
-            onOpenTeam={() => setView(view === 'team' ? 'chat' : 'team')}
-            activeView={view}
-            showCampaigns={can('campaigns:manage')}
+            onOpenSettings={() => navigateTo(view === 'settings' ? 'chat' : 'settings')}
+            onOpenBilling={() => navigateTo(view === 'billing' ? 'chat' : 'billing')}
+            onOpenSupport={() => navigateTo(view === 'support' ? 'chat' : 'support')}
+            onOpenManagement={() => navigateTo(view === 'management' ? 'chat' : 'management')}
+            activeView={view === 'home' ? 'chat' : view}
             showBilling={can('billing:manage')}
-            showTeam={permissions !== undefined && permissions.includes('team:manage')}
             allowAddAccount={can('accounts:manage')}
             atAccountQuota={atAccountQuota}
             allowAccountSettings={can('accounts:manage')}
           />
 
-          {view === 'campaigns' ? (
+          {view === 'home' ? (
+            <main className="content home-content">
+              {settings && (
+                <HomePage
+                  key={homeRefreshKey}
+                  settings={settings}
+                  channels={channels}
+                  plugins={plugins}
+                  onOpenApp={(kind) => {
+                    const existing = Object.keys(channels).find((key) => key.startsWith(`${kind}:`))
+                    if (existing) {
+                      setActiveAccountKey(existing)
+                      setActiveId(null)
+                      navigateTo('chat')
+                      const state = channels[existing]
+                      if (state && ['stopped', 'logged_out', 'error'].includes(state.status)) {
+                        void api.startChannel(existing)
+                      }
+                      return
+                    }
+                    void api.addAccount(kind).then((key) => {
+                      setActiveAccountKey(key)
+                      setActiveId(null)
+                      navigateTo('chat')
+                      void refreshData()
+                    })
+                  }}
+                  onOpenManagement={() => navigateTo('management')}
+                  onOpenSubaccounts={() => navigateTo('team')}
+                  onOpenWorkorders={() => navigateTo('campaigns')}
+                  canSubaccounts={can('team:manage')}
+                  canWorkorders={can('campaigns:manage')}
+                  onRefresh={() => void refreshData()}
+                />
+              )}
+            </main>
+          ) : view === 'management' ? (
+            <ManagementPage
+              canSubaccounts={can('team:manage')}
+              canWorkorders={can('campaigns:manage')}
+              onOpenSubaccounts={() => navigateTo('team')}
+              onOpenWorkorders={() => navigateTo('campaigns')}
+            />
+          ) : view === 'campaigns' ? (
             <CampaignPage accounts={accountOptions} />
           ) : view === 'billing' ? (
             <BillingPage />
@@ -420,11 +549,13 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
               />
               <main className="content">
                 {showQr ? (
-                  <QrPanel
-                    accountKey={activeAccountKey ?? undefined}
-                    qrDataUrl={qrState?.qrDataUrl}
-                    pairingCode={qrState?.pairingCode}
-                  />
+                  <div className="login-zoom-layer" style={{ transform: `scale(${loginZoom / 100})` }}>
+                    <QrPanel
+                      accountKey={activeAccountKey ?? undefined}
+                      qrDataUrl={qrState?.qrDataUrl}
+                      pairingCode={qrState?.pairingCode}
+                    />
+                  </div>
                 ) : (
                   <ChatView
                     conversation={activeConversation}

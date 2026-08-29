@@ -1,4 +1,15 @@
 import { useMemo, useState } from 'react'
+import {
+  BriefcaseBusiness,
+  MessageCircle,
+  MoreVertical,
+  RefreshCw,
+  Send,
+  Settings2,
+  Trash2,
+  CheckCheck,
+  LogOut
+} from 'lucide-react'
 import type { ChannelState } from '@shared/domain'
 import { UnreadBadge } from './UnreadBadge'
 import { useI18n } from '../i18n'
@@ -23,6 +34,11 @@ function avatarColor(id: string): string {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]!
 }
 
+function channelGlyph(kind: string): React.JSX.Element {
+  if (kind === 'telegram' || kind === 'telegram_bot') return <Send size={17} fill="currentColor" strokeWidth={1.8} />
+  return <MessageCircle size={18} strokeWidth={2.1} />
+}
+
 export interface AccountRow {
   key: string
   label: string
@@ -38,18 +54,18 @@ interface Props {
   activeKey: string | null
   onSelect: (key: string | null) => void
   onAccountSettings: (key: string) => void
+  onReconnect: (key: string) => void
+  onMarkAccountRead: (key: string) => void
+  onLogoutAccount: (key: string) => void
+  onRemoveAccount: (key: string) => void
   onAddAccount: () => void
   onOpenSettings: () => void
-  onOpenCampaigns: () => void
   onOpenBilling: () => void
   onOpenSupport: () => void
-  onOpenTeam: () => void
+  onOpenManagement: () => void
   /** 当前主视图，用于底部导航高亮 */
-  activeView: 'chat' | 'campaigns' | 'billing' | 'support' | 'settings' | 'team'
-  /** 客户端 RBAC：无权限的入口整个隐藏（服务端另有强制） */
-  showCampaigns: boolean
+  activeView: 'chat' | 'campaigns' | 'billing' | 'support' | 'settings' | 'team' | 'management'
   showBilling: boolean
-  showTeam: boolean
   allowAddAccount: boolean
   /** 已达套餐账号配额上限：有权限但不能再加，加号禁用并提示升级 */
   atAccountQuota: boolean
@@ -62,22 +78,25 @@ export function AccountList({
   activeKey,
   onSelect,
   onAccountSettings,
+  onReconnect,
+  onMarkAccountRead,
+  onLogoutAccount,
+  onRemoveAccount,
   onAddAccount,
   onOpenSettings,
-  onOpenCampaigns,
   onOpenBilling,
   onOpenSupport,
-  onOpenTeam,
+  onOpenManagement,
   activeView,
-  showCampaigns,
   showBilling,
-  showTeam,
   allowAddAccount,
   atAccountQuota,
   allowAccountSettings
 }: Props): React.JSX.Element {
   const { t } = useI18n()
   const [query, setQuery] = useState('')
+  const [menuKey, setMenuKey] = useState<string | null>(null)
+  const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -86,6 +105,12 @@ export function AccountList({
       (a) => a.label.toLowerCase().includes(q) || a.key.toLowerCase().includes(q)
     )
   }, [accounts, query])
+
+  const openMenu = (key: string, target: HTMLElement): void => {
+    const rect = target.getBoundingClientRect()
+    setMenuKey(key)
+    setMenuPos({ top: rect.bottom + 6, left: Math.min(rect.right - 184, window.innerWidth - 200) })
+  }
 
   return (
     <aside className="account-list">
@@ -121,7 +146,7 @@ export function AccountList({
         </div>
       )}
 
-      <div className="account-list-scroll">
+      <div className="account-list-scroll" onScroll={() => menuKey && setMenuKey(null)}>
         <button
           type="button"
           className={`account-row all ${activeKey === null ? 'active' : ''}`}
@@ -145,12 +170,13 @@ export function AccountList({
             role="button"
             tabIndex={0}
             onClick={() => onSelect(a.key)}
+            onContextMenu={(e) => { e.preventDefault(); openMenu(a.key, e.currentTarget) }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') onSelect(a.key)
             }}
           >
             <span className="account-row-avatar" style={{ background: avatarColor(a.key) }}>
-              {a.label.slice(0, 1).toUpperCase()}
+              {channelGlyph(a.state.kind)}
               <span className="status-dot" style={{ background: STATUS_COLOR[a.state.status] }} />
             </span>
             <span className="account-row-main">
@@ -161,19 +187,8 @@ export function AccountList({
             </span>
             <UnreadBadge count={a.unread} />
             {allowAccountSettings && (
-            <button
-              type="button"
-              className="account-row-gear"
-              title={t('account.settings')}
-              onClick={(e) => {
-                e.stopPropagation()
-                onAccountSettings(a.key)
-              }}
-            >
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-                <circle cx="12" cy="12" r="3" />
-                <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1" />
-              </svg>
+            <button type="button" className="account-row-more" title={t('account.more')} onClick={(e) => { e.stopPropagation(); openMenu(a.key, e.currentTarget) }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); openMenu(a.key, e.currentTarget) }}>
+              <MoreVertical size={17} />
             </button>
             )}
           </div>
@@ -184,21 +199,29 @@ export function AccountList({
         )}
       </div>
 
+      {menuKey && (
+        <>
+          <button type="button" className="account-menu-scrim" aria-label={t('account.closeMenu')} onClick={() => setMenuKey(null)} />
+          <div className="account-context-menu" style={{ top: menuPos.top, left: menuPos.left }} role="menu">
+            <button type="button" onClick={() => { onAccountSettings(menuKey); setMenuKey(null) }}><Settings2 size={17} />{t('account.edit')}</button>
+            <button type="button" onClick={() => { onReconnect(menuKey); setMenuKey(null) }}><RefreshCw size={17} />{t('account.refresh')}</button>
+            <button type="button" onClick={() => { onMarkAccountRead(menuKey); setMenuKey(null) }}><CheckCheck size={17} />{t('account.markAllRead')}</button>
+            <button type="button" onClick={() => { onLogoutAccount(menuKey); setMenuKey(null) }}><LogOut size={17} />{t('account.logout')}</button>
+            {menuKey !== 'whatsapp:main' && <button type="button" className="danger" onClick={() => { onRemoveAccount(menuKey); setMenuKey(null) }}><Trash2 size={17} />{t('account.delete')}</button>}
+          </div>
+        </>
+      )}
+
       {/* 固定在底部：工单与全局设置不随账号列表滚动，账号再多也点得到 */}
       <footer className="account-list-footer">
-        {showCampaigns && (
         <button
           type="button"
-          className={`rail-nav ${activeView === 'campaigns' ? 'active' : ''}`}
-          onClick={onOpenCampaigns}
+          className={`rail-nav rail-nav-management ${activeView === 'management' ? 'active' : ''}`}
+          onClick={onOpenManagement}
         >
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-            <path d="M3 3v18h18" />
-            <path d="M7 15l4-5 3 3 5-7" />
-          </svg>
-          <span>{t('campaign.title')}</span>
+          <BriefcaseBusiness size={17} strokeWidth={1.8} />
+          <span>{t('management.nav')}</span>
         </button>
-        )}
         {showBilling && (
         <button
           type="button"
@@ -210,20 +233,6 @@ export function AccountList({
             <path d="M2 10h20" />
           </svg>
           <span>{t('bill.title')}</span>
-        </button>
-        )}
-        {showTeam && (
-        <button
-          type="button"
-          className={`rail-nav ${activeView === 'team' ? 'active' : ''}`}
-          onClick={onOpenTeam}
-        >
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-            <path d="M17 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-            <circle cx="9.5" cy="7.5" r="3.5" />
-            <path d="M22 21v-2a4 4 0 0 0-3-3.87M15.5 4.13a3.5 3.5 0 0 1 0 6.74" />
-          </svg>
-          <span>{t('team.title')}</span>
         </button>
         )}
         <button
