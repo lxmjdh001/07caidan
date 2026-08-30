@@ -10,6 +10,10 @@ export interface Campaign {
   name: string
   accountIds: string[]
   accountLabels: Record<string, string>
+  accountProfiles: Record<string, AccountProfile>
+  totalTarget: number
+  accountTargets: Record<string, number>
+  resetTime: string
   startAt: number
   endAt?: number
   dedupLibraryIds: string[]
@@ -26,10 +30,21 @@ export interface Campaign {
   updatedAt: number
 }
 
+export interface AccountProfile {
+  channel: string
+  handle?: string
+  avatarMediaId?: string
+  status?: 'online' | 'offline' | 'error'
+}
+
 export interface CampaignInput {
   name: string
   accountIds: string[]
   accountLabels?: Record<string, string>
+  accountProfiles?: Record<string, AccountProfile>
+  totalTarget?: number
+  accountTargets?: Record<string, number>
+  resetTime?: string
   startAt: number
   endAt?: number
   dedupLibraryIds?: string[]
@@ -59,6 +74,7 @@ export interface LinkOptions {
 }
 
 export interface Bucket {
+  /** 窗口内账号申请次数（每个客户-账号组合各计一次） */
   total: number
   duplicate: number
   fresh: number
@@ -70,7 +86,16 @@ export interface CampaignStats {
   fresh: number
   effective: number
   duplicateBy: { library: number; timeRange: number }
-  byAccount: Array<{ accountId: string; channel: string; label?: string } & Bucket>
+  byAccount: Array<{
+    accountId: string
+    channel: string
+    label?: string
+    handle?: string
+    avatarMediaId?: string
+    avatarUrl?: string
+    status?: 'online' | 'offline' | 'error'
+  } & Bucket>
+  today?: Bucket
   byDay: Array<{ date: string } & Bucket>
   /** 按投放来源拆分；code 是广告 id 或追踪码，未归因的 code 为空 */
   bySource: Array<{ code: string; via?: 'ad' | 'code' } & Bucket>

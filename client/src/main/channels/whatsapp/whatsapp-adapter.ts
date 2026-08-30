@@ -186,9 +186,19 @@ export class WhatsAppAdapter extends ChannelAdapter {
   }
 
   override async fetchAvatar(externalChatId: string): Promise<string | undefined> {
+    return this.downloadProfilePicture(externalChatId)
+  }
+
+  override async fetchSelfAvatar(): Promise<string | undefined> {
+    const selfJid = this.sock?.user?.id
+    if (!selfJid) return undefined
+    return this.downloadProfilePicture(selfJid)
+  }
+
+  private async downloadProfilePicture(jid: string): Promise<string | undefined> {
     if (!this.sock || this.status !== 'connected' || !this.saveMedia) return undefined
     // 无头像/无权限查看时 profilePictureUrl 会抛错，视为无头像
-    const url = await this.sock.profilePictureUrl(externalChatId, 'image').catch(() => undefined)
+    const url = await this.sock.profilePictureUrl(jid, 'image').catch(() => undefined)
     if (!url) return undefined
     const res = await fetch(url, { signal: AbortSignal.timeout(15_000) })
     if (!res.ok) return undefined

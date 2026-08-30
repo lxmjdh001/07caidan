@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path'
 import { pipeline } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
 import cors from '@fastify/cors'
+import QRCode from 'qrcode'
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify'
 import { IntentAnalyzer, StubAnalyzer } from './analyzer.ts'
 import { IntentRepo } from './intent-repo.ts'
@@ -880,6 +881,10 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
         name: b.name.trim(),
         accountIds: b.accountIds,
         accountLabels: b.accountLabels,
+        accountProfiles: b.accountProfiles,
+        totalTarget: b.totalTarget,
+        accountTargets: b.accountTargets,
+        resetTime: b.resetTime,
         startAt: b.startAt,
         endAt: b.endAt ?? undefined,
         dedupLibraryIds: b.dedupLibraryIds ?? [],
@@ -933,6 +938,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     return { campaign, stats: campaignRepo.statsOf(tenant, campaign) }
   })
 
+
   app.get('/api/campaigns/:id/links', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
     const id = (req.params as { id: string }).id
@@ -957,6 +963,13 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (!requireCampaign(req, reply)) return
     const token = (req.params as { token: string }).token
     const ok = campaignRepo.revokeLink(ctxOf(req).tenant, token)
+    return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
+  })
+
+  app.post('/api/campaigns/links/:token/restore', async (req, reply) => {
+    if (!requireCampaign(req, reply)) return
+    const token = (req.params as { token: string }).token
+    const ok = campaignRepo.restoreLink(ctxOf(req).tenant, token)
     return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
   })
 
@@ -1096,9 +1109,39 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
       return reply.code(403).send({ error: 'region_blocked' })
     }
     const stats = campaignRepo.statsOf(r.tenant, r.campaign)
+    const campaignType =
+      Object.values(r.campaign.accountProfiles ?? {}).find((profile) => profile?.channel)?.channel ||
+      stats.byAccount.find((row) => row.channel)?.channel ||
+      ''
+    const homepage = (channel: string, handle?: string): string => {
+      if (!handle?.trim()) return ''
+      if (channel === 'whatsapp') return `https://wa.me/${handle.replace(/\D/g, '')}`
+      if (channel === 'telegram' || channel === 'telegram_bot') return `https://t.me/${handle.replace(/^@/, '')}`
+      if (channel === 'line') return `https://line.me/R/oaMessage/${encodeURIComponent(handle.startsWith('@') ? handle : `@${handle}`)}/`
+      return ''
+    }
+    const publicStats = {
+      ...stats,
+      // 原始媒体 ID 不直接暴露；头像通过同一分享令牌保护的只读路由读取。
+      byAccount: await Promise.all(stats.byAccount.map(async ({ avatarMediaId, ...row }) => {
+        const homepageUrl = homepage(row.channel, row.handle)
+        return {
+          ...row,
+          target: r.campaign.accountTargets[row.accountId] ?? 0,
+          ...(avatarMediaId ? { avatarUrl: `/public/campaign/${encodeURIComponent(token)}/media/${encodeURIComponent(avatarMediaId)}` } : {}),
+          ...(homepageUrl ? { homepageUrl, homepageQrDataUrl: await QRCode.toDataURL(homepageUrl, { width: 128, margin: 1 }) } : {})
+        }
+      }))
+    }
     return {
       campaign: {
+        id: r.campaign.id,
         name: r.campaign.name,
+        type: campaignType,
+        createdAt: r.campaign.createdAt,
+        resetTime: `${r.campaign.resetTime}:00`,
+        totalTarget: r.campaign.totalTarget,
+        accountTargets: r.campaign.accountTargets,
         startAt: r.campaign.startAt,
         endAt: r.campaign.endAt,
         tzOffsetMinutes: r.campaign.tzOffsetMinutes,
@@ -1108,8 +1151,45 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
           beforeAt: r.campaign.dedupBeforeAt
         }
       },
-      stats
+      stats: publicStats
     }
+  })
+
+  app.get('/public/campaign/:token/account/:accountId/fans', async (req, reply) => {
+    const { token, accountId } = req.params as { token: string; accountId: string }
+    const r = campaignRepo.resolveLink(token)
+    if (!r.ok) return reply.code(404).send({ error: r.reason })
+    if (!regionAllowed(req.ip, { allowCn: r.campaign.allowCnIp, allowHk: r.campaign.allowHkIp })) return reply.code(403).send({ error: 'region_blocked' })
+    return { fans: campaignRepo.accountFansOf(r.tenant, r.campaign, accountId) }
+  })
+
+  app.get('/public/campaign/:token/account/:accountId/trend', async (req, reply) => {
+    const { token, accountId } = req.params as { token: string; accountId: string }
+    const r = campaignRepo.resolveLink(token)
+    if (!r.ok) return reply.code(404).send({ error: r.reason })
+    if (!regionAllowed(req.ip, { allowCn: r.campaign.allowCnIp, allowHk: r.campaign.allowHkIp })) return reply.code(403).send({ error: 'region_blocked' })
+    return { days: campaignRepo.accountTrendOf(r.tenant, r.campaign, accountId) }
+  })
+
+  // 分享页头像：必须同时持有有效分享令牌和通过地区限制，不能借此绕过公开看板权限。
+  app.get('/public/campaign/:token/media/:mediaId', async (req, reply) => {
+    const { token, mediaId } = req.params as { token: string; mediaId: string }
+    const r = campaignRepo.resolveLink(token)
+    if (!r.ok) return reply.code(404).send({ error: r.reason })
+    if (!regionAllowed(req.ip, { allowCn: r.campaign.allowCnIp, allowHk: r.campaign.allowHkIp })) {
+      return reply.code(403).send({ error: 'region_blocked' })
+    }
+    if (!/^[\w.\-]+$/.test(mediaId)) return reply.code(400).send({ error: 'bad id' })
+    const campaignAvatarIds = new Set(
+      Object.values(r.campaign.accountProfiles ?? {})
+        .map((profile) => profile?.avatarMediaId)
+        .filter((id): id is string => typeof id === 'string')
+    )
+    if (!campaignAvatarIds.has(mediaId)) return reply.code(404).send({ error: 'not found' })
+    const record = repo.getMedia(r.tenant, mediaId)
+    if (!record) return reply.code(404).send({ error: 'not found' })
+    reply.type(record.mimeType || 'application/octet-stream')
+    return reply.send(createReadStream(record.path))
   })
 
   // 分享页本体：独立静态页，收件人打开一个 URL 就能看

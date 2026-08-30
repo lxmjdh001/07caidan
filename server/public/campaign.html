@@ -3,243 +3,414 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- 分享出去的看板不应该被搜索引擎收录 -->
     <meta name="robots" content="noindex, nofollow" />
     <title>__DASHBOARD_TITLE__</title>
     <style>
       :root {
-        --bg: #f5f6f8;
-        --card: #fff;
-        --text: #1c1e21;
-        --muted: #6b7280;
-        --line: #e5e7eb;
-        --accent: #2563eb;
-        --fresh: #16a34a;
-        --dup: #f59e0b;
+        --bg: #f3f5f8;
+        --panel: #ffffff;
+        --panel-soft: #f8fafc;
+        --text: #273449;
+        --muted: #8b97a8;
+        --line: #e4e9f0;
+        --accent: #4e7de8;
+        --green: #28a26a;
+        --amber: #d39a31;
+        --red: #db6a69;
+        --shadow: 0 2px 8px rgb(36 50 75 / 0.04);
       }
       @media (prefers-color-scheme: dark) {
         :root {
-          --bg: #16181c;
-          --card: #1f2226;
-          --text: #e8eaed;
-          --muted: #9aa0a6;
-          --line: #2f333a;
-          --accent: #60a5fa;
-          --fresh: #4ade80;
-          --dup: #fbbf24;
+          --bg: #151922;
+          --panel: #1d2430;
+          --panel-soft: #232c39;
+          --text: #e6ebf2;
+          --muted: #9da8b7;
+          --line: #303a49;
+          --accent: #77a0f0;
+          --green: #43c28a;
+          --amber: #e0ad52;
+          --red: #ec8a88;
+          --shadow: 0 2px 10px rgb(0 0 0 / 0.18);
         }
       }
       * { box-sizing: border-box; }
       body {
         margin: 0;
-        padding: 24px 16px 48px;
         background: var(--bg);
         color: var(--text);
-        font: 14px/1.6 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+        font: 13px/1.55 -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
           'Microsoft YaHei', sans-serif;
       }
-      .wrap { max-width: 960px; margin: 0 auto; }
-      header { margin-bottom: 20px; }
-      h1 { font-size: 22px; margin: 0 0 6px; }
-      .sub { color: var(--muted); font-size: 13px; }
-      .cards {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-        gap: 12px;
-        margin-bottom: 20px;
+      button, input, select { font: inherit; }
+      button { cursor: pointer; }
+      .page { max-width: 1160px; margin: 0 auto; padding: 28px 16px 36px; }
+      .refresh-bar { display: flex; align-items: center; justify-content: flex-end; gap: 14px; margin: -10px 0 18px; color: var(--muted); font-size: 12px; }
+      .refresh-toggle { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+      .refresh-toggle input { position: absolute; opacity: 0; pointer-events: none; }
+      .refresh-switch { position: relative; display: inline-block; width: 34px; height: 20px; border-radius: 999px; background: var(--line); }
+      .refresh-switch::after { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; content: ''; transition: transform .18s ease; }
+      .refresh-toggle input:checked + .refresh-switch { background: var(--green); }
+      .refresh-toggle input:checked + .refresh-switch::after { transform: translateX(14px); }
+      .refresh-bar select { min-height: 29px; }
+      .info-heading { display: flex; align-items: center; gap: 13px; margin: 0 0 22px 2px; }
+      .info-heading h1 { margin: 0; color: var(--text); font-size: 29px; line-height: 1.2; letter-spacing: 0; }
+      .info-icon { display: grid; width: 37px; height: 42px; place-items: center; color: var(--accent); }
+      .info-icon svg { width: 36px; height: 40px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2.1; }
+      .info-card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 72px; margin-bottom: 12px; padding: 22px 30px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); box-shadow: var(--shadow); }
+      .info-column { min-width: 0; }
+      .info-row { display: grid; grid-template-columns: 92px minmax(0, 1fr); align-items: baseline; gap: 17px; min-height: 39px; padding: 7px 0; }
+      .info-label { color: var(--muted); font-size: 13px; }
+      .info-value { overflow: hidden; color: var(--text); font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+      .summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .summary-card {
+        --tone: var(--accent);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 88px;
+        padding: 13px 17px;
+        border: 1px solid color-mix(in srgb, var(--tone) 16%, var(--line));
+        border-left: 4px solid var(--tone);
+        border-radius: 5px;
+        background: color-mix(in srgb, var(--tone) 7%, var(--panel));
+        box-shadow: var(--shadow);
       }
-      .card {
-        background: var(--card);
+      .summary-card.green { --tone: var(--green); }
+      .summary-card.amber { --tone: var(--amber); }
+      .summary-label { color: var(--tone); font-size: 13px; font-weight: 700; }
+      .summary-caption { color: var(--muted); font-size: 11px; }
+      .summary-value { color: var(--tone); font-size: 29px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+      .section {
+        margin-top: 10px;
+        padding: 13px;
         border: 1px solid var(--line);
-        border-radius: 10px;
-        padding: 16px;
+        border-radius: 5px;
+        background: var(--panel);
+        box-shadow: var(--shadow);
       }
-      .card .k { color: var(--muted); font-size: 12px; }
-      .card .v { font-size: 28px; font-weight: 600; margin-top: 4px; }
-      .card .v.fresh { color: var(--fresh); }
-      .card .v.dup { color: var(--dup); }
-      section {
-        background: var(--card);
+      .section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
+      h2 { margin: 0; font-size: 14px; }
+      .section-count { color: var(--muted); font-size: 11px; }
+      .filters { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; }
+      .filter-field {
+        display: flex;
+        flex: 1 1 260px;
+        min-height: 33px;
+        align-items: center;
+        padding: 0 10px;
         border: 1px solid var(--line);
-        border-radius: 10px;
-        padding: 16px;
-        margin-bottom: 16px;
+        border-radius: 4px;
+        background: var(--panel-soft);
       }
-      h2 { font-size: 15px; margin: 0 0 12px; }
-      .scroll { overflow-x: auto; }
-      table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 420px; }
-      th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
-      th { color: var(--muted); font-weight: 500; }
+      .filter-field:focus-within { border-color: var(--accent); }
+      .filter-field input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--text); }
+      select {
+        min-height: 33px;
+        padding: 0 25px 0 9px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        outline: 0;
+        background: var(--panel-soft);
+        color: var(--text);
+      }
+      .filter-reset {
+        min-height: 33px;
+        padding: 0 12px;
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        background: var(--panel);
+        color: var(--muted);
+      }
+      .filter-reset:hover { border-color: var(--accent); color: var(--accent); }
+      .filter-search {
+        min-height: 33px;
+        padding: 0 15px;
+        border: 1px solid var(--accent);
+        border-radius: 4px;
+        background: var(--accent);
+        color: #fff;
+      }
+      .filter-search:hover { filter: brightness(.95); }
+      .table-scroll { overflow-x: auto; }
+      table { width: 100%; min-width: 720px; border-collapse: collapse; font-size: 12px; }
+      .account-table { min-width: 1120px; }
+      th, td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+      th { background: var(--panel-soft); color: var(--muted); font-size: 11px; font-weight: 600; }
+      .operation-col { position: sticky; right: 0; z-index: 2; min-width: 174px; background: var(--panel); box-shadow: -7px 0 10px -10px rgb(36 50 75 / 45%); }
+      th.operation-col { z-index: 3; background: var(--panel-soft); }
+      tbody tr:hover .operation-col { background: color-mix(in srgb, var(--accent) 4%, var(--panel)); }
+      tbody tr:hover { background: color-mix(in srgb, var(--accent) 4%, var(--panel)); }
+      tbody tr:last-child td { border-bottom: 0; }
       td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-      .bars { display: flex; align-items: flex-end; gap: 4px; height: 120px; min-width: 300px; }
-      .bar-col { flex: 1 1 0; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; min-width: 14px; }
-      .bar { border-radius: 2px 2px 0 0; }
-      .bar.fresh { background: var(--fresh); }
-      .bar.dup { background: var(--dup); }
-      .bar-x { margin-top: 6px; font-size: 10px; color: var(--muted); text-align: center; }
-      .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin-top: 10px; }
-      .dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; }
-      .dot.fresh { background: var(--fresh); }
-      .dot.dup { background: var(--dup); }
-      .note { color: var(--muted); font-size: 12px; margin-top: 20px; text-align: center; }
-      .msg { text-align: center; padding: 60px 20px; color: var(--muted); }
-      .msg strong { display: block; font-size: 18px; color: var(--text); margin-bottom: 8px; }
+      .account-cell { display: flex; align-items: center; gap: 9px; }
+      .account-index { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 4px; background: color-mix(in srgb, var(--accent) 11%, var(--panel)); color: var(--accent); font-size: 10px; font-weight: 700; }
+      .account-avatar { position: relative; display: grid; width: 34px; height: 34px; flex: none; place-items: center; overflow: hidden; border-radius: 50%; background: color-mix(in srgb, var(--accent) 12%, var(--panel)); color: var(--accent); font-size: 13px; font-weight: 700; }
+      .account-avatar img { width: 100%; height: 100%; object-fit: cover; }
+      .account-avatar-empty { display: grid; width: 100%; height: 100%; place-items: center; color: var(--muted); font-size: 11px; font-weight: 600; }
+      .account-primary { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
+      .account-name { color: var(--text); font-weight: 600; }
+      .account-handle { overflow: hidden; max-width: 230px; color: var(--muted); font-size: 11px; text-overflow: ellipsis; }
+      .account-home-link { display: inline-block; max-width: 250px; overflow: hidden; color: var(--green); text-overflow: ellipsis; white-space: nowrap; }
+      .account-home-qr { width: 76px; height: 76px; padding: 4px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+      .account-actions { display: flex; gap: 7px; white-space: nowrap; }
+      .account-actions button { min-height: 31px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); }
+      .account-actions button:hover { border-color: var(--accent); color: var(--accent); }
+      .status { display: inline-flex; min-height: 21px; align-items: center; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+      .status::before { width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: currentColor; content: ''; }
+      .status-online { color: var(--green); background: color-mix(in srgb, var(--green) 10%, var(--panel)); }
+      .status-offline { color: var(--muted); background: color-mix(in srgb, var(--muted) 10%, var(--panel)); }
+      .status-error { color: var(--red); background: color-mix(in srgb, var(--red) 10%, var(--panel)); }
+      .empty { padding: 26px 12px; color: var(--muted); text-align: center; }
+      .pagination { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin-top: 11px; color: var(--muted); font-size: 11px; }
+      .pagination button { min-width: 29px; height: 27px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--text); }
+      .pagination button:disabled { cursor: default; opacity: .45; }
+      .pagination select { min-height: 27px; padding-top: 0; padding-bottom: 0; }
+      .note { margin: 15px 0 0; color: var(--muted); font-size: 11px; text-align: center; }
+      .msg { padding: 70px 20px; color: var(--muted); text-align: center; }
+      .msg strong { display: block; margin-bottom: 6px; color: var(--text); font-size: 17px; }
+      .dialog-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgb(15 23 42 / 35%); }
+      .dialog { width: min(1180px, 100%); max-height: 88vh; overflow: auto; padding: 22px; border-radius: 10px; background: var(--panel); box-shadow: 0 18px 50px rgb(15 23 42 / 22%); }
+      .dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 15px; }
+      .dialog-head h2 { font-size: 19px; }
+      .dialog-close { width: 31px; height: 31px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); color: var(--text); font-size: 20px; }
+      .fan-avatar { display: inline-grid; width: 34px; height: 34px; place-items: center; border-radius: 50%; background: var(--panel-soft); color: var(--muted); font-size: 11px; }
+      .badge { display: inline-flex; min-width: 28px; justify-content: center; padding: 3px 8px; border-radius: 999px; color: #fff; font-size: 11px; }
+      .badge-fresh { background: var(--accent); }
+      .badge-dup { background: var(--red); }
+      .trend-note { margin: 0 0 12px; color: var(--muted); font-size: 12px; }
+      @media (max-width: 700px) {
+        .page { padding: 10px 10px 28px; }
+        .info-heading { margin: 10px 2px 16px; }
+        .info-heading h1 { font-size: 24px; }
+        .info-card { grid-template-columns: 1fr; gap: 0; padding: 14px 17px; }
+        .info-row { grid-template-columns: 76px minmax(0, 1fr); gap: 10px; }
+        .summary-grid { grid-template-columns: 1fr; }
+        .filters { align-items: stretch; flex-wrap: wrap; }
+        .filter-field { flex-basis: 100%; }
+        .filters select, .filter-reset { flex: 1 1 0; }
+        .refresh-bar { align-items: flex-start; flex-wrap: wrap; justify-content: flex-start; }
+      }
     </style>
   </head>
   <body>
-    <div class="wrap" id="app">
+    <main class="page" id="app">
       <div class="msg">加载中…</div>
-    </div>
-
+    </main>
     <script>
-      // 只读看板：拿分享令牌换一份聚合统计。
-      // 后端接口本身就不返回任何粉丝身份信息与聊天内容，这里也没有任何展示它们的代码。
       const token = location.pathname.split('/').pop()
       const app = document.getElementById('app')
-
       const FAIL = {
         not_found: ['链接无效', '这个分享链接不存在，或者对应的工单已被删除。'],
         expired: ['链接已过期', '该分享链接已超过有效期，请向发起人索取新链接。'],
         revoked: ['链接已停用', '发起人已手动停用该链接。']
       }
+      const state = { rows: [], idQuery: '', nameQuery: '', status: 'all', channel: 'all', page: 1, pageSize: 10, listAutoRefresh: true, listRefreshMinutes: 3, lastUpdated: 0, resetTime: '00:00:00' }
+      let listTimer = 0
+      let countdownTimer = 0
 
       function esc(s) {
-        return String(s ?? '').replace(/[&<>"']/g, (c) =>
-          ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
-        )
+        return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
       }
-
       function fmtDate(ts, tz) {
         if (ts === undefined || ts === null) return '—'
         return new Date(ts + tz * 60000).toISOString().slice(0, 16).replace('T', ' ')
       }
-
-      function fmtDuration(sec) {
-        if (sec === null || sec === undefined) return '—'
-        if (sec < 60) return sec + ' 秒'
-        if (sec < 3600) return Math.round(sec / 60) + ' 分钟'
-        return (sec / 3600).toFixed(1) + ' 小时'
+      function fmtDateTime(ts, tz) {
+        if (ts === undefined || ts === null) return '—'
+        return new Date(ts + tz * 60000).toISOString().slice(0, 19).replace('T', ' ')
       }
-
       function showFail(reason) {
+        clearInterval(countdownTimer)
         const [title, body] = FAIL[reason] || ['无法访问', '请联系发起人。']
-        app.innerHTML =
-          '<div class="msg"><strong>' + esc(title) + '</strong>' + esc(body) + '</div>'
+        app.innerHTML = '<div class="msg"><strong>' + esc(title) + '</strong>' + esc(body) + '</div>'
       }
-
-      function trendBars(days) {
-        if (!days.length) return '<p class="sub">暂无数据</p>'
-        const max = Math.max(1, ...days.map((d) => d.total))
-        // 日期多的时候只标首尾和整周，避免 x 轴糊成一片
-        const cols = days
-          .map((d, i) => {
-            const fh = Math.round((d.fresh / max) * 100)
-            const dh = Math.round((d.duplicate / max) * 100)
-            const label =
-              days.length <= 10 || i === 0 || i === days.length - 1 || i % 7 === 0
-                ? d.date.slice(5)
-                : ''
-            return (
-              '<div class="bar-col" title="' +
-              esc(d.date) + '：新粉 ' + d.fresh + ' / 重复 ' + d.duplicate +
-              '"><div class="bar dup" style="height:' + dh + 'px"></div>' +
-              '<div class="bar fresh" style="height:' + fh + 'px"></div>' +
-              '<div class="bar-x">' + esc(label) + '</div></div>'
-            )
+      function channelLabel(channel) {
+        return ({ whatsapp: 'WhatsApp', telegram: 'Telegram', telegram_bot: 'Telegram Bot', line: 'LINE' })[channel] || channel || '—'
+      }
+      function handleLabel(row) {
+        if (!row.handle) return '手机号未同步'
+        return row.channel === 'whatsapp' && /^\d+$/.test(row.handle) ? '+' + row.handle : row.handle
+      }
+      function statusLabel(row) {
+        const status = row.status || 'offline'
+        if (status === 'online') return '<span class="status status-online">在线</span>'
+        if (status === 'error') return '<span class="status status-error">异常</span>'
+        return '<span class="status status-offline">离线</span>'
+      }
+      function accountCountLabel(rows) {
+        const counts = rows.reduce((result, row) => {
+          const status = row.status || 'offline'
+          if (status === 'online') result.online++
+          else if (status === 'error') result.error++
+          else result.offline++
+          return result
+        }, { online: 0, offline: 0, error: 0 })
+        return '共 ' + rows.length + ' 个账号 / ' + counts.online + ' 个在线 / ' + counts.offline + ' 个离线 / ' + counts.error + ' 个异常'
+      }
+      function openDialog(title, body) {
+        const old = document.getElementById('campaign-dialog')
+        if (old) old.remove()
+        const el = document.createElement('div')
+        el.id = 'campaign-dialog'
+        el.className = 'dialog-backdrop'
+        el.innerHTML = '<div class="dialog"><div class="dialog-head"><h2>' + esc(title) + '</h2><button class="dialog-close" type="button">×</button></div>' + body + '</div>'
+        el.querySelector('.dialog-close').addEventListener('click', () => el.remove())
+        el.addEventListener('click', (event) => { if (event.target === el) el.remove() })
+        document.body.appendChild(el)
+      }
+      function loadAccountAction(accountId, mode) {
+        const title = mode === 'fans' ? '粉丝详情' : '进粉趋势'
+        openDialog(title, '<div class="empty">加载中…</div>')
+        fetch('/public/campaign/' + encodeURIComponent(token) + '/account/' + encodeURIComponent(accountId) + '/' + mode)
+          .then(async (res) => {
+            const body = await res.json().catch(() => ({}))
+            if (!res.ok) throw new Error(body.error || '加载失败')
+            return body
           })
-          .join('')
-        return (
-          '<div class="scroll"><div class="bars">' + cols + '</div></div>' +
-          '<div class="legend"><span><i class="dot fresh"></i>新粉</span>' +
-          '<span><i class="dot dup"></i>重复</span></div>'
-        )
+          .then((body) => {
+            const dialog = document.getElementById('campaign-dialog')
+            if (!dialog) return
+            if (mode === 'fans') {
+              const fans = body.fans || []
+              const rows = fans.length ? fans.map((fan, i) => '<tr><td>' + (i + 1) + '</td><td><span class="fan-avatar">无</span></td><td>' + esc(fan.contactId) + '</td><td>' + esc(fan.title || '无') + '</td><td><span class="badge ' + (fan.duplicate ? 'badge-dup' : 'badge-fresh') + '">' + (fan.duplicate ? '是' : '否') + '</span></td><td>' + fan.duplicateCount + '</td><td>' + fmtDateTime(fan.firstAt, 480) + '</td></tr>').join('') : '<tr><td colspan="7"><div class="empty">暂无进粉</div></td></tr>'
+              dialog.querySelector('.dialog').innerHTML = '<div class="dialog-head"><h2>粉丝详情</h2><button class="dialog-close" type="button">×</button></div><div class="table-scroll"><table><thead><tr><th>序号</th><th>粉丝头像</th><th>粉丝ID</th><th>粉丝名称</th><th>是否重粉</th><th>重复次数</th><th>进粉时间</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+            } else {
+              const days = body.days || []
+              const rows = days.length ? days.map((day) => '<tr><td>' + esc(day.date) + '</td><td class="num">' + day.total + '</td><td class="num">' + day.fresh + '</td><td class="num">' + day.duplicate + '</td></tr>').join('') : '<tr><td colspan="4"><div class="empty">近 7 天暂无进粉</div></td></tr>'
+              dialog.querySelector('.dialog').innerHTML = '<div class="dialog-head"><h2>进粉趋势</h2><button class="dialog-close" type="button">×</button></div><p class="trend-note">仅统计最近 7 个自然日</p><div class="table-scroll"><table><thead><tr><th>日期</th><th class="num">进粉</th><th class="num">新粉</th><th class="num">重粉</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+            }
+            dialog.querySelector('.dialog-close').addEventListener('click', () => dialog.remove())
+          })
+          .catch((err) => {
+            const dialog = document.getElementById('campaign-dialog')
+            if (dialog) dialog.querySelector('.dialog').innerHTML = '<div class="dialog-head"><h2>' + esc(title) + '</h2><button class="dialog-close" type="button">×</button></div><p class="empty">' + esc(err.message) + '</p>'
+            if (dialog) dialog.querySelector('.dialog-close').addEventListener('click', () => dialog.remove())
+          })
       }
-
-      function sourceRows(rows) {
-        if (!rows.length) return '<p class="sub">暂无数据</p>'
-        return (
-          '<div class="scroll"><table><thead><tr><th>来源</th><th>归因方式</th>' +
-          '<th class="num">进线</th><th class="num">新粉</th><th class="num">重复</th>' +
-          '</tr></thead><tbody>' +
-          rows
-            .map(
-              (r) =>
-                '<tr><td>' + (r.code ? esc(r.code) : '<span class="sub">未归因</span>') +
-                '</td><td>' + (r.via === 'ad' ? '广告点击' : r.via === 'code' ? '追踪码' : '—') +
-                '</td><td class="num">' + r.total + '</td><td class="num">' + r.fresh +
-                '</td><td class="num">' + r.duplicate + '</td></tr>'
-            )
-            .join('') +
-          '</tbody></table></div>'
-        )
+      function todayKey(tz) {
+        return new Date(Date.now() + tz * 60000).toISOString().slice(0, 10)
       }
-
-      function accountRows(rows) {
-        if (!rows.length) return '<p class="sub">暂无数据</p>'
-        return (
-          '<div class="scroll"><table><thead><tr><th>账号</th><th>平台</th>' +
-          '<th class="num">进线</th><th class="num">新粉</th><th class="num">重复</th>' +
-          '</tr></thead><tbody>' +
-          rows
-            .map(
-              (a) =>
-                '<tr><td>' + esc(a.label || a.accountId) + '</td><td>' + esc(a.channel) +
-                '</td><td class="num">' + a.total + '</td><td class="num">' + a.fresh +
-                '</td><td class="num">' + a.duplicate + '</td></tr>'
-            )
-            .join('') +
-          '</tbody></table></div>'
-        )
+      function resetBoundaryAt(now, resetTime) {
+        const match = /^(\d{1,2}):(\d{2})/.exec(String(resetTime || '00:00'))
+        const hour = match ? Math.min(23, Number(match[1])) : 0
+        const minute = match ? Math.min(59, Number(match[2])) : 0
+        const tz = 480
+        const shifted = new Date(now + tz * 60000)
+        const localMidnight = Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) - tz * 60000
+        const boundary = localMidnight + (hour * 60 + minute) * 60000
+        return now >= boundary ? boundary : boundary - 86_400_000
       }
-
+      function updateResetCountdown() {
+        const el = document.getElementById('reset-countdown')
+        if (!el) return
+        const next = resetBoundaryAt(Date.now(), state.resetTime) + 86_400_000
+        const seconds = Math.max(0, Math.ceil((next - Date.now()) / 1000))
+        const hours = Math.floor(seconds / 3600)
+        const minutes = Math.floor((seconds % 3600) / 60)
+        const remain = seconds % 60
+        el.textContent = String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0') + ':' + String(remain).padStart(2, '0')
+      }
+      function accountTable() {
+        const idQuery = state.idQuery.trim().toLowerCase()
+        const nameQuery = state.nameQuery.trim().toLowerCase()
+        const filtered = state.rows.filter((row) => {
+          const accountId = String(row.accountId || '').toLowerCase()
+          const handle = String(row.handle || '').toLowerCase()
+          const name = String(row.label || '').toLowerCase()
+          const rowStatus = row.status || 'offline'
+          const matchesId = !idQuery || accountId.includes(idQuery) || handle.includes(idQuery)
+          const matchesName = !nameQuery || name.includes(nameQuery)
+          const matchesStatus = state.status === 'all' || rowStatus === state.status
+          const matchesChannel = state.channel === 'all' || row.channel === state.channel
+          return matchesId && matchesName && matchesStatus && matchesChannel
+        })
+        const pages = Math.max(1, Math.ceil(filtered.length / state.pageSize))
+        state.page = Math.min(state.page, pages)
+        const start = (state.page - 1) * state.pageSize
+        const pageRows = filtered.slice(start, start + state.pageSize)
+        const body = pageRows.length ? pageRows.map((row, i) => {
+          const avatar = row.avatarUrl
+            ? '<img src="' + esc(row.avatarUrl) + '" alt="" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'" /><span class="account-avatar-empty" style="display:none">无</span>'
+            : '<span class="account-avatar-empty">无</span>'
+          const homepage = row.homepageUrl ? '<a class="account-home-link" href="' + esc(row.homepageUrl) + '" target="_blank" rel="noreferrer">' + esc(row.homepageUrl) + '</a>' : '<span class="account-avatar-empty">无</span>'
+          const qr = row.homepageQrDataUrl ? '<img class="account-home-qr" src="' + esc(row.homepageQrDataUrl) + '" alt="主页二维码" />' : '<span class="account-avatar-empty">无</span>'
+          const lastAt = row.lastAt ? fmtDateTime(row.lastAt, 480) : '无'
+          return '<tr><td><div class="account-cell"><span class="account-index">' + (start + i + 1) + '</span><span class="account-avatar">' + avatar + '</span><span class="account-primary"><span class="account-name">' + esc(row.label || row.accountId) + '</span><span class="account-handle">' + esc(handleLabel(row)) + '</span></span></div></td><td>' + esc(channelLabel(row.channel)) + '</td><td>' + statusLabel(row) + '</td><td>' + lastAt + '</td><td class="num">' + (row.target || 0) + '</td><td class="num">' + row.total + '</td><td class="num">' + row.fresh + '</td><td class="num">' + row.duplicate + '</td><td>' + homepage + '</td><td>' + qr + '</td><td class="operation-col"><div class="account-actions"><button type="button" data-action="fans" data-account="' + esc(row.accountId) + '">粉丝详情</button><button type="button" data-action="trend" data-account="' + esc(row.accountId) + '">进粉趋势</button></div></td></tr>'
+        }).join('') : '<tr><td colspan="11"><div class="empty">暂无匹配账号</div></td></tr>'
+        document.getElementById('account-body').innerHTML = body
+        document.getElementById('account-count').textContent = accountCountLabel(filtered)
+        document.getElementById('page-info').textContent = pages > 1 ? state.page + ' / ' + pages : ''
+        document.getElementById('page-prev').disabled = state.page <= 1
+        document.getElementById('page-next').disabled = state.page >= pages
+        document.querySelectorAll('[data-action]').forEach((button) => button.addEventListener('click', () => loadAccountAction(button.dataset.account, button.dataset.action)))
+      }
       function render(data) {
         const c = data.campaign
         const s = data.stats
-        const tz = c.tzOffsetMinutes ?? 480
-        const dedupNote =
-          c.dedup.libraries > 0 || c.dedup.beforeAt
-            ? '判重口径：' +
-              (c.dedup.libraries > 0 ? '重粉库 ' + c.dedup.libraries + ' 个' : '') +
-              (c.dedup.libraries > 0 && c.dedup.beforeAt ? ' + ' : '') +
-              (c.dedup.beforeAt ? fmtDate(c.dedup.beforeAt, tz) + ' 之前出现过' : '')
-            : '未设置判重规则，全部计为新粉'
-
+        state.lastUpdated = Date.now()
+        // 工单统计与时间展示统一使用北京时间（UTC+8）。
+        const tz = 480
+        state.resetTime = c.resetTime || '00:00:00'
+        const today = s.today || s.byDay.find((d) => d.date === todayKey(tz)) || { total: 0 }
+        const type = c.type || s.byAccount.find((row) => row.channel)?.channel || '—'
+        const expiresAt = c.endAt ? fmtDateTime(c.endAt, tz) : '长期有效'
+        state.rows = s.byAccount || []
+        const channels = [...new Set(state.rows.map((row) => row.channel).filter(Boolean))]
+        const options = channels.map((channel) => '<option value="' + esc(channel) + '"' + (state.channel === channel ? ' selected' : '') + '>' + esc(channelLabel(channel)) + '</option>').join('')
         app.innerHTML =
-          '<header><h1>' + esc(c.name) + '</h1><div class="sub">' +
-          fmtDate(c.startAt, tz) + ' 起 · ' +
-          (c.endAt ? '至 ' + fmtDate(c.endAt, tz) : '持续进行中') +
-          '</div><div class="sub">' + esc(dedupNote) + '</div></header>' +
-
-          '<div class="cards">' +
-          '<div class="card"><div class="k">进线总数</div><div class="v">' + s.total + '</div></div>' +
-          '<div class="card"><div class="k">新粉</div><div class="v fresh">' + s.fresh + '</div></div>' +
-          '<div class="card"><div class="k">重复</div><div class="v dup">' + s.duplicate + '</div></div>' +
-          '<div class="card"><div class="k">有效</div><div class="v">' + s.effective + '</div></div>' +
-          '</div>' +
-
-          '<section><h2>每日趋势</h2>' + trendBars(s.byDay) + '</section>' +
-          '<section><h2>账号明细</h2>' + accountRows(s.byAccount) + '</section>' +
-          '<section><h2>投放来源</h2>' + sourceRows(s.bySource || []) + '</section>' +
-
-          '<section><h2>客服响应</h2><div class="scroll"><table><tbody>' +
-          '<tr><td>已回复客户</td><td class="num">' + s.response.replied + '</td></tr>' +
-          '<tr><td>回复率</td><td class="num">' +
-          Math.round(s.response.replyRate * 100) + '%</td></tr>' +
-          '<tr><td>首次响应中位数</td><td class="num">' +
-          fmtDuration(s.response.medianFirstReplySec) + '</td></tr>' +
-          '</tbody></table></div></section>' +
-
-          '<p class="note">本看板仅展示统计数据，不包含任何聊天内容与客户信息。' +
-          '更新于 ' + fmtDate(s.computedAt, tz) + '</p>'
+          '<div class="refresh-bar"><span>最后更新：' + new Date(state.lastUpdated).toLocaleString() + '</span><label class="refresh-toggle"><span>自动刷新</span><input id="list-refresh-toggle" type="checkbox" ' + (state.listAutoRefresh ? 'checked' : '') + ' /><i class="refresh-switch"></i></label><select id="list-refresh-minutes"><option value="3"' + (state.listRefreshMinutes === 3 ? ' selected' : '') + '>3分钟</option><option value="5"' + (state.listRefreshMinutes === 5 ? ' selected' : '') + '>5分钟</option><option value="10"' + (state.listRefreshMinutes === 10 ? ' selected' : '') + '>10分钟</option><option value="30"' + (state.listRefreshMinutes === 30 ? ' selected' : '') + '>30分钟</option></select></div>' +
+          '<div class="info-heading"><span class="info-icon" aria-hidden="true"><svg viewBox="0 0 32 36"><rect x="6" y="4" width="20" height="28" rx="3"></rect><path d="M11 4.5V3a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.5"></path><path d="M11 12h2M17 12h4M11 18h2M17 18h4M11 24h2M17 24h4"></path></svg></span><h1>工单信息</h1></div>' +
+          '<section class="info-card"><div class="info-column"><div class="info-row"><span class="info-label">工单编号：</span><span class="info-value" title="' + esc(c.id) + '">' + esc(c.id || '—') + '</span></div><div class="info-row"><span class="info-label">工单类型：</span><span class="info-value">' + esc(type) + '</span></div><div class="info-row"><span class="info-label">创建时间：</span><span class="info-value">' + fmtDateTime(c.createdAt, tz) + '</span></div><div class="info-row"><span class="info-label">总目标数：</span><span class="info-value">' + Number(c.totalTarget || 0) + '</span></div></div><div class="info-column"><div class="info-row"><span class="info-label">置零时间：</span><span class="info-value">' + esc(state.resetTime) + '</span></div><div class="info-row"><span class="info-label">重置倒计时：</span><span class="info-value" id="reset-countdown">00:00:00</span></div><div class="info-row"><span class="info-label">工单名称：</span><span class="info-value" title="' + esc(c.name) + '">' + esc(c.name || '—') + '</span></div><div class="info-row"><span class="info-label">到期时间：</span><span class="info-value">' + esc(expiresAt) + '</span></div></div></section>' +
+          '<div class="summary-grid"><article class="summary-card green"><div><div class="summary-label">引流统计总览</div><div class="summary-caption">申请总数</div></div><strong class="summary-value">' + s.total + '</strong></article><article class="summary-card amber"><div><div class="summary-label">今日引流统计</div><div class="summary-caption">申请总数</div></div><strong class="summary-value">' + today.total + '</strong></article></div>' +
+          '<section class="section"><div class="section-head"><h2>所属账号</h2><span class="section-count" id="account-count"></span></div><div class="filters"><label class="filter-field"><input id="account-id-query" type="search" placeholder="进粉账号 ID / 手机号" value="' + esc(state.idQuery) + '" /></label><label class="filter-field"><input id="account-name-query" type="search" placeholder="进粉账号名称" value="' + esc(state.nameQuery) + '" /></label><select id="status-filter"><option value="all"' + (state.status === 'all' ? ' selected' : '') + '>全部状态</option><option value="online"' + (state.status === 'online' ? ' selected' : '') + '>在线</option><option value="offline"' + (state.status === 'offline' ? ' selected' : '') + '>离线</option><option value="error"' + (state.status === 'error' ? ' selected' : '') + '>异常</option></select><select id="channel-filter"><option value="all"' + (state.channel === 'all' ? ' selected' : '') + '>全部平台</option>' + options + '</select><button class="filter-search" id="account-search" type="button">查询</button><button class="filter-reset" id="filter-reset" type="button">重置</button></div><div class="table-scroll"><table class="account-table"><thead><tr><th>账号</th><th>平台</th><th>状态</th><th>上次进粉时间</th><th class="num">目标数</th><th class="num">总申请数</th><th class="num">新粉</th><th class="num">重复</th><th>主页链接</th><th>二维码</th><th class="operation-col">操作</th></tr></thead><tbody id="account-body"></tbody></table></div><div class="pagination"><span id="page-info"></span><button id="page-prev" type="button">‹</button><button id="page-next" type="button">›</button><select id="page-size"><option value="10"' + (state.pageSize === 10 ? ' selected' : '') + '>10 条/页</option><option value="50"' + (state.pageSize === 50 ? ' selected' : '') + '>50 条/页</option><option value="100"' + (state.pageSize === 100 ? ' selected' : '') + '>100 条/页</option></select></div></section>' +
+          '<p class="note">看板首页展示统计数据；点击账号操作可查看该账号的进粉明细。更新于 ' + fmtDate(s.computedAt, tz) + '</p>'
+        const runSearch = () => {
+          state.idQuery = document.getElementById('account-id-query').value
+          state.nameQuery = document.getElementById('account-name-query').value
+          state.status = document.getElementById('status-filter').value
+          state.channel = document.getElementById('channel-filter').value
+          state.page = 1
+          accountTable()
+        }
+        document.getElementById('account-search').addEventListener('click', runSearch)
+        document.querySelectorAll('#account-id-query, #account-name-query').forEach((input) => input.addEventListener('keydown', (event) => { if (event.key === 'Enter') runSearch() }))
+        document.getElementById('filter-reset').addEventListener('click', () => {
+          state.idQuery = ''
+          state.nameQuery = ''
+          state.status = 'all'
+          state.channel = 'all'
+          state.page = 1
+          document.getElementById('account-id-query').value = ''
+          document.getElementById('account-name-query').value = ''
+          document.getElementById('status-filter').value = 'all'
+          document.getElementById('channel-filter').value = 'all'
+          accountTable()
+        })
+        document.getElementById('page-prev').addEventListener('click', () => { state.page--; accountTable() })
+        document.getElementById('page-next').addEventListener('click', () => { state.page++; accountTable() })
+        document.getElementById('page-size').addEventListener('change', (event) => { state.pageSize = Number(event.target.value); state.page = 1; accountTable() })
+        document.getElementById('list-refresh-toggle').addEventListener('change', (event) => { state.listAutoRefresh = event.target.checked; scheduleTimers() })
+        document.getElementById('list-refresh-minutes').addEventListener('change', (event) => { state.listRefreshMinutes = Number(event.target.value); scheduleTimers() })
+        clearInterval(countdownTimer)
+        updateResetCountdown()
+        countdownTimer = setInterval(updateResetCountdown, 1000)
+        accountTable()
       }
-
-      fetch('/public/campaign/' + encodeURIComponent(token))
+      function scheduleTimers() {
+        if (listTimer) clearInterval(listTimer)
+        if (state.listAutoRefresh) listTimer = setInterval(reload, state.listRefreshMinutes * 60 * 1000)
+      }
+      function reload() {
+        return fetch('/public/campaign/' + encodeURIComponent(token))
         .then(async (res) => {
           const body = await res.json().catch(() => ({}))
           if (!res.ok) return showFail(body.error)
           render(body)
         })
         .catch(() => showFail('not_found'))
+      }
+      reload().then(scheduleTimers)
     </script>
   </body>
 </html>

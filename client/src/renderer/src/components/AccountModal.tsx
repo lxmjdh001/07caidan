@@ -14,7 +14,8 @@ interface Props {
   config: AccountConfig
   onSave: (key: string, config: AccountConfig) => Promise<void>
   onLogout: (key: string) => Promise<void>
-  onRemove: (key: string) => Promise<void>
+  /** 返回 true 表示账号已删除；失败时保留弹窗，便于用户看到错误后重试。 */
+  onRemove: (key: string) => Promise<boolean>
   onClose: () => void
 }
 
@@ -36,6 +37,7 @@ export function AccountModal({
   const [deviceLabel, setDeviceLabel] = useState(config.deviceLabel ?? '')
   const [creds, setCreds] = useState<Record<string, string>>(config.credentials ?? {})
   const [saving, setSaving] = useState(false)
+  const [removing, setRemoving] = useState(false)
   const [authInput, setAuthInput] = useState('')
   const [authBusy, setAuthBusy] = useState(false)
 
@@ -59,6 +61,13 @@ export function AccountModal({
   // phone_code 类平台同时支持扫码与手机号（Telegram 官方客户端默认扫码）
   const supportsQrLogin = plugin?.authType === 'phone_code'
   const loggedIn = state?.status === 'connected'
+  const displayStatus = config.disabled
+    ? 'disabled'
+    : state?.status === 'connected'
+      ? 'online'
+      : state?.status === 'error'
+        ? 'abnormal'
+        : 'offline'
   const switchLogin = async (mode: 'qr' | 'phone'): Promise<void> => {
     setAuthBusy(true)
     try {
@@ -109,7 +118,7 @@ export function AccountModal({
     setSaving(true)
     try {
       await onSave(accountKey, buildConfig())
-      await api.startChannel(accountKey)
+      if (!config.disabled) await api.startChannel(accountKey)
       if (plugin?.authType !== 'phone_code') onClose()
     } finally {
       setSaving(false)
@@ -126,7 +135,7 @@ export function AccountModal({
           </span>
           <span className="account-key">{accountKey}</span>
           <span className="account-status">
-            {t(`status.${state?.status ?? 'stopped'}` as 'status.stopped')}
+            {t(`status.${displayStatus}` as 'status.online')}
           </span>
         </div>
 
@@ -272,20 +281,21 @@ export function AccountModal({
           >
             {t('settings.logout')}
           </button>
-          {accountKey !== 'whatsapp:main' && (
-            <button
-              type="button"
-              className="danger-btn"
-              onClick={() => {
-                if (window.confirm(t('settings.removeConfirm'))) {
-                  void onRemove(accountKey)
-                  onClose()
-                }
-              }}
-            >
-              {t('settings.removeAccount')}
-            </button>
-          )}
+          <button
+            type="button"
+            className="danger-btn"
+            disabled={removing}
+            onClick={() => {
+              if (window.confirm(t('settings.removeConfirm'))) {
+                setRemoving(true)
+                void onRemove(accountKey).then((removed) => {
+                  if (removed) onClose()
+                }).finally(() => setRemoving(false))
+              }
+            }}
+          >
+            {t('settings.removeAccount')}
+          </button>
         </div>
 
         <footer className="modal-footer">

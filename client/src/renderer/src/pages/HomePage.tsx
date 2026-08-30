@@ -2,23 +2,18 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowRight,
   BadgeCheck,
-  BriefcaseBusiness,
   CircleAlert,
   CircleUserRound,
   CreditCard,
-  FileText,
-  KeyRound,
   Megaphone,
-  MessageCircle,
-  MessageSquareText,
-  Network,
-  Send,
-  UsersRound
 } from 'lucide-react'
 import type { ChannelPluginInfo } from '@shared/ipc'
 import type { ChannelState } from '@shared/domain'
 import type { AppSettings } from '@shared/settings'
 import { useI18n } from '../i18n'
+import whatsappLogo from '../assets/platforms/whatsapp.svg'
+import telegramLogo from '../assets/platforms/telegram.svg'
+import lineLogo from '../assets/platforms/line.svg'
 
 const api = window.omni
 
@@ -49,17 +44,10 @@ interface Props {
   onRefresh: () => void
 }
 
-const APP_META: Record<string, { name: string; color: string; descriptionKey: 'home.whatsappDesc' | 'home.telegramDesc' | 'home.lineDesc'; icon: 'whatsapp' | 'telegram' | 'line' }> = {
-  whatsapp: { name: 'WhatsApp', color: '#25d366', descriptionKey: 'home.whatsappDesc', icon: 'whatsapp' },
-  telegram: { name: 'Telegram', color: '#229ed9', descriptionKey: 'home.telegramDesc', icon: 'telegram' },
-  line: { name: 'LINE', color: '#06c755', descriptionKey: 'home.lineDesc', icon: 'line' }
-}
-
-function AppGlyph({ kind }: { kind: string }): React.JSX.Element {
-  const meta = APP_META[kind] ?? APP_META.whatsapp!
-  if (meta.icon === 'whatsapp') return <MessageCircle size={25} strokeWidth={2.2} />
-  if (meta.icon === 'telegram') return <Send size={24} fill="currentColor" strokeWidth={1.8} />
-  return <MessageCircle size={24} strokeWidth={2.2} />
+const APP_META: Record<string, { name: string; logo: string }> = {
+  whatsapp: { name: 'WhatsApp', logo: whatsappLogo },
+  telegram: { name: 'Telegram', logo: telegramLogo },
+  line: { name: 'LINE', logo: lineLogo }
 }
 
 function money(cents = 0): string {
@@ -137,7 +125,6 @@ export function HomePage({ settings, channels, plugins, onOpenApp, onOpenManagem
           {supportedKinds.map((kind) => {
             const meta = APP_META[kind]!
             const available = kind === 'whatsapp'
-            const count = Object.values(channels).filter((s) => s.kind === kind).length
             return (
               <button
                 type="button"
@@ -146,8 +133,8 @@ export function HomePage({ settings, channels, plugins, onOpenApp, onOpenManagem
                 disabled={!available}
                 onClick={() => available && onOpenApp(kind)}
               >
-                <span className="home-app-icon" style={{ background: meta.color }}><AppGlyph kind={kind} /></span>
-                <span className="home-app-body"><strong>{meta.name}</strong><span>{available ? `${count} · ${t(meta.descriptionKey)}` : t(meta.descriptionKey)}</span></span>
+                <img className="home-app-logo" src={meta.logo} alt="" />
+                <span className="home-app-body"><strong>{meta.name}</strong></span>
                 <span className="home-app-status">{available ? <><BadgeCheck size={17} />{t('home.available')}</> : <><CircleAlert size={17} />{t('home.comingSoon')}</>}</span>
               </button>
             )
@@ -157,19 +144,18 @@ export function HomePage({ settings, channels, plugins, onOpenApp, onOpenManagem
 
       <section className="home-section management-section">
         <div className="section-title-row">
-          <div className="section-title"><BriefcaseBusiness size={20} /><h2>{t('management.nav')}</h2></div>
+          <div className="section-title"><h2>{t('management.nav')}</h2></div>
           <button type="button" className="section-link" onClick={onOpenManagement}>{t('management.openCenter')} <ArrowRight size={15} /></button>
         </div>
         <div className="home-management-grid">
           {[
-            { id: 'subaccounts', title: t('management.subaccounts'), desc: t('management.subaccountsDesc'), icon: <UsersRound size={20} />, available: canSubaccounts, action: onOpenSubaccounts },
-            { id: 'proxy', title: t('management.proxy'), desc: t('management.proxyDesc'), icon: <Network size={20} />, available: false },
-            { id: 'workorders', title: t('management.workorders'), desc: t('management.workordersDesc'), icon: <FileText size={20} />, available: canWorkorders, action: onOpenWorkorders },
-            { id: 'invites', title: t('management.invites'), desc: t('management.invitesDesc'), icon: <KeyRound size={20} />, available: false },
-            { id: 'quick-messages', title: t('management.quickMessages'), desc: t('management.quickMessagesDesc'), icon: <MessageSquareText size={20} />, available: false }
+            { id: 'subaccounts', title: t('management.subaccounts'), desc: t('management.subaccountsDesc'), available: canSubaccounts, action: onOpenSubaccounts },
+            { id: 'proxy', title: t('management.proxy'), desc: t('management.proxyDesc'), available: false },
+            { id: 'workorders', title: t('management.workorders'), desc: t('management.workordersDesc'), available: canWorkorders, action: onOpenWorkorders },
+            { id: 'invites', title: t('management.invites'), desc: t('management.invitesDesc'), available: false },
+            { id: 'quick-messages', title: t('management.quickMessages'), desc: t('management.quickMessagesDesc'), available: false }
           ].map((item) => (
             <button key={item.id} type="button" className={`home-management-card ${item.available ? '' : 'is-pending'}`} disabled={!item.available} onClick={item.action}>
-              <span className="home-management-icon">{item.icon}</span>
               <span className="home-management-copy"><strong>{item.title}</strong><span>{item.desc}</span></span>
               <span className="home-management-badge">{item.available ? t('management.available') : t('management.pending')}</span>
             </button>

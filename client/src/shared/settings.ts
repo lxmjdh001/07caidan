@@ -21,6 +21,8 @@ export interface TranslationConfig {
 }
 
 export interface AccountConfig {
+  /** 是否暂停该账号的连接与消息接收；保留登录凭证，启用后可恢复 */
+  disabled?: boolean
   /** 该账号的代理，如 socks5://127.0.0.1:1080；留空走默认网络 */
   proxyUrl?: string
   /** 该账号的默认客户语言（覆盖全局 targetLangDefault）；留空跟随全局 */
@@ -107,7 +109,7 @@ export interface AppSettings {
   /**
    * 按渠道账号 key（如 whatsapp:main）的独立配置。
    * 这里的 key 集合同时是"账号注册表"：启动时为每个 key 创建适配器。
-   * whatsapp:main 为固定主账号（不可删除，只能退出登录）。
+   * 空列表表示尚未添加任何平台账号；用户可按需添加和删除所有账号。
    */
   accounts: Record<string, AccountConfig>
 }
@@ -120,7 +122,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     engine: 'google-free',
     inboundEnabled: true,
     outboundEnabled: true,
-    confirmBeforeSend: true,
+    confirmBeforeSend: false,
     displayLang: 'zh-CN',
     targetLangDefault: 'en',
     custom: { url: '', apiKey: '' },
@@ -138,5 +140,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   sync: { enabled: false, serverUrl: '', token: '', email: '', uploadMedia: true, cloudSync: true },
   platform: { telegramApiId: '', telegramApiHash: '' },
-  accounts: { 'whatsapp:main': {} }
+  accounts: {}
 }

@@ -6,6 +6,8 @@ import {
   fillDays,
   isDuplicate,
   median,
+  normalizeResetTime,
+  resetBoundaryAt,
   type LeadRow
 } from '../src/campaign-stats.ts'
 
@@ -50,6 +52,22 @@ describe('dayKey', () => {
     const ts2 = Date.UTC(2026, 7, 16, 2, 0, 0)
     assert.equal(dayKey(ts2, 480), '2026-08-16')
     assert.equal(dayKey(ts2, -300), '2026-08-15')
+  })
+})
+
+describe('每日置零时间', () => {
+  test('规范化 HH:mm，非法值回落到零点', () => {
+    assert.equal(normalizeResetTime('12:00'), '12:00')
+    assert.equal(normalizeResetTime('7:05'), '07:05')
+    assert.equal(normalizeResetTime('24:00'), '00:00')
+    assert.equal(normalizeResetTime('bad'), '00:00')
+  })
+
+  test('按工单时区计算当前统计日边界', () => {
+    const before = T0 + 11 * HOUR + 59 * 60_000
+    const after = T0 + 12 * HOUR + 1_000
+    assert.equal(resetBoundaryAt(before, 480, '12:00'), T0 - 12 * HOUR)
+    assert.equal(resetBoundaryAt(after, 480, '12:00'), T0 + 12 * HOUR)
   })
 })
 
@@ -134,6 +152,34 @@ describe('computeCampaignStats', () => {
     assert.equal(s.fresh, 2)
     assert.equal(s.effective, 2)
     assert.deepEqual(s.duplicateBy, { library: 1, timeRange: 0 })
+  })
+
+  test('today 按置零时间统计，而不是固定自然日', () => {
+    const s = compute(
+      [
+        lead({ contactId: 'wa:+before', firstAt: T0 + 11 * HOUR }),
+        lead({ contactId: 'wa:+after', firstAt: T0 + 13 * HOUR })
+      ],
+      { todayStartAt: T0 + 12 * HOUR, now: T0 + 14 * HOUR }
+    )
+    assert.deepEqual(s.today, { total: 1, duplicate: 0, fresh: 1 })
+  })
+
+  test('同工单跨账号的后续进线计为重复，但仍计入申请数', () => {
+    const s = compute([
+      lead({ contactId: 'wa:+1', accountId: 'a1' }),
+      lead({ contactId: 'wa:+1', accountId: 'a2', campaignDuplicate: true })
+    ])
+    assert.equal(s.total, 2)
+    assert.equal(s.fresh, 1)
+    assert.equal(s.duplicate, 1)
+    assert.deepEqual(
+      s.byAccount.map((row) => [row.accountId, row.total, row.fresh, row.duplicate]),
+      [
+        ['a1', 1, 1, 0],
+        ['a2', 1, 0, 1]
+      ]
+    )
   })
 
   test('跨平台隔离：WhatsApp 线索不被含同号码的 Telegram 库判为重复', () => {

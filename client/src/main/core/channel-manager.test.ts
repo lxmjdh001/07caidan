@@ -119,6 +119,24 @@ describe('ChannelManager', () => {
     expect(await store.listMessages('whatsapp:main:42@s.whatsapp.net')).toHaveLength(1)
   })
 
+  it('禁用账号时丢弃消息并阻止发送，重新启用后恢复', async () => {
+    manager.setDisabled('whatsapp:main', true)
+    adapter.fakeIncoming()
+    await flushAsync()
+    expect(events.some((e) => e.type === 'message:new')).toBe(false)
+    expect(await store.listMessages('whatsapp:main:42@s.whatsapp.net')).toHaveLength(0)
+    await expect(manager.start('whatsapp:main')).rejects.toThrow('账号已禁用')
+    await expect(manager.sendText('whatsapp:main:42@s.whatsapp.net', 'blocked')).rejects.toThrow(
+      '账号已禁用'
+    )
+
+    await manager.setAccountEnabled('whatsapp:main', true)
+    expect(adapter.start).toHaveBeenCalled()
+    adapter.fakeIncoming()
+    await flushAsync()
+    expect(events.some((e) => e.type === 'message:new')).toBe(true)
+  })
+
   it('重复 externalId 的消息不重复广播', async () => {
     adapter.fakeIncoming({ externalId: 'DUP', id: 'a' })
     adapter.fakeIncoming({ externalId: 'DUP', id: 'b' })
@@ -137,6 +155,34 @@ describe('ChannelManager', () => {
       { kind: 'whatsapp', accountId: 'main', status: 'connected', selfName: 'Me' }
     ])
     expect(events.some((e) => e.type === 'channel:state')).toBe(true)
+  })
+
+  it('连接后拉取账号自身头像并广播到渠道状态', async () => {
+    adapter.fetchSelfAvatar = vi.fn(async () => 'self-avatar.jpg')
+    adapter.emit('state', {
+      kind: 'whatsapp',
+      accountId: 'main',
+      status: 'connected',
+      selfName: 'Me'
+    })
+    await flushAsync()
+
+    expect(adapter.fetchSelfAvatar).toHaveBeenCalledTimes(1)
+    expect(manager.listChannels()[0]?.avatarMediaId).toBe('self-avatar.jpg')
+    expect(
+      events.some(
+        (e) => e.type === 'channel:state' && e.state.avatarMediaId === 'self-avatar.jpg'
+      )
+    ).toBe(true)
+
+    adapter.emit('state', {
+      kind: 'whatsapp',
+      accountId: 'main',
+      status: 'connected',
+      selfName: 'Me'
+    })
+    await flushAsync()
+    expect(adapter.fetchSelfAvatar).toHaveBeenCalledTimes(1)
   })
 
   it('conversation 事件修正已有会话标题', async () => {

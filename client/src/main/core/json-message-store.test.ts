@@ -110,6 +110,27 @@ describe('JsonMessageStore', () => {
     expect(convs.map((c) => c.externalChatId)).toEqual(['b@s.whatsapp.net', 'a@s.whatsapp.net'])
   })
 
+  it('置顶会话优先显示并持久化，取消置顶后恢复时间排序', async () => {
+    await store.recordMessage(msg({ conversationId: 'whatsapp:main:a@s.whatsapp.net', timestamp: 100 }))
+    await store.recordMessage(msg({ conversationId: 'whatsapp:main:b@s.whatsapp.net', timestamp: 200 }))
+
+    await store.patchConversation({ id: 'whatsapp:main:a@s.whatsapp.net', pinned: true })
+    let convs = await store.listConversations()
+    expect(convs.map((c) => c.externalChatId)).toEqual(['a@s.whatsapp.net', 'b@s.whatsapp.net'])
+    expect(convs[0]?.pinned).toBe(true)
+
+    await store.flush()
+    const reloaded = new JsonMessageStore(dir)
+    await reloaded.init()
+    convs = await reloaded.listConversations()
+    expect(convs[0]?.pinned).toBe(true)
+
+    await reloaded.patchConversation({ id: 'whatsapp:main:a@s.whatsapp.net', pinned: false })
+    convs = await reloaded.listConversations()
+    expect(convs.map((c) => c.externalChatId)).toEqual(['b@s.whatsapp.net', 'a@s.whatsapp.net'])
+    expect(convs[1]?.pinned).toBe(false)
+  })
+
   it('乱序到达的旧消息不覆盖会话预览', async () => {
     await store.recordMessage(msg({ timestamp: 5_000, body: { type: 'text', text: 'newest' } }))
     await store.recordMessage(msg({ timestamp: 1_000, body: { type: 'text', text: 'old' } }))

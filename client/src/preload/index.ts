@@ -12,6 +12,8 @@ import type { AppSettings } from '@shared/settings'
 const api: OmniApi = {
   platform: process.platform,
   listChannels: () => ipcRenderer.invoke(IPC_METHODS.listChannels),
+  refreshChannelProfile: (key: string) =>
+    ipcRenderer.invoke(IPC_METHODS.refreshChannelProfile, key),
   listChannelPlugins: () => ipcRenderer.invoke(IPC_METHODS.listChannelPlugins),
   startChannel: (key: string) => ipcRenderer.invoke(IPC_METHODS.startChannel, key),
   submitAuthInput: (key: string, value: string) =>
@@ -29,6 +31,8 @@ const api: OmniApi = {
   logoutChannel: (key: string) => ipcRenderer.invoke(IPC_METHODS.logoutChannel, key),
   addAccount: (channel: string) => ipcRenderer.invoke(IPC_METHODS.addAccount, channel),
   removeAccount: (key: string) => ipcRenderer.invoke(IPC_METHODS.removeAccount, key),
+  setAccountEnabled: (key: string, enabled: boolean) =>
+    ipcRenderer.invoke(IPC_METHODS.setAccountEnabled, key, enabled),
   listConversations: () => ipcRenderer.invoke(IPC_METHODS.listConversations),
   listMessages: (conversationId: string, limit?: number) =>
     ipcRenderer.invoke(IPC_METHODS.listMessages, conversationId, limit),
@@ -45,6 +49,8 @@ const api: OmniApi = {
     ipcRenderer.invoke(IPC_METHODS.setConversationLang, conversationId, lang),
   setConversationAutoReply: (conversationId: string, on: boolean) =>
     ipcRenderer.invoke(IPC_METHODS.setConversationAutoReply, conversationId, on),
+  setConversationPinned: (conversationId: string, pinned: boolean) =>
+    ipcRenderer.invoke(IPC_METHODS.setConversationPinned, conversationId, pinned),
   markRead: (conversationId: string) => ipcRenderer.invoke(IPC_METHODS.markRead, conversationId),
   getSettings: () => ipcRenderer.invoke(IPC_METHODS.getSettings),
   updateSettings: (patch: Partial<AppSettings>) =>

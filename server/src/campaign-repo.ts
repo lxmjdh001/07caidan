@@ -3,6 +3,10 @@ import { and, eq, gte, inArray, isNotNull, lte, min, sql } from 'drizzle-orm'
 import {
   computeCampaignStats,
   fillDays,
+  dayKey,
+  isDuplicate,
+  normalizeResetTime,
+  resetBoundaryAt,
   type CampaignStats,
   type LeadRow
 } from './campaign-stats.ts'
@@ -19,12 +23,21 @@ import {
 
 /** SQLite 单条语句的变量上限较保守，大名单分批处理 */
 const CHUNK = 400
+/** 工单统计统一使用北京时间（UTC+8），不跟随创建者或服务器本地时区。 */
+const BEIJING_TZ_OFFSET_MINUTES = 480
 
 export interface Campaign {
   id: string
   name: string
   accountIds: string[]
   accountLabels: Record<string, string>
+  accountProfiles: Record<string, AccountProfile>
+  /** 工单总目标数 */
+  totalTarget: number
+  /** accountId → 该账号目标数 */
+  accountTargets: Record<string, number>
+  /** 每日统计重置时间，按北京时间解释，格式 HH:mm */
+  resetTime: string
   startAt: number
   endAt?: number
   dedupLibraryIds: string[]
@@ -36,10 +49,18 @@ export interface Campaign {
   /** 公开看板是否允许中国大陆 / 香港 IP（默认都不允许） */
   allowCnIp: boolean
   allowHkIp: boolean
+  /** 固定为北京时间 UTC+8；保留字段兼容旧数据。 */
   tzOffsetMinutes: number
   createdBy?: string
   createdAt: number
   updatedAt: number
+}
+
+export interface AccountProfile {
+  channel: string
+  handle?: string
+  avatarMediaId?: string
+  status?: 'online' | 'offline' | 'error'
 }
 
 export interface EntryLinkRow {
@@ -78,6 +99,10 @@ export interface CampaignInput {
   name: string
   accountIds: string[]
   accountLabels?: Record<string, string>
+  accountProfiles?: Record<string, AccountProfile>
+  totalTarget?: number
+  accountTargets?: Record<string, number>
+  resetTime?: string
   startAt: number
   endAt?: number
   dedupLibraryIds?: string[]
@@ -123,6 +148,10 @@ export class CampaignRepo {
       name: input.name,
       accountIds: JSON.stringify(input.accountIds),
       accountLabels: JSON.stringify(input.accountLabels ?? {}),
+      accountProfiles: JSON.stringify(input.accountProfiles ?? {}),
+      totalTarget: normalizeTarget(input.totalTarget),
+      accountTargets: JSON.stringify(normalizeAccountTargets(input.accountTargets)),
+      resetTime: normalizeResetTime(input.resetTime),
       startAt: input.startAt,
       endAt: input.endAt ?? null,
       dedupLibraryIds: JSON.stringify(input.dedupLibraryIds ?? []),
@@ -131,7 +160,8 @@ export class CampaignRepo {
       sourceCodes: JSON.stringify(input.sourceCodes ?? []),
       allowCnIp: input.allowCnIp ? 1 : 0,
       allowHkIp: input.allowHkIp ? 1 : 0,
-      tzOffsetMinutes: input.tzOffsetMinutes ?? 480,
+      // 工单统计口径固定为北京时间，忽略客户端传入的本机时区。
+      tzOffsetMinutes: BEIJING_TZ_OFFSET_MINUTES,
       createdBy: createdBy ?? null,
       createdAt: now,
       updatedAt: now
@@ -166,6 +196,14 @@ export class CampaignRepo {
     if (patch.accountLabels !== undefined) {
       set.accountLabels = JSON.stringify(patch.accountLabels)
     }
+    if (patch.accountProfiles !== undefined) {
+      set.accountProfiles = JSON.stringify(patch.accountProfiles)
+    }
+    if (patch.totalTarget !== undefined) set.totalTarget = normalizeTarget(patch.totalTarget)
+    if (patch.accountTargets !== undefined) {
+      set.accountTargets = JSON.stringify(normalizeAccountTargets(patch.accountTargets))
+    }
+    if (patch.resetTime !== undefined) set.resetTime = normalizeResetTime(patch.resetTime)
     if (patch.startAt !== undefined) set.startAt = patch.startAt
     if (patch.endAt !== undefined) set.endAt = patch.endAt
     if (patch.dedupLibraryIds !== undefined) {
@@ -178,7 +216,7 @@ export class CampaignRepo {
     if (patch.sourceCodes !== undefined) set.sourceCodes = JSON.stringify(patch.sourceCodes)
     if (patch.allowCnIp !== undefined) set.allowCnIp = patch.allowCnIp ? 1 : 0
     if (patch.allowHkIp !== undefined) set.allowHkIp = patch.allowHkIp ? 1 : 0
-    if (patch.tzOffsetMinutes !== undefined) set.tzOffsetMinutes = patch.tzOffsetMinutes
+    if (patch.tzOffsetMinutes !== undefined) set.tzOffsetMinutes = BEIJING_TZ_OFFSET_MINUTES
     const res = this.db
       .update(campaigns)
       .set(set)
@@ -237,6 +275,16 @@ export class CampaignRepo {
     const res = this.db
       .update(campaignLinks)
       .set({ revoked: 1 })
+      .where(and(eq(campaignLinks.tenant, tenant), eq(campaignLinks.token, token)))
+      .run()
+    return res.changes > 0
+  }
+
+  /** 恢复手动失效的链接；若链接已过期，恢复后仍会保持过期状态。 */
+  restoreLink(tenant: string, token: string): boolean {
+    const res = this.db
+      .update(campaignLinks)
+      .set({ revoked: 0 })
       .where(and(eq(campaignLinks.tenant, tenant), eq(campaignLinks.token, token)))
       .run()
     return res.changes > 0
@@ -408,7 +456,7 @@ export class CampaignRepo {
 
   /**
    * 取工单窗口内的线索明细。
-   * 一个客户可能被多个账号触达 —— 按 contactId 去重，归属**首次**接触的账号。
+   * 一个客户可能被多个账号触达 —— 每个账号保留一条首次进线，后续账号标记为重复。
    */
   leadsOf(tenant: string, campaign: Campaign): LeadRow[] {
     if (campaign.accountIds.length === 0) return []
@@ -458,12 +506,16 @@ export class CampaignRepo {
         )
         .all()
 
+    // 一个客户在同一账号可能有多个会话，只取该账号最早的一次进线；
+    // 不能只用 contactId 做 key，否则同工单内后续账号会被错误丢弃。
+    const leadKey = (contactId: string, accountId: string): string => `${contactId}\u0000${accountId}`
     const leads = new Map<string, LeadRow>()
     for (const r of base('in')) {
       if (!r.contactId || r.at === null) continue
-      const prev = leads.get(r.contactId)
+      const key = leadKey(r.contactId, r.accountId)
+      const prev = leads.get(key)
       if (!prev || r.at < prev.firstAt) {
-        leads.set(r.contactId, {
+        leads.set(key, {
           contactId: r.contactId,
           channel: r.channel,
           accountId: r.accountId,
@@ -476,16 +528,27 @@ export class CampaignRepo {
 
     for (const r of base('out')) {
       if (!r.contactId || r.at === null) continue
-      const lead = leads.get(r.contactId)
+      const lead = leads.get(leadKey(r.contactId, r.accountId))
       if (!lead) continue
       if (lead.firstReplyAt === undefined || r.at < lead.firstReplyAt) lead.firstReplyAt = r.at
     }
 
     // 投放来源筛选：工单只统计指定来源码的进线（空 = 全部来源）
     const all = [...leads.values()]
-    if (campaign.sourceCodes.length === 0) return all
     const wanted = new Set(campaign.sourceCodes)
-    return all.filter((l) => l.sourceCode !== undefined && wanted.has(l.sourceCode))
+    const filtered = campaign.sourceCodes.length === 0
+      ? all
+      : all.filter((l) => l.sourceCode !== undefined && wanted.has(l.sourceCode))
+
+    // 只在筛选后的有效进线中判定先后，避免未选中的来源抢走“首次”资格。
+    const seenContacts = new Set<string>()
+    return filtered
+      .sort((a, b) => a.firstAt - b.firstAt || a.accountId.localeCompare(b.accountId))
+      .map((lead) => {
+        const campaignDuplicate = seenContacts.has(lead.contactId)
+        seenContacts.add(lead.contactId)
+        return campaignDuplicate ? { ...lead, campaignDuplicate: true } : lead
+      })
   }
 
   // ── 推广入口链接（保存多条，按来源区分投放渠道）──
@@ -604,15 +667,68 @@ export class CampaignRepo {
             )
           : new Map<string, number>(),
       accountLabels: labels,
-      tzOffsetMinutes: campaign.tzOffsetMinutes,
+      tzOffsetMinutes: BEIJING_TZ_OFFSET_MINUTES,
+      todayStartAt: Math.max(
+        campaign.startAt,
+        resetBoundaryAt(now, BEIJING_TZ_OFFSET_MINUTES, campaign.resetTime)
+      ),
       now
     })
+
+    // 工单保存的是创建/编辑时的账号资料快照，统计结果一并带回给分享页。
+    const profiles = campaign.accountProfiles ?? {}
+    for (const row of stats.byAccount) {
+      const profile = profiles[row.accountId]
+      if (profile && typeof profile === 'object') {
+        row.handle = profile.handle
+        row.avatarMediaId = profile.avatarMediaId
+        row.status = profile.status
+      }
+    }
+
+    // 账号列表代表工单的参与账号，而不只是窗口内已经产生线索的账号。
+    // 没有进线的账号也要展示，避免新建工单后看板误显示“共 0 个账号”。
+    const selectedAccountIds = [...new Set(campaign.accountIds)]
+    const existingAccountIds = new Set(stats.byAccount.map((row) => row.accountId))
+    const missingAccountIds = selectedAccountIds.filter((id) => !existingAccountIds.has(id))
+    if (missingAccountIds.length > 0) {
+      // conversations 是目前服务端保存账号平台信息的唯一来源；没有历史会话时平台留空，
+      // 但账号仍然会出现在“所属账号”的全部列表中。
+      const channels = new Map<string, string>()
+      for (const batch of chunked(missingAccountIds)) {
+        const rows = this.db
+          .select({ accountId: conversations.accountId, channel: conversations.channel })
+          .from(conversations)
+          .where(and(eq(conversations.tenant, tenant), inArray(conversations.accountId, batch)))
+          .groupBy(conversations.accountId, conversations.channel)
+          .all()
+        for (const row of rows) {
+          if (!channels.has(row.accountId)) channels.set(row.accountId, row.channel)
+        }
+      }
+      for (const accountId of missingAccountIds) {
+        stats.byAccount.push({
+          accountId,
+          channel: channels.get(accountId) ?? profiles[accountId]?.channel ?? '',
+          label: labels[accountId],
+          handle: profiles[accountId]?.handle,
+          avatarMediaId: profiles[accountId]?.avatarMediaId,
+          status: profiles[accountId]?.status ?? 'offline',
+          lastAt: undefined,
+          total: 0,
+          duplicate: 0,
+          fresh: 0
+        })
+      }
+      stats.byAccount.sort((a, b) => b.total - a.total || a.accountId.localeCompare(b.accountId))
+    }
+
     // 趋势图补齐空白天，截止到工单结束或当前时间
     stats.byDay = fillDays(
       stats.byDay,
       campaign.startAt,
       Math.min(campaign.endAt ?? now, now),
-      campaign.tzOffsetMinutes
+      BEIJING_TZ_OFFSET_MINUTES
     )
     if (cacheable) {
       // 换 updatedAt 的旧条目一并清掉，避免改工单后残留过期 key
@@ -622,6 +738,43 @@ export class CampaignRepo {
     }
     return stats
   }
+
+  accountFansOf(tenant: string, campaign: Campaign, accountId: string): Array<{ contactId: string; title?: string; firstAt: number; duplicate: boolean; duplicateCount: number }> {
+    if (!campaign.accountIds.includes(accountId)) return []
+    const leads = this.leadsOf(tenant, campaign)
+    const libraryContacts = campaign.dedupLibraryIds.length > 0 ? this.libraryContacts(tenant, campaign.dedupLibraryIds) : new Set<string>()
+    const earliestEverAt = campaign.dedupBeforeAt !== undefined ? this.earliestEverAt(tenant, leads.map((lead) => lead.contactId), campaign.dedupAccountIds) : new Map<string, number>()
+    const counts = new Map<string, number>()
+    for (const lead of leads) counts.set(lead.contactId, (counts.get(lead.contactId) ?? 0) + 1)
+    const contacts = leads.filter((lead) => lead.accountId === accountId)
+    const titles = new Map<string, string>()
+    for (const batch of chunked([...new Set(contacts.map((lead) => lead.contactId))])) {
+      const rows = this.db.select({ contactId: conversations.contactId, title: conversations.title }).from(conversations).where(and(eq(conversations.tenant, tenant), eq(conversations.accountId, accountId), inArray(conversations.contactId, batch))).all()
+      for (const row of rows) if (row.contactId && !titles.has(row.contactId)) titles.set(row.contactId, row.title)
+    }
+    return contacts.map((lead) => ({
+      contactId: lead.contactId,
+      title: titles.get(lead.contactId),
+      firstAt: lead.firstAt,
+      duplicate: isDuplicate({ libraryIds: campaign.dedupLibraryIds, beforeAt: campaign.dedupBeforeAt }, libraryContacts.has(lead.contactId), earliestEverAt.get(lead.contactId)).duplicate || lead.campaignDuplicate === true,
+      duplicateCount: Math.max(0, (counts.get(lead.contactId) ?? 1) - 1)
+    })).sort((a, b) => b.firstAt - a.firstAt)
+  }
+
+  accountTrendOf(tenant: string, campaign: Campaign, accountId: string, now = Date.now()): Array<{ date: string; total: number; fresh: number; duplicate: number }> {
+    const fans = this.accountFansOf(tenant, campaign, accountId)
+    const byDay = new Map<string, { date: string; total: number; fresh: number; duplicate: number }>()
+    for (const fan of fans) {
+      const date = dayKey(fan.firstAt, BEIJING_TZ_OFFSET_MINUTES)
+      const row = byDay.get(date) ?? { date, total: 0, fresh: 0, duplicate: 0 }
+      row.total++
+      if (fan.duplicate) row.duplicate++
+      else row.fresh++
+      byDay.set(date, row)
+    }
+    const cutoff = dayKey(now - 6 * 86_400_000, BEIJING_TZ_OFFSET_MINUTES)
+    return [...byDay.values()].filter((row) => row.date >= cutoff).sort((a, b) => a.date.localeCompare(b.date))
+  }
 }
 
 function toCampaign(r: typeof campaigns.$inferSelect): Campaign {
@@ -630,6 +783,10 @@ function toCampaign(r: typeof campaigns.$inferSelect): Campaign {
     name: r.name,
     accountIds: parseJsonArray(r.accountIds),
     accountLabels: parseJsonObject(r.accountLabels),
+    accountProfiles: parseJsonProfiles(r.accountProfiles),
+    totalTarget: normalizeTarget(r.totalTarget),
+    accountTargets: parseJsonNumberObject(r.accountTargets),
+    resetTime: normalizeResetTime(r.resetTime),
     startAt: r.startAt,
     endAt: r.endAt ?? undefined,
     dedupLibraryIds: parseJsonArray(r.dedupLibraryIds),
@@ -638,7 +795,8 @@ function toCampaign(r: typeof campaigns.$inferSelect): Campaign {
     sourceCodes: parseJsonArray(r.sourceCodes),
     allowCnIp: r.allowCnIp === 1,
     allowHkIp: r.allowHkIp === 1,
-    tzOffsetMinutes: r.tzOffsetMinutes,
+    // 旧工单可能保存过其他偏移，但统计口径统一按北京时间。
+    tzOffsetMinutes: BEIJING_TZ_OFFSET_MINUTES,
     createdBy: r.createdBy ?? undefined,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt
@@ -678,6 +836,54 @@ function parseJsonObject(v: string): Record<string, string> {
         (e): e is [string, string] => typeof e[1] === 'string'
       )
     )
+  } catch {
+    return {}
+  }
+}
+
+function normalizeTarget(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0
+}
+
+function normalizeAccountTargets(value?: Record<string, number>): Record<string, number> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([id, target]) => [id, normalizeTarget(target)] as const)
+      .filter(([, target]) => target > 0)
+  )
+}
+
+function parseJsonNumberObject(v: string): Record<string, number> {
+  try {
+    const parsed = JSON.parse(v)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return normalizeAccountTargets(parsed as Record<string, number>)
+  } catch {
+    return {}
+  }
+}
+
+function parseJsonProfiles(v: string): Record<string, AccountProfile> {
+  try {
+    const parsed = JSON.parse(v)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    const out: Record<string, AccountProfile> = {}
+    for (const [accountId, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) continue
+      const profile = value as Record<string, unknown>
+      if (typeof profile.channel !== 'string') continue
+      out[accountId] = {
+        channel: profile.channel,
+        ...(typeof profile.handle === 'string' ? { handle: profile.handle } : {}),
+        ...(typeof profile.avatarMediaId === 'string' ? { avatarMediaId: profile.avatarMediaId } : {}),
+        ...(profile.status === 'online' || profile.status === 'offline' || profile.status === 'error'
+          ? { status: profile.status }
+          : {})
+      }
+    }
+    return out
   } catch {
     return {}
   }

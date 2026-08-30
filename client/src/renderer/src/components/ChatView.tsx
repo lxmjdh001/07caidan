@@ -3,6 +3,7 @@ import type { Conversation, MessageBody, UnifiedMessage } from '@shared/domain'
 import { previewOf } from '@shared/domain'
 import type { OutboundPreview } from '@shared/ipc'
 import { LANGUAGES, languageLabel } from '@shared/langs'
+import { errText } from '../errors'
 import { useI18n } from '../i18n'
 import { formatBubbleTime } from '../time'
 import { Avatar } from './Avatar'
@@ -15,7 +16,7 @@ interface Props {
   connected: boolean
   /** 同一客户是否在其他账号/渠道有过会话 */
   knownFromOther: boolean
-  onSend: (text: string, prepared?: OutboundPreview) => Promise<void>
+  onSend: (text: string, prepared?: OutboundPreview) => Promise<UnifiedMessage>
   onSendMedia: () => Promise<void>
   /** 设置该会话的客户语言（null = 回到自动） */
   onSetLang: (lang: string | null) => Promise<void>
@@ -273,12 +274,14 @@ export function ChatView({
     st.recorder.stop()
   }
   const [preview, setPreview] = useState<OutboundPreview | null>(null)
+  const [sendError, setSendError] = useState('')
   const [showConvSettings, setShowConvSettings] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setShowConvSettings(false)
     setPreview(null)
+    setSendError('')
   }, [conversation?.id])
 
   useEffect(() => {
@@ -296,10 +299,13 @@ export function ChatView({
 
   const doSend = async (text: string, prepared?: OutboundPreview): Promise<void> => {
     setSending(true)
+    setSendError('')
+    setDraft('')
+    setPreview(null)
     try {
       await onSend(text, prepared)
-      setDraft('')
-      setPreview(null)
+    } catch (error) {
+      setSendError(errText(error))
     } finally {
       setSending(false)
     }
@@ -319,8 +325,14 @@ export function ChatView({
       let p: OutboundPreview | null = null
       try {
         p = await onPreview(text)
+      } catch (error) {
+        setSendError(errText(error))
       } finally {
         setSending(false)
+      }
+      if (p?.error) {
+        setSendError(p.error)
+        return
       }
       // 发生了翻译才需要确认；没翻译（同语言/引擎关闭）直接发
       if (p?.engine) {
@@ -462,7 +474,7 @@ export function ChatView({
                 {formatBubbleTime(m.timestamp, locale)}
                 {m.direction === 'out' && (
                   <span className={`tick ${m.status}`}>
-                    {m.status === 'failed' ? `✗ ${t('chat.sendFailed')}` : '✓'}
+                    {m.status === 'pending' ? '...' : m.status === 'failed' ? `✗ ${t('chat.sendFailed')}` : '✓'}
                   </span>
                 )}
               </div>
@@ -492,6 +504,7 @@ export function ChatView({
           </div>
         </div>
       )}
+      {sendError && <p className="composer-error" role="alert">{sendError}</p>}
       <footer className="composer">
         {recState && (
           <div className="rec-bar">

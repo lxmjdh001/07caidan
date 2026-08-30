@@ -21,10 +21,14 @@ export class ChannelManager {
   private readonly states = new Map<string, ChannelState>()
   /** 已尝试拉取头像的会话（避免重复请求，无论成败本次运行只试一次） */
   private readonly avatarAttempted = new Set<string>()
+  /** 已尝试拉取账号自身头像的渠道（避免连接事件重复请求） */
+  private readonly selfAvatarAttempted = new Set<string>()
   /** 已尝试解析标题的会话 */
   private readonly titleAttempted = new Set<string>()
   /** 已尝试解析客户标识的会话 */
   private readonly contactAttempted = new Set<string>()
+  /** 被用户禁用的账号；禁用时丢弃迟到的渠道事件，避免重新接收消息 */
+  private readonly disabledAccounts = new Set<string>()
 
   constructor(
     private readonly store: MessageStore,
@@ -47,10 +51,16 @@ export class ChannelManager {
     })
 
     adapter.on('state', (state) => {
-      this.states.set(adapter.key, state)
-      this.broadcast({ type: 'channel:state', state })
+      // 适配器状态事件只描述连接状态；保留已获取的账号头像，避免 stop/reconnect 时闪回平台 Logo。
+      const previous = this.states.get(adapter.key)
+      const nextState = state.avatarMediaId || !previous?.avatarMediaId
+        ? state
+        : { ...state, avatarMediaId: previous.avatarMediaId }
+      this.states.set(adapter.key, nextState)
+      this.broadcast({ type: 'channel:state', state: nextState })
       // 连接就绪后为该渠道的历史会话补拉头像
       if (state.status === 'connected') {
+        this.ensureSelfAvatar(adapter)
         void this.store.listConversations().then((list) => {
           for (const conv of list) {
             if (conv.channel === adapter.kind && conv.accountId === adapter.accountId) {
@@ -64,16 +74,19 @@ export class ChannelManager {
     })
 
     adapter.on('message', (msg) => {
+      if (this.disabledAccounts.has(adapter.key)) return
       void this.handleIncoming(msg)
     })
 
     adapter.on('messageUpdate', (msg) => {
+      if (this.disabledAccounts.has(adapter.key)) return
       void this.store.updateMessage(msg).then((updated) => {
         if (updated) this.broadcast({ type: 'message:updated', message: msg })
       })
     })
 
     adapter.on('conversation', (upsert) => {
+      if (this.disabledAccounts.has(adapter.key)) return
       const id = conversationId(adapter.kind, adapter.accountId, upsert.externalChatId)
       void this.store
         .patchConversation({ id, title: upsert.title, isGroup: upsert.isGroup })
@@ -85,6 +98,24 @@ export class ChannelManager {
 
   listChannels(): ChannelState[] {
     return [...this.states.values()]
+  }
+
+  /** 提交工单前强制重新读取账号自身头像，避免连接后的异步预取尚未完成。 */
+  async refreshSelfProfile(key: string): Promise<ChannelState> {
+    const adapter = this.requireAdapter(key)
+    const current = this.states.get(key)
+    if (!current) throw new Error(`渠道状态不存在：${key}`)
+    if (!adapter.fetchSelfAvatar || current.status !== 'connected') return current
+
+    const mediaId = await adapter.fetchSelfAvatar()
+    if (this.adapters.get(key) !== adapter) return current
+    // 适配器把“暂时拉取失败”和“平台确实没有头像”都表示为 undefined；
+    // 已有头像时保留缓存，避免一次网络抖动把真实头像误删。新账号则自然保持无头像。
+    if (!mediaId) return current
+    const updated: ChannelState = { ...current, avatarMediaId: mediaId }
+    this.states.set(key, updated)
+    this.broadcast({ type: 'channel:state', state: updated })
+    return updated
   }
 
   /** 注销账号：停止连接、解绑事件、从注册表移除并广播 */
@@ -99,15 +130,39 @@ export class ChannelManager {
     adapter.removeAllListeners()
     this.adapters.delete(key)
     this.states.delete(key)
+    this.selfAvatarAttempted.delete(key)
+    this.disabledAccounts.delete(key)
     this.broadcast({ type: 'channel:removed', key })
   }
 
   async start(key: string): Promise<void> {
+    if (this.disabledAccounts.has(key)) throw new Error('账号已禁用，请先启用接收消息')
     await this.requireAdapter(key).start()
   }
 
+  /** 设置启动时的禁用状态；调用后再执行 startAll 即可跳过这些账号。 */
+  setDisabled(key: string, disabled: boolean): void {
+    if (disabled) this.disabledAccounts.add(key)
+    else this.disabledAccounts.delete(key)
+  }
+
+  async setAccountEnabled(key: string, enabled: boolean): Promise<void> {
+    const adapter = this.requireAdapter(key)
+    if (enabled) {
+      this.disabledAccounts.delete(key)
+      await adapter.start()
+    } else {
+      this.disabledAccounts.add(key)
+      await adapter.stop()
+    }
+  }
+
   async startAll(): Promise<void> {
-    await Promise.allSettled([...this.adapters.values()].map((a) => a.start()))
+    await Promise.allSettled(
+      [...this.adapters.values()]
+        .filter((adapter) => !this.disabledAccounts.has(adapter.key))
+        .map((adapter) => adapter.start())
+    )
   }
 
   async stopAll(): Promise<void> {
@@ -167,9 +222,11 @@ export class ChannelManager {
   ): Promise<UnifiedMessage> {
     const { channel, accountId, externalChatId } = parseConversationId(convId)
     const adapter = this.requireAdapter(`${channel}:${accountId}`)
+    if (this.disabledAccounts.has(adapter.key)) throw new Error('账号已禁用，无法发送消息')
 
     const targetLang = prepared?.targetLang ?? (await this.resolveTargetLang(convId))
     const outbound = prepared ?? (await this.translation.processOutbound(text, targetLang))
+    if (outbound.error) throw new Error(outbound.error)
 
     const msg: UnifiedMessage = {
       id: randomUUID(),
@@ -215,6 +272,7 @@ export class ChannelManager {
     if (!this.media) throw new Error('MediaStore 未配置')
     const { channel, accountId, externalChatId } = parseConversationId(convId)
     const adapter = this.requireAdapter(`${channel}:${accountId}`)
+    if (this.disabledAccounts.has(adapter.key)) throw new Error('账号已禁用，无法发送消息')
     if (!adapter.sendMedia) throw new Error(`渠道 ${adapter.key} 暂不支持发送媒体`)
 
     const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'm4a' : 'webm'
@@ -266,6 +324,7 @@ export class ChannelManager {
     if (!this.media) throw new Error('MediaStore 未配置')
     const { channel, accountId, externalChatId } = parseConversationId(convId)
     const adapter = this.requireAdapter(`${channel}:${accountId}`)
+    if (this.disabledAccounts.has(adapter.key)) throw new Error('账号已禁用，无法发送消息')
     if (!adapter.sendMedia) throw new Error(`渠道 ${adapter.key} 暂不支持发送媒体`)
 
     const mimeType = mimeFromPath(filePath)
@@ -308,8 +367,10 @@ export class ChannelManager {
   }
 
   private async handleIncoming(raw: UnifiedMessage): Promise<void> {
+    if (this.disabledAccounts.has(`${raw.channel}:${raw.accountId}`)) return
     try {
       const { message: msg, detectedLang } = await this.translation.processInbound(raw)
+      if (this.disabledAccounts.has(`${raw.channel}:${raw.accountId}`)) return
       const { conversation, duplicated } = await this.store.recordMessage(msg, {
         incrementUnread: msg.direction === 'in'
       })
@@ -358,6 +419,27 @@ export class ChannelManager {
         if (updated) this.broadcast({ type: 'conversation:updated', conversation: updated })
       } catch (err) {
         this.logger.debug(`拉取头像失败 ${conv.id}`, err)
+      }
+    })()
+  }
+
+  /** 账号连接后异步拉取自身头像，成功后写回渠道状态并广播给 UI。 */
+  private ensureSelfAvatar(adapter: ChannelAdapter): void {
+    if (this.selfAvatarAttempted.has(adapter.key)) return
+    if (!adapter.fetchSelfAvatar) return
+    this.selfAvatarAttempted.add(adapter.key)
+    void (async () => {
+      try {
+        const mediaId = await adapter.fetchSelfAvatar!()
+        if (!mediaId) return
+        if (this.adapters.get(adapter.key) !== adapter) return
+        const current = this.states.get(adapter.key)
+        if (!current) return
+        const updated = { ...current, avatarMediaId: mediaId }
+        this.states.set(adapter.key, updated)
+        this.broadcast({ type: 'channel:state', state: updated })
+      } catch (err) {
+        this.logger.debug(`拉取账号头像失败 ${adapter.key}`, err)
       }
     })()
   }

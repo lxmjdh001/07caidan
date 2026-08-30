@@ -9,11 +9,13 @@ export const IPC_METHODS = {
   listChannels: 'omni:listChannels',
   listChannelPlugins: 'omni:listChannelPlugins',
   startChannel: 'omni:startChannel',
+  refreshChannelProfile: 'omni:refreshChannelProfile',
   submitAuthInput: 'omni:submitAuthInput',
   setLoginMode: 'omni:setLoginMode',
   logoutChannel: 'omni:logoutChannel',
   addAccount: 'omni:addAccount',
   removeAccount: 'omni:removeAccount',
+  setAccountEnabled: 'omni:setAccountEnabled',
   listConversations: 'omni:listConversations',
   listMessages: 'omni:listMessages',
   sendText: 'omni:sendText',
@@ -24,6 +26,7 @@ export const IPC_METHODS = {
   transcribeVoice: 'omni:transcribeVoice',
   setConversationLang: 'omni:setConversationLang',
   setConversationAutoReply: 'omni:setConversationAutoReply',
+  setConversationPinned: 'omni:setConversationPinned',
   getSettings: 'omni:getSettings',
   updateSettings: 'omni:updateSettings',
   listTranslators: 'omni:listTranslators',
@@ -104,6 +107,8 @@ export interface OutboundPreview {
   engine?: string
   /** 解析出的目标语言 */
   targetLang: string
+  /** 翻译失败原因；有值时不会发送原文。 */
+  error?: string
 }
 
 /** preload 暴露到 window.omni 的 API，渲染进程唯一的主进程入口 */
@@ -111,6 +116,8 @@ export interface OmniApi {
   /** 运行平台（darwin / win32 / linux），用于标题栏等平台差异化渲染 */
   platform: string
   listChannels(): Promise<ChannelState[]>
+  /** 提交工单前强制刷新账号自身头像等资料 */
+  refreshChannelProfile(key: string): Promise<ChannelState>
   /** 可用渠道插件（平台类型 + 凭证字段） */
   listChannelPlugins(): Promise<ChannelPluginInfo[]>
   startChannel(key: string): Promise<void>
@@ -121,8 +128,10 @@ export interface OmniApi {
   logoutChannel(key: string): Promise<void>
   /** 新增一个账号（当前支持 whatsapp），返回其 channel key（如 whatsapp:wa1abc） */
   addAccount(channel: string): Promise<string>
-  /** 删除账号：退出登录 + 移除（主账号 whatsapp:main 不可删除；聊天记录保留） */
+  /** 删除账号：退出登录并从账号列表移除；聊天记录保留。 */
   removeAccount(key: string): Promise<void>
+  /** 启用或禁用账号的连接与消息接收；禁用不会清除登录凭证。 */
+  setAccountEnabled(key: string, enabled: boolean): Promise<void>
   listConversations(): Promise<Conversation[]>
   listMessages(conversationId: string, limit?: number): Promise<UnifiedMessage[]>
   /** prepared 传入预览结果时直接按其发送（不再重复翻译） */
@@ -151,6 +160,8 @@ export interface OmniApi {
   setConversationLang(conversationId: string, lang: string | null): Promise<void>
   /** 会话级 AI 自动回复开关（还需设置里的全局开关同时开启） */
   setConversationAutoReply(conversationId: string, on: boolean): Promise<void>
+  /** 设置会话是否置顶 */
+  setConversationPinned(conversationId: string, pinned: boolean): Promise<void>
   markRead(conversationId: string): Promise<void>
   getSettings(): Promise<AppSettings>
   updateSettings(patch: Partial<AppSettings>): Promise<AppSettings>

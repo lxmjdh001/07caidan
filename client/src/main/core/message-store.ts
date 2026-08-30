@@ -25,6 +25,8 @@ export interface ConversationPatch {
   leadSource?: LeadSourceInfo
   /** 会话级 AI 自动回复开关 */
   autoReply?: boolean
+  /** 是否置顶显示在会话列表顶部 */
+  pinned?: boolean
 }
 
 /**

@@ -95,6 +95,7 @@ export class JsonMessageStore implements MessageStore {
     // autoReply 使会话级 AI 自动回复开关点了不生效
     if (patch.leadSource) conv.leadSource = patch.leadSource
     if (patch.autoReply !== undefined) conv.autoReply = patch.autoReply
+    if (patch.pinned !== undefined) conv.pinned = patch.pinned
     this.scheduleFlush()
     return conv
   }
@@ -104,7 +105,10 @@ export class JsonMessageStore implements MessageStore {
   }
 
   async listConversations(): Promise<Conversation[]> {
-    return Object.values(this.data.conversations).sort((a, b) => b.lastMessageAt - a.lastMessageAt)
+    return Object.values(this.data.conversations).sort((a, b) => {
+      const pinnedDelta = Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))
+      return pinnedDelta || b.lastMessageAt - a.lastMessageAt
+    })
   }
 
   async listMessages(conversationId: string, limit = 200): Promise<UnifiedMessage[]> {

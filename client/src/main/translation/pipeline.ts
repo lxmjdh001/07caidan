@@ -29,6 +29,8 @@ export interface OutboundText {
   original: string
   /** 执行翻译的引擎名（未翻译时为空） */
   engine?: string
+  /** 翻译失败原因；有值时不得把原文误当作译文发送。 */
+  error?: string
 }
 
 /**
@@ -82,7 +84,7 @@ export class TranslationPipeline {
     }
   }
 
-  /** 出站：坐席输入 → 发送文本（翻译失败时原文发送） */
+  /** 出站：坐席输入 → 发送文本（翻译失败时由调用方明确处理） */
   async processOutbound(text: string, targetLang: string): Promise<OutboundText> {
     if (!this.settings.outboundEnabled) return { send: text, original: text }
     try {
@@ -90,7 +92,11 @@ export class TranslationPipeline {
       if (result.text === text) return { send: text, original: text }
       return { send: result.text, original: text, engine: this.translator.name }
     } catch {
-      return { send: text, original: text }
+      return {
+        send: text,
+        original: text,
+        error: '翻译服务暂不可用，请稍后重试或在设置中切换翻译引擎。'
+      }
     }
   }
 }

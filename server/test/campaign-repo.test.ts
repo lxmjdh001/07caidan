@@ -98,6 +98,23 @@ describe('工单 CRUD', () => {
     assert.equal(got?.tzOffsetMinutes, 480)
   })
 
+  test('工单时区固定为北京时间', () => {
+    const c = makeCampaign({ tzOffsetMinutes: -300 })
+    assert.equal(c.tzOffsetMinutes, 480)
+    campaigns.updateCampaign(T, c.id, { tzOffsetMinutes: 0 })
+    assert.equal(campaigns.getCampaign(T, c.id)?.tzOffsetMinutes, 480)
+  })
+
+  test('保存总目标与账号目标', () => {
+    const c = makeCampaign({ totalTarget: 120, accountTargets: { a1: 80, a2: 40, invalid: -2 } })
+    assert.equal(c.totalTarget, 120)
+    assert.deepEqual(c.accountTargets, { a1: 80, a2: 40 })
+    campaigns.updateCampaign(T, c.id, { totalTarget: 200, accountTargets: { a1: 150 } })
+    const updated = campaigns.getCampaign(T, c.id)
+    assert.equal(updated?.totalTarget, 200)
+    assert.deepEqual(updated?.accountTargets, { a1: 150 })
+  })
+
   test('不填结束时间 = 持续进行', () => {
     assert.equal(makeCampaign().endAt, undefined)
   })
@@ -159,6 +176,24 @@ describe('分享链接', () => {
     assert.equal(campaigns.revokeLink(T, link.token), true)
     const r = campaigns.resolveLink(link.token)
     assert.equal(r.ok === false && r.reason, 'revoked')
+  })
+
+  test('手动失效后可以恢复访问', () => {
+    const c = makeCampaign()
+    const link = campaigns.createLink(T, c.id)
+    assert.equal(campaigns.revokeLink(T, link.token), true)
+    assert.equal(campaigns.resolveLink(link.token).ok, false)
+    assert.equal(campaigns.restoreLink(T, link.token), true)
+    assert.equal(campaigns.resolveLink(link.token).ok, true)
+  })
+
+  test('恢复已过期链接不会绕过过期时间', () => {
+    const c = makeCampaign()
+    const link = campaigns.createLink(T, c.id, { expiresAt: 1000 })
+    assert.equal(campaigns.revokeLink(T, link.token), true)
+    assert.equal(campaigns.restoreLink(T, link.token), true)
+    const r = campaigns.resolveLink(link.token, 1001)
+    assert.equal(r.ok === false && r.reason, 'expired')
   })
 
   test('一个工单可以有多条链接，各自独立', () => {
@@ -248,12 +283,26 @@ describe('线索归集', () => {
     )
   })
 
-  test('同一客户被多个账号触达：只算一个，归属首次接触的账号', () => {
+  test('同一客户被多个账号触达：后续账号保留并计为重复', () => {
     seed({ accountId: 'a2', contactId: 'wa:+1', inAt: T0 + 2 * 3600_000, convId: 'c-a2' })
     seed({ accountId: 'a1', contactId: 'wa:+1', inAt: T0 + 1 * 3600_000, convId: 'c-a1' })
     const leads = campaigns.leadsOf(T, makeCampaign({ accountIds: ['a1', 'a2'] }))
-    assert.equal(leads.length, 1)
+    assert.equal(leads.length, 2)
     assert.equal(leads[0]!.accountId, 'a1')
+    assert.equal(leads[0]!.campaignDuplicate, undefined)
+    assert.equal(leads[1]!.accountId, 'a2')
+    assert.equal(leads[1]!.campaignDuplicate, true)
+    const stats = campaigns.statsOf(T, makeCampaign({ accountIds: ['a1', 'a2'] }), undefined, T0 + DAY)
+    assert.equal(stats.total, 2)
+    assert.equal(stats.fresh, 1)
+    assert.equal(stats.duplicate, 1)
+    assert.deepEqual(
+      stats.byAccount.map((row) => [row.accountId, row.total, row.fresh, row.duplicate]),
+      [
+        ['a1', 1, 1, 0],
+        ['a2', 1, 0, 1]
+      ]
+    )
   })
 
   test('结束时间之后的进线不计入', () => {
@@ -308,6 +357,53 @@ describe('统计（端到端）', () => {
     const stats = campaigns.statsOf(T, makeCampaign(), {}, T0 + DAY)
     assert.equal(stats.duplicate, 0)
     assert.equal(stats.fresh, 1)
+  })
+
+  test('工单已选但暂无线索的账号也会显示', () => {
+    seed({ accountId: 'a1', contactId: 'wa:+1', inAt: T0 + 3600_000 })
+    const c = makeCampaign({
+      accountIds: ['a1', 'a2'],
+      accountLabels: { a1: '主号', a2: '备用号' }
+    })
+    const stats = campaigns.statsOf(T, c, undefined, T0 + DAY)
+
+    assert.equal(stats.total, 1)
+    assert.deepEqual(
+      stats.byAccount.map((row) => ({ id: row.accountId, label: row.label, total: row.total })),
+      [
+        { id: 'a1', label: '主号', total: 1 },
+        { id: 'a2', label: '备用号', total: 0 }
+      ]
+    )
+    assert.equal(stats.byAccount[1]!.fresh, 0)
+    assert.equal(stats.byAccount[1]!.duplicate, 0)
+  })
+
+  test('账号资料会随账号统计返回', () => {
+    seed({ accountId: 'a1', contactId: 'wa:+1', inAt: T0 + 3600_000 })
+    const c = makeCampaign({
+      accountProfiles: {
+        a1: {
+          channel: 'whatsapp',
+          handle: '8613800138000',
+          avatarMediaId: 'avatar-a1.jpg',
+          status: 'online'
+        }
+      }
+    })
+    const row = campaigns.statsOf(T, c, undefined, T0 + DAY).byAccount[0]!
+    assert.equal(row.handle, '8613800138000')
+    assert.equal(row.avatarMediaId, 'avatar-a1.jpg')
+    assert.equal(row.status, 'online')
+    assert.equal(row.lastAt, T0 + 3600_000)
+  })
+
+  test('今日统计按工单置零时间计算', () => {
+    seed({ accountId: 'a1', contactId: 'wa:+before', inAt: T0 + 11 * 3600_000 })
+    seed({ accountId: 'a1', contactId: 'wa:+after', inAt: T0 + 13 * 3600_000 })
+    const c = makeCampaign({ resetTime: '12:00' })
+    const stats = campaigns.statsOf(T, c, undefined, T0 + 14 * 3600_000)
+    assert.deepEqual(stats.today, { total: 1, duplicate: 0, fresh: 1 })
   })
 
   test('趋势按天补齐空白', () => {

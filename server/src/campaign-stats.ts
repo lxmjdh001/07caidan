@@ -23,6 +23,8 @@ export interface LeadRow {
   sourceCode?: string
   /** 归因方式 */
   sourceVia?: 'ad' | 'code'
+  /** 同一工单内该客户已经在更早账号进线，后续账号计为重复 */
+  campaignDuplicate?: boolean
 }
 
 /** 判重规则：命中任意一条即算重复（用户已确认取并集） */
@@ -40,7 +42,7 @@ export interface Bucket {
 }
 
 export interface CampaignStats {
-  /** 窗口内进线的去重客户数 */
+  /** 窗口内账号申请次数（每个客户-账号组合各计一次） */
   total: number
   /** 判定为重复的客户数 */
   duplicate: number
@@ -51,9 +53,23 @@ export interface CampaignStats {
   /** 重复原因拆分（可叠加，两者之和可能大于 duplicate） */
   duplicateBy: { library: number; timeRange: number }
   /** 按账号拆分；label 是老板自己的账号备注名，不是粉丝信息 */
-  byAccount: Array<{ accountId: string; channel: string; label?: string } & Bucket>
+  byAccount: Array<{
+    accountId: string
+    channel: string
+    label?: string
+    /** 工单账号联系方式（手机号 / 用户名 / LINE ID） */
+    handle?: string
+    /** 服务端媒体库中的账号头像 ID */
+    avatarMediaId?: string
+    /** 工单创建/编辑时记录的账号连接状态 */
+    status?: 'online' | 'offline' | 'error'
+    /** 工单窗口内该账号最近一次进粉时间（毫秒） */
+    lastAt?: number
+  } & Bucket>
   /** 按天趋势（date 为 YYYY-MM-DD） */
   byDay: Array<{ date: string } & Bucket>
+  /** 按工单置零时间计算的当前统计日 */
+  today: Bucket
   /**
    * 按投放来源拆分。code 是广告 id 或追踪码 —— 是老板自己的投放标识，
    * 不是客户信息，可以在公开看板展示。未归因的客户归到 code 为空的那一行。
@@ -72,6 +88,31 @@ export interface CampaignStats {
 }
 
 const DAY_MS = 86_400_000
+
+/** 规范化客户端传入的每日置零时间；格式固定为 HH:mm。 */
+export function normalizeResetTime(value?: string): string {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value ?? '')
+  if (!match) return '00:00'
+  const hour = Number(match[1])
+  const minute = Number(match[2])
+  if (hour > 23 || minute > 59) return '00:00'
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
+}
+
+/** 返回当前统计日的起点（按固定时区偏移，不依赖服务器本地时区）。 */
+export function resetBoundaryAt(now: number, tzOffsetMinutes: number, resetTime?: string): number {
+  const minutes = normalizeResetTime(resetTime)
+  const hour = Number(minutes.slice(0, 2))
+  const minute = Number(minutes.slice(3, 5))
+  const shifted = new Date(now + tzOffsetMinutes * 60_000)
+  const localMidnight = Date.UTC(
+    shifted.getUTCFullYear(),
+    shifted.getUTCMonth(),
+    shifted.getUTCDate()
+  ) - tzOffsetMinutes * 60_000
+  const boundary = localMidnight + (hour * 60 + minute) * 60_000
+  return now >= boundary ? boundary : boundary - DAY_MS
+}
 
 /** 按指定时区偏移把时间戳归到 YYYY-MM-DD */
 export function dayKey(ts: number, tzOffsetMinutes: number): string {
@@ -115,6 +156,8 @@ export interface ComputeInput {
   accountLabels?: Record<string, string>
   /** 看板时区偏移，默认 UTC+8 */
   tzOffsetMinutes?: number
+  /** 当前统计日的起点；未传时 today 返回空桶（纯函数兼容旧调用） */
+  todayStartAt?: number
   now?: number
 }
 
@@ -127,10 +170,11 @@ export function computeCampaignStats(input: ComputeInput): CampaignStats {
     earliestEverAt,
     accountLabels = {},
     tzOffsetMinutes = 480,
+    todayStartAt,
     now = 0
   } = input
 
-  const byAccount = new Map<string, { channel: string } & Bucket>()
+  const byAccount = new Map<string, { channel: string; lastAt?: number } & Bucket>()
   const byDay = new Map<string, Bucket>()
   const bySource = new Map<string, { via?: 'ad' | 'code' } & Bucket>()
   let duplicate = 0
@@ -138,15 +182,17 @@ export function computeCampaignStats(input: ComputeInput): CampaignStats {
   let byTimeCount = 0
   const replyDurations: number[] = []
   let replied = 0
+  const today: Bucket = { total: 0, duplicate: 0, fresh: 0 }
 
-  // 同一个客户可能被多个账号触达，leads 已按 contactId 去重（归属首次接触的账号）
+  // leads 已按时间标记同工单内跨账号的后续进线；后续账号仍计入申请数，但算重复。
   for (const lead of leads) {
     const verdict = isDuplicate(
       rules,
       libraryContacts.has(lead.contactId),
       earliestEverAt.get(lead.contactId)
     )
-    if (verdict.duplicate) duplicate++
+    const isDuplicateLead = verdict.duplicate || lead.campaignDuplicate === true
+    if (isDuplicateLead) duplicate++
     if (verdict.byLibrary) byLibraryCount++
     if (verdict.byTimeRange) byTimeCount++
 
@@ -157,16 +203,23 @@ export function computeCampaignStats(input: ComputeInput): CampaignStats {
       fresh: 0
     }
     acc.total++
-    if (verdict.duplicate) acc.duplicate++
+    acc.lastAt = acc.lastAt === undefined ? lead.firstAt : Math.max(acc.lastAt, lead.firstAt)
+    if (isDuplicateLead) acc.duplicate++
     else acc.fresh++
     byAccount.set(lead.accountId, acc)
 
     const key = dayKey(lead.firstAt, tzOffsetMinutes)
     const day = byDay.get(key) ?? { total: 0, duplicate: 0, fresh: 0 }
     day.total++
-    if (verdict.duplicate) day.duplicate++
+    if (isDuplicateLead) day.duplicate++
     else day.fresh++
     byDay.set(key, day)
+
+    if (todayStartAt !== undefined && lead.firstAt >= todayStartAt && lead.firstAt <= now) {
+      today.total++
+      if (isDuplicateLead) today.duplicate++
+      else today.fresh++
+    }
 
     // 未归因的客户也要统计，否则各来源相加对不上总数
     const sourceKey = lead.sourceCode ?? ''
@@ -177,7 +230,7 @@ export function computeCampaignStats(input: ComputeInput): CampaignStats {
       fresh: 0
     }
     src.total++
-    if (verdict.duplicate) src.duplicate++
+    if (isDuplicateLead) src.duplicate++
     else src.fresh++
     bySource.set(sourceKey, src)
 
@@ -201,6 +254,7 @@ export function computeCampaignStats(input: ComputeInput): CampaignStats {
         accountId,
         channel: v.channel,
         label: accountLabels[accountId],
+        lastAt: v.lastAt,
         total: v.total,
         duplicate: v.duplicate,
         fresh: v.fresh
@@ -209,6 +263,7 @@ export function computeCampaignStats(input: ComputeInput): CampaignStats {
     byDay: [...byDay.entries()]
       .map(([date, v]) => ({ date, ...v }))
       .sort((a, b) => a.date.localeCompare(b.date)),
+    today,
     bySource: [...bySource.entries()]
       .map(([code, v]) => ({ code, via: v.via, total: v.total, duplicate: v.duplicate, fresh: v.fresh }))
       // 量大的排前面；未归因（空 code）永远排最后，它不是一个"来源"

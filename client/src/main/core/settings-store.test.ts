@@ -33,11 +33,11 @@ describe('SettingsStore init 容错', () => {
     await rm(dir, { recursive: true, force: true })
   })
 
-  it('只含部分字段 → 存的保留、缺的深合并默认（含主账号）', async () => {
+  it('只含部分字段 → 存的保留、缺的深合并默认', async () => {
     const { dir, store: s } = await loadWith(JSON.stringify({ locale: 'ja' }))
     expect(s.get().locale).toBe('ja') // 存的字段保留
     expect(s.get().translation.engine).toBe('google-free') // 缺的补默认
-    expect(s.get().accounts['whatsapp:main']).toBeDefined() // 主账号仍在
+    expect(s.get().accounts).toEqual({})
     await rm(dir, { recursive: true, force: true })
   })
 })
@@ -49,6 +49,7 @@ describe('SettingsStore', () => {
     expect(s.locale).toBe('auto')
     expect(s.translation.engine).toBe('google-free')
     expect(s.translation.inboundEnabled).toBe(true)
+    expect(s.translation.confirmBeforeSend).toBe(false)
   })
 
   it('部分更新做深合并且持久化', async () => {
@@ -69,19 +70,18 @@ describe('SettingsStore', () => {
     expect(store.accountConfig('whatsapp:main').proxyUrl).toBe('socks5://127.0.0.1:1080')
   })
 
-  it('默认包含主账号 whatsapp:main；新增/删除账号并持久化', async () => {
-    expect(Object.keys(store.get().accounts)).toContain('whatsapp:main')
+  it('账号注册表默认为空；包括原主账号在内的账号均可删除并持久化', async () => {
+    expect(store.get().accounts).toEqual({})
+    await store.update({ accounts: { 'whatsapp:main': { defaultLang: 'ja' } } })
+    expect(Object.keys(store.get().accounts)).toEqual(['whatsapp:main'])
 
-    await store.update({ accounts: { 'whatsapp:wa2': { defaultLang: 'ja' } } })
-    expect(Object.keys(store.get().accounts).sort()).toEqual(['whatsapp:main', 'whatsapp:wa2'])
-
-    await store.removeAccount('whatsapp:wa2')
-    expect(store.get().accounts['whatsapp:wa2']).toBeUndefined()
+    await store.removeAccount('whatsapp:main')
+    expect(store.get().accounts['whatsapp:main']).toBeUndefined()
 
     const reloaded = new SettingsStore(dir)
     await reloaded.init()
-    expect(reloaded.get().accounts['whatsapp:wa2']).toBeUndefined()
-    expect(reloaded.get().accounts['whatsapp:main']).toBeDefined()
+    expect(reloaded.get().accounts['whatsapp:main']).toBeUndefined()
+    expect(reloaded.get().accounts).toEqual({})
   })
 
   it('get 返回副本，外部修改不污染内部状态', () => {

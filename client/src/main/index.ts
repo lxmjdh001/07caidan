@@ -259,12 +259,17 @@ async function bootstrap(): Promise<void> {
     )
   }
 
-  // 账号注册表 = settings.accounts 的 key 集合（whatsapp:main 始终存在）
-  for (const key of Object.keys(settings.get().accounts)) {
+  // 账号注册表 = settings.accounts 的 key 集合；空列表表示尚未添加账号。
+  // 禁用账号仍注册适配器（保留账号与登录凭证），但启动时跳过连接。
+  const accountConfigs = settings.get().accounts
+  for (const key of Object.keys(accountConfigs)) {
     const sep = key.indexOf(':')
     const kind = key.slice(0, sep)
     const accountId = key.slice(sep + 1)
-    if (accountId && channels.has(kind as never)) registerAccount(kind, accountId)
+    if (accountId && channels.has(kind as never)) {
+      registerAccount(kind, accountId)
+      if (accountConfigs[key]?.disabled) manager.setDisabled(key, true)
+    }
   }
 
   // ── 聊天记录后台同步（批量定时） ──
@@ -356,7 +361,6 @@ async function bootstrap(): Promise<void> {
       return key
     },
     onRemoveAccount: async (key) => {
-      if (key === 'whatsapp:main') throw new Error('主账号不可删除，只能退出登录')
       await manager.logout(key).catch(() => undefined)
       await manager.unregister(key)
       await settings.removeAccount(key)

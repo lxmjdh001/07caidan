@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { errText } from '../errors'
-import type { Campaign, CampaignLink, CampaignStats, FanLibrary } from '@shared/campaign'
+import type { AccountProfile, Campaign, CampaignLink, CampaignStats, FanLibrary } from '@shared/campaign'
 import { LIBRARY_CHANNELS } from '@shared/campaign'
 import {
   CheckGrid,
@@ -22,6 +22,17 @@ export interface AccountOption {
   accountId: string
   /** 该账号对外的联系方式（登录后才有；LINE 取不到） */
   selfHandle?: string
+  /** 账号自身头像（本地媒体库 ID） */
+  avatarMediaId?: string
+  /** 工单展示用的账号状态 */
+  status?: 'online' | 'offline' | 'error'
+}
+
+interface CampaignAccountOption {
+  value: string
+  label: string
+  channel: string
+  sub?: string
 }
 
 interface Props {
@@ -29,6 +40,152 @@ interface Props {
 }
 
 type Tab = 'campaigns' | 'libraries' | 'links'
+
+function platformLabel(channel: string, removedLabel: string): string {
+  switch (channel) {
+    case 'whatsapp':
+      return 'WhatsApp'
+    case 'telegram':
+      return 'Telegram'
+    case 'telegram_bot':
+      return 'Telegram Bot'
+    case 'line':
+      return 'LINE'
+    case 'removed':
+      return removedLabel
+    default:
+      return channel
+  }
+}
+
+/** 工单账号选择：按平台切换，当前平台内搜索并勾选，适合数百账号。 */
+function PlatformAccountPicker({
+  label,
+  hint,
+  options,
+  selected,
+  emptyText,
+  onChange
+}: {
+  label: string
+  hint?: string
+  options: CampaignAccountOption[]
+  selected: string[]
+  emptyText?: string
+  onChange: (next: string[]) => void
+}): React.JSX.Element {
+  const { t } = useI18n()
+  const channels = useMemo(
+    () => Array.from(new Set(options.map((option) => option.channel))),
+    [options]
+  )
+  const [activeChannel, setActiveChannel] = useState(channels[0] ?? '')
+  const [query, setQuery] = useState('')
+
+  useEffect(() => {
+    if (!channels.includes(activeChannel)) setActiveChannel(channels[0] ?? '')
+  }, [activeChannel, channels])
+
+  const activeOptions = useMemo(
+    () => options.filter((option) => option.channel === activeChannel),
+    [activeChannel, options]
+  )
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return activeOptions
+    return activeOptions.filter(
+      (option) => option.label.toLowerCase().includes(q) || option.value.toLowerCase().includes(q)
+    )
+  }, [activeOptions, query])
+  const allShownPicked = filtered.length > 0 && filtered.every((option) => selected.includes(option.value))
+
+  const toggle = (value: string): void =>
+    onChange(selected.includes(value) ? selected.filter((item) => item !== value) : [...selected, value])
+
+  return (
+    <div className="field check-field platform-account-picker">
+      <div className="check-head">
+        <span>{label}</span>
+        <span className="check-count">{selected.length}/{options.length}</span>
+        <button
+          type="button"
+          className="chip"
+          disabled={filtered.length === 0}
+          onClick={() =>
+            onChange(
+              allShownPicked
+                ? selected.filter((value) => !filtered.some((option) => option.value === value))
+                : [...new Set([...selected, ...filtered.map((option) => option.value)])]
+            )
+          }
+        >
+          {allShownPicked ? t('form.clearAll') : t('form.selectAll')}
+        </button>
+      </div>
+
+      {channels.length > 0 && (
+        <div className="campaign-platform-tabs" role="tablist" aria-label={label}>
+          {channels.map((channel) => {
+            const count = options.filter((option) => option.channel === channel).length
+            const pickedCount = options.filter(
+              (option) => option.channel === channel && selected.includes(option.value)
+            ).length
+            return (
+              <button
+                key={channel}
+                type="button"
+                role="tab"
+                aria-selected={activeChannel === channel}
+                className={activeChannel === channel ? 'on' : ''}
+                onClick={() => {
+                  setActiveChannel(channel)
+                  setQuery('')
+                }}
+              >
+                <span>{platformLabel(channel, t('campaign.removedAccount'))}</span>
+                <span className="campaign-platform-count">
+                  {pickedCount > 0 ? `${pickedCount}/` : ''}{count}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      {options.length === 0 ? (
+        <p className="field-hint">{emptyText ?? t('form.noOptions')}</p>
+      ) : (
+        <>
+          <input
+            type="text"
+            className="check-search"
+            value={query}
+            placeholder={t('form.search')}
+            onChange={(event) => setQuery(event.target.value)}
+          />
+          {filtered.length === 0 ? (
+            <p className="field-hint">{t('form.noMatch')}</p>
+          ) : (
+            <div className="check-grid campaign-account-grid">
+              {filtered.map((option) => (
+                <label key={option.value} className={`check-item ${selected.includes(option.value) ? 'picked' : ''}`}>
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(option.value)}
+                    onChange={() => toggle(option.value)}
+                  />
+                  <span className="check-label">{option.label}</span>
+                  {option.sub && <span className="check-sub">{option.sub}</span>}
+                </label>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+      {hint && <p className="field-hint">{hint}</p>}
+    </div>
+  )
+}
 
 function fmt(ts?: number): string {
   if (!ts) return '—'
@@ -50,6 +207,7 @@ export function CampaignPage({ accounts }: Props): React.JSX.Element {
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
+  const [editing, setEditing] = useState<Campaign | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -73,7 +231,6 @@ export function CampaignPage({ accounts }: Props): React.JSX.Element {
   }, [load])
 
   const detail = detailId ? campaigns.find((c) => c.id === detailId) : undefined
-  const [editing, setEditing] = useState<Campaign | null>(null)
 
   return (
     <div className="page">
@@ -110,7 +267,14 @@ export function CampaignPage({ accounts }: Props): React.JSX.Element {
       </header>
 
       <div className="page-body">
-        {err && <p className="auth-err">{err}</p>}
+        {err && (
+          <div className="campaign-error">
+            <p className="auth-err">{err}</p>
+            <button type="button" className="ghost-btn" onClick={() => void load()}>
+              {t('campaign.retry')}
+            </button>
+          </div>
+        )}
         {loading && <p className="field-hint">{t('campaign.loading')}</p>}
 
         {!loading && tab === 'campaigns' && (
@@ -153,26 +317,70 @@ export function CampaignPage({ accounts }: Props): React.JSX.Element {
                 {campaigns.length === 0 ? (
                   <p className="empty-hint">{t('campaign.empty')}</p>
                 ) : (
-                  <ul className="campaign-list">
-                    {campaigns.map((c) => (
-                      <li key={c.id}>
-                        <button
-                          type="button"
-                          className="campaign-row"
-                          onClick={() => setDetailId(c.id)}
-                        >
-                          <span className="campaign-name">{c.name}</span>
-                          <span className="campaign-meta">
-                            {c.accountIds.length} {t('campaign.accountsUnit')} · {fmt(c.startAt)}{' '}
-                            {t('campaign.start')}
-                            {c.endAt
-                              ? ` · ${fmt(c.endAt)} ${t('campaign.end')}`
-                              : ` · ${t('campaign.ongoing')}`}
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                  <div className="campaign-table-wrap">
+                    <table className="data-table campaign-table">
+                      <thead>
+                        <tr>
+                          <th>工单编号</th>
+                          <th>工单名称</th>
+                          <th>平台</th>
+                          <th>{t('campaign.startAt')}</th>
+                          <th>{t('campaign.endAt')}</th>
+                          <th>{t('campaign.resetTime')}</th>
+                          <th className="num">账号数量</th>
+                          <th className="num">总目标</th>
+                          <th className="campaign-operation-head">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {campaigns.map((c) => {
+                          const channels = Array.from(
+                            new Set(
+                                c.accountIds
+                                  .map((id) => c.accountProfiles[id]?.channel)
+                                .filter((channel): channel is string => Boolean(channel))
+                            )
+                          )
+                          const platform = channels.length
+                            ? channels.map((channel) => platformLabel(channel, t('campaign.removedAccount'))).join(' / ')
+                            : '—'
+                          return (
+                            <tr key={c.id}>
+                              <td className="campaign-id" title={c.id}>{c.id}</td>
+                              <td className="campaign-name-cell">{c.name}</td>
+                              <td>{platform}</td>
+                              <td>{fmt(c.startAt)}</td>
+                              <td>{c.endAt ? fmt(c.endAt) : t('campaign.ongoing')}</td>
+                              <td>{c.resetTime || '00:00'}</td>
+                              <td className="num">{c.accountIds.length}</td>
+                              <td className="num">{c.totalTarget || 0}</td>
+                              <td className="campaign-operation-cell">
+                                <div className="campaign-actions">
+                                  <button type="button" className="table-action" onClick={() => setDetailId(c.id)}>
+                                    查看
+                                  </button>
+                                  <button type="button" className="table-action" onClick={() => setEditing(c)}>
+                                    {t('campaign.edit')}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="table-action danger"
+                                    onClick={async () => {
+                                      if (!window.confirm(t('campaign.deleteConfirm'))) return
+                                      await api.campaign('deleteCampaign', c.id)
+                                      await load()
+                                    }}
+                                  >
+                                    {t('campaign.delete')}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </>
             )}
@@ -211,17 +419,12 @@ function CampaignForm({
   const [picked, setPicked] = useState<string[]>(editing ? editing.accountIds.map(keyOf) : [])
   const [startAt, setStartAt] = useState(toLocalInput(editing?.startAt ?? startOfDay()))
   const [endAt, setEndAt] = useState(editing?.endAt ? toLocalInput(editing.endAt) : '')
+  const [resetTime, setResetTime] = useState(editing?.resetTime ?? '00:00')
+  const [totalTarget, setTotalTarget] = useState(String(editing?.totalTarget ?? 0))
+  const [accountTargets, setAccountTargets] = useState<Record<string, string>>(
+    Object.fromEntries(Object.entries(editing?.accountTargets ?? {}).map(([id, value]) => [id, String(value)]))
+  )
   const [libIds, setLibIds] = useState<string[]>(editing?.dedupLibraryIds ?? [])
-  const [beforeAt, setBeforeAt] = useState(
-    editing?.dedupBeforeAt ? toLocalInput(editing.dedupBeforeAt) : ''
-  )
-  /** 时间规则的统计账号；空 = 全部账号 */
-  const [dedupAccounts, setDedupAccounts] = useState<string[]>(
-    editing ? editing.dedupAccountIds.map(keyOf) : []
-  )
-  const [dedupScope, setDedupScope] = useState<'all' | 'pick'>(
-    editing && editing.dedupAccountIds.length > 0 ? 'pick' : 'all'
-  )
   /** 投放来源码，空格/逗号分隔；空 = 全部来源 */
   const [sources, setSources] = useState((editing?.sourceCodes ?? []).join(' '))
   /** 公开看板地区限制：默认拒绝大陆与香港 */
@@ -230,14 +433,15 @@ function CampaignForm({
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
-  const accountOptions = [
-    ...accounts.map((a) => ({ value: a.key, label: a.label, sub: a.channel })),
+  const accountOptions: CampaignAccountOption[] = [
+    ...accounts.map((a) => ({ value: a.key, label: a.label, channel: a.channel, sub: a.channel })),
     // 工单里存过、但本机已删掉的账号：仍然展示，让老板能保留或移除
     ...(editing?.accountIds ?? [])
       .filter((id) => !accounts.some((a) => a.accountId === id))
       .map((id) => ({
         value: `gone:${id}`,
         label: editing?.accountLabels[id] ?? id,
+        channel: 'removed',
         sub: t('campaign.removedAccount')
       }))
   ]
@@ -249,6 +453,17 @@ function CampaignForm({
   const usableLibs = libraries.filter(
     (l) => pickedChannels.size === 0 || pickedChannels.has(l.channel)
   )
+
+  useEffect(() => {
+    setAccountTargets((current) => {
+      const next: Record<string, string> = {}
+      for (const key of picked) {
+        const id = key.startsWith('gone:') ? key.slice(5) : (accounts.find((a) => a.key === key)?.accountId ?? key)
+        next[id] = current[id] ?? String(editing?.accountTargets?.[id] ?? '')
+      }
+      return next
+    })
+  }, [accounts, editing?.accountTargets, picked])
 
   const startPresets: DatePreset[] = [
     { label: t('form.now'), value: () => Date.now() },
@@ -263,44 +478,83 @@ function CampaignForm({
     { label: t('form.days7'), value: () => startOfDay(8) },
     { label: t('form.days30'), value: () => startOfDay(31) }
   ]
-  const beforePresets: DatePreset[] = [
-    { label: t('form.clear'), value: () => undefined },
-    { label: t('form.today'), value: () => startOfDay() },
-    { label: t('form.days7ago'), value: () => startOfDay(-7) },
-    { label: t('form.days30ago'), value: () => startOfDay(-30) },
-    { label: t('form.days90ago'), value: () => startOfDay(-90) }
-  ]
-
   const submit = async (): Promise<void> => {
     setErr('')
+    // gone: 前缀 = 本机已删的账号，accountId 与备注名从工单原数据取
+    const toAccountId = (key: string): string =>
+      key.startsWith('gone:') ? key.slice(5) : (accounts.find((a) => a.key === key)?.accountId ?? key)
     const start = fromLocalInput(startAt)
     if (!name.trim()) return setErr(t('campaign.errName'))
     if (picked.length === 0) return setErr(t('campaign.errAccounts'))
     if (start === undefined) return setErr(t('campaign.errStart'))
     const end = fromLocalInput(endAt)
     if (end !== undefined && end <= start) return setErr(t('campaign.errEnd'))
+    const parsedTotalTarget = Number(totalTarget || 0)
+    if (!Number.isInteger(parsedTotalTarget) || parsedTotalTarget < 0) return setErr(t('campaign.errTarget'))
+    const parsedAccountTargets: Record<string, number> = {}
+    for (const key of picked) {
+      const accountId = toAccountId(key)
+      const value = Number(accountTargets[accountId] || 0)
+      if (!Number.isInteger(value) || value < 0) return setErr(t('campaign.errTarget'))
+      if (value > 0) parsedAccountTargets[accountId] = value
+    }
     setBusy(true)
     try {
-      // gone: 前缀 = 本机已删的账号，accountId 与备注名从工单原数据取
-      const toAccountId = (key: string): string =>
-        key.startsWith('gone:') ? key.slice(5) : (accounts.find((a) => a.key === key)?.accountId ?? key)
       const labelOf = (key: string): string =>
         key.startsWith('gone:')
           ? (editing?.accountLabels[key.slice(5)] ?? key.slice(5))
           : (accounts.find((a) => a.key === key)?.label ?? key)
+      const accountProfiles: Record<string, AccountProfile> = {}
+      for (const key of picked) {
+        const accountId = toAccountId(key)
+        const account = accounts.find((a) => a.accountId === accountId)
+        const previous = editing?.accountProfiles?.[accountId]
+        // 账号头像可能在连接后才异步拉取，提交时强制刷新一次。
+        const refreshed = key.startsWith('gone:')
+          ? undefined
+          : await api.refreshChannelProfile(key).catch(() => undefined)
+        const profile: AccountProfile = {
+          channel: account?.channel ?? previous?.channel ?? 'removed',
+          handle: refreshed?.selfHandle ?? account?.selfHandle ?? previous?.handle,
+          status:
+            refreshed?.status === 'connected'
+              ? 'online'
+              : account?.status ?? previous?.status ?? 'offline'
+        }
+        // 账号头像在本机媒体库中，先上传到后台，分享页才能在客户端关闭后继续显示。
+        // 刷新接口可能因平台暂时不可用返回空，不能因此覆盖客户端已有头像。
+        // 刷新资料可能因平台限流暂时返回空；优先用刷新结果，否则保留客户端已有或工单旧头像。
+        const avatarMediaId = refreshed?.avatarMediaId ?? account?.avatarMediaId ?? previous?.avatarMediaId
+        if (avatarMediaId) {
+          try {
+            const local = await fetch(`omni-media://local/${encodeURIComponent(avatarMediaId)}`)
+            if (local.ok) {
+              const mimeType = local.headers.get('content-type') || 'image/png'
+              const bytes = new Uint8Array(await local.arrayBuffer())
+              const uploaded = await api.campaign<string>('uploadAvatar', bytes, mimeType)
+              if (uploaded) profile.avatarMediaId = uploaded
+            }
+          } catch {
+            // 头像读取/上传失败不应阻断工单创建；分享页会明确显示“无”。
+          }
+        } else {
+          // 没有真实头像时明确保存为空，分享页显示“无”。
+          profile.avatarMediaId = undefined
+        }
+        accountProfiles[accountId] = profile
+      }
       const payload = {
         name: name.trim(),
         accountIds: picked.map(toAccountId),
         accountLabels: Object.fromEntries(picked.map((k) => [toAccountId(k), labelOf(k)])),
+        accountProfiles,
         startAt: start,
         endAt: end,
+        resetTime,
+        totalTarget: parsedTotalTarget,
+        accountTargets: parsedAccountTargets,
         // 只提交与所选账号同平台的库，避免改过账号后留下永不命中的脏规则
         dedupLibraryIds: libIds.filter((id) => usableLibs.some((l) => l.id === id)),
-        dedupBeforeAt: fromLocalInput(beforeAt),
-        dedupAccountIds:
-          dedupScope === 'all'
-            ? []
-            : dedupAccounts.map(toAccountId),
         sourceCodes: sources.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean),
         allowCnIp: allowCn,
         allowHkIp: allowHk,
@@ -308,7 +562,13 @@ function CampaignForm({
       }
       if (editing) {
         // 编辑时结束时间清空要显式传 null，不能靠 undefined（会被当成"不改"）
-        await api.campaign('updateCampaign', editing.id, { ...payload, endAt: end ?? null })
+        // 同时清空旧版本保存的时间判重字段，统一改为只按重粉库命中判重。
+        await api.campaign('updateCampaign', editing.id, {
+          ...payload,
+          endAt: end ?? null,
+          dedupBeforeAt: null,
+          dedupAccountIds: []
+        })
       } else {
         await api.campaign('createCampaign', payload)
       }
@@ -341,7 +601,7 @@ function CampaignForm({
           />
         </label>
 
-        <CheckGrid
+        <PlatformAccountPicker
           label={t('campaign.accounts')}
           hint={t('campaign.accountsHint')}
           options={accountOptions}
@@ -363,6 +623,35 @@ function CampaignForm({
             presets={endPresets}
             onChange={setEndAt}
           />
+          <label className="field time-field">
+            <span>{t('campaign.resetTime')}</span>
+            <input type="time" value={resetTime} onChange={(e) => setResetTime(e.target.value)} />
+            <span className="field-hint">{t('campaign.resetTimeHint')}</span>
+          </label>
+        </div>
+
+        <div className="target-settings">
+          <label className="field target-total-field">
+            <span>{t('campaign.totalTarget')}</span>
+            <input type="number" min="0" step="1" value={totalTarget} onChange={(e) => setTotalTarget(e.target.value)} />
+            <span className="field-hint">{t('campaign.totalTargetHint')}</span>
+          </label>
+          <div className="field account-target-field">
+            <span>{t('campaign.accountTargets')}</span>
+            <div className="account-target-list">
+              {picked.map((key) => {
+                const accountId = key.startsWith('gone:') ? key.slice(5) : (accounts.find((a) => a.key === key)?.accountId ?? key)
+                const account = accounts.find((a) => a.accountId === accountId)
+                return (
+                  <label className="account-target-row" key={accountId}>
+                    <span>{account?.label ?? editing?.accountLabels[accountId] ?? accountId}</span>
+                    <input type="number" min="0" step="1" value={accountTargets[accountId] ?? ''} placeholder="0" onChange={(e) => setAccountTargets((current) => ({ ...current, [accountId]: e.target.value }))} />
+                  </label>
+                )
+              })}
+            </div>
+            <span className="field-hint">{t('campaign.accountTargetsHint')}</span>
+          </div>
         </div>
 
         <label className="field">
@@ -417,50 +706,6 @@ function CampaignForm({
           />
         </div>
 
-        <div className="rule-block">
-          <h4>{t('campaign.rule2')}</h4>
-          <DateField
-            label={t('campaign.dedupBefore')}
-            value={beforeAt}
-            presets={beforePresets}
-            onChange={setBeforeAt}
-          />
-
-          {beforeAt && (
-            <>
-              <div className="field">
-                <span>{t('campaign.dedupScope')}</span>
-                <div className="radio-row">
-                  <label className="radio-item">
-                    <input
-                      type="radio"
-                      checked={dedupScope === 'all'}
-                      onChange={() => setDedupScope('all')}
-                    />
-                    <span>{t('campaign.scopeAll')}</span>
-                  </label>
-                  <label className="radio-item">
-                    <input
-                      type="radio"
-                      checked={dedupScope === 'pick'}
-                      onChange={() => setDedupScope('pick')}
-                    />
-                    <span>{t('campaign.scopePick')}</span>
-                  </label>
-                </div>
-              </div>
-              {dedupScope === 'pick' && (
-                <CheckGrid
-                  label={t('campaign.dedupAccounts')}
-                  hint={t('campaign.dedupAccountsHint')}
-                  options={accountOptions}
-                  selected={dedupAccounts}
-                  onChange={setDedupAccounts}
-                />
-              )}
-            </>
-          )}
-        </div>
       </section>
 
       {err && <p className="auth-err">{err}</p>}
@@ -569,6 +814,10 @@ function CampaignDetail({
               <span className="k">{t('campaign.replyRate')}</span>
               <span className="v">{Math.round(stats.response.replyRate * 100)}%</span>
             </div>
+            <div className="stat-card">
+              <span className="k">{t('campaign.totalTarget')}</span>
+              <span className="v">{campaign.totalTarget || 0}</span>
+            </div>
           </div>
 
           {stats.bySource.length > 0 && (
@@ -613,6 +862,7 @@ function CampaignDetail({
                   <tr>
                     <th>{t('campaign.account')}</th>
                     <th>{t('campaign.platform')}</th>
+                    <th className="num">{t('campaign.target')}</th>
                     <th className="num">{t('campaign.total')}</th>
                     <th className="num">{t('campaign.fresh')}</th>
                     <th className="num">{t('campaign.duplicate')}</th>
@@ -623,6 +873,7 @@ function CampaignDetail({
                     <tr key={a.accountId}>
                       <td>{a.label || a.accountId}</td>
                       <td>{a.channel}</td>
+                      <td className="num">{campaign.accountTargets?.[a.accountId] || 0}</td>
                       <td className="num">{a.total}</td>
                       <td className="num">{a.fresh}</td>
                       <td className="num">{a.duplicate}</td>
@@ -687,6 +938,7 @@ function CampaignDetail({
           <ul className="link-list">
             {links.map((l) => {
               const url = `${publicBase}/c/${l.token}`
+              const expired = l.expiresAt !== undefined && l.expiresAt <= Date.now()
               return (
                 <li key={l.token} className={l.active ? '' : 'off'}>
                   <div className="link-main">
@@ -696,7 +948,7 @@ function CampaignDetail({
                   <span className="link-state">
                     {l.revoked
                       ? t('campaign.revoked')
-                      : l.expiresAt
+                      : l.expiresAt !== undefined
                         ? l.active
                           ? `${fmt(l.expiresAt)} ${t('campaign.expiresAt')}`
                           : t('campaign.expired')
@@ -713,7 +965,18 @@ function CampaignDetail({
                   >
                     {copied === l.token ? t('campaign.copied') : t('campaign.copy')}
                   </button>
-                  {l.active && (
+                  {l.revoked && !expired ? (
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={async () => {
+                        await api.campaign('restoreLink', l.token)
+                        await refresh()
+                      }}
+                    >
+                      {t('campaign.restore')}
+                    </button>
+                  ) : l.active ? (
                     <button
                       type="button"
                       className="danger-btn"
@@ -724,7 +987,7 @@ function CampaignDetail({
                     >
                       {t('campaign.revoke')}
                     </button>
-                  )}
+                  ) : null}
                   <button
                     type="button"
                     className="danger-btn"

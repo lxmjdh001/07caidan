@@ -47,6 +47,7 @@ const CAMPAIGN_METHODS: Record<string, true> = {
   listCampaigns: true,
   createCampaign: true,
   updateCampaign: true,
+  uploadAvatar: true,
   deleteCampaign: true,
   campaignStats: true,
   listLinks: true,
@@ -55,6 +56,7 @@ const CAMPAIGN_METHODS: Record<string, true> = {
   createEntryLink: true,
   deleteEntryLink: true,
   revokeLink: true,
+  restoreLink: true,
   deleteLink: true,
   listLibraries: true,
   importLibrary: true,
@@ -100,6 +102,9 @@ export function registerIpc(deps: IpcDeps): void {
   const { manager, store, settings, translators } = deps
 
   ipcMain.handle(IPC_METHODS.listChannels, () => manager.listChannels())
+  ipcMain.handle(IPC_METHODS.refreshChannelProfile, (_e, key: string) =>
+    manager.refreshSelfProfile(key)
+  )
   ipcMain.handle(IPC_METHODS.listChannelPlugins, () =>
     deps.channels.list().map((p) => ({
       kind: p.kind,
@@ -170,6 +175,16 @@ export function registerIpc(deps: IpcDeps): void {
   })
   ipcMain.handle(IPC_METHODS.addAccount, (_e, channel: string) => deps.onAddAccount(channel))
   ipcMain.handle(IPC_METHODS.removeAccount, (_e, key: string) => deps.onRemoveAccount(key))
+  ipcMain.handle(
+    IPC_METHODS.setAccountEnabled,
+    async (_e, key: string, enabled: boolean) => {
+      if (typeof enabled !== 'boolean') throw new Error('账号启用状态无效')
+      if (!settings.get().accounts[key]) throw new Error(`账号不存在：${key}`)
+      const config = settings.accountConfig(key)
+      await settings.update({ accounts: { [key]: { ...config, disabled: !enabled } } })
+      await manager.setAccountEnabled(key, enabled)
+    }
+  )
 
   ipcMain.handle(IPC_METHODS.listConversations, () => store.listConversations())
   ipcMain.handle(IPC_METHODS.listMessages, (_e, conversationId: string, limit?: number) =>
@@ -199,6 +214,14 @@ export function registerIpc(deps: IpcDeps): void {
     IPC_METHODS.setConversationAutoReply,
     async (_e, conversationId: string, on: boolean) => {
       const updated = await store.patchConversation({ id: conversationId, autoReply: on })
+      if (updated) deps.broadcast({ type: 'conversation:updated', conversation: updated })
+    }
+  )
+
+  ipcMain.handle(
+    IPC_METHODS.setConversationPinned,
+    async (_e, conversationId: string, pinned: boolean) => {
+      const updated = await store.patchConversation({ id: conversationId, pinned })
       if (updated) deps.broadcast({ type: 'conversation:updated', conversation: updated })
     }
   )

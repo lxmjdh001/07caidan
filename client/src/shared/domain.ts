@@ -36,6 +36,8 @@ export interface ChannelState {
   pairingCode?: string
   /** 登录后的账号显示名 */
   selfName?: string
+  /** 登录账号自身头像（MediaStore 内的文件 ID）；未获取到时由 UI 使用平台 Logo 回退 */
+  avatarMediaId?: string
   /**
    * 本账号对外的联系方式（WhatsApp 为手机号、Telegram 为用户名）。
    * 用于生成客户找上门的入口链接，登录后才有；LINE 拿不到，需用户自己填。
@@ -134,6 +136,8 @@ export interface Conversation {
   leadSource?: LeadSourceInfo
   /** 该会话是否开启 AI 自动回复（还需全局开关同时开启） */
   autoReply?: boolean
+  /** 是否置顶显示在会话列表顶部 */
+  pinned?: boolean
   isGroup: boolean
   lastMessageAt: number
   lastMessagePreview: string

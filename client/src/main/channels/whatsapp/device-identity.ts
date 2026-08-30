@@ -17,8 +17,7 @@ type BrowserTuple = [string, string, string]
 /** 候选操作系统家族（用 Baileys 内置的版本号，保持真实感） */
 const OS_BUILDERS: Array<(browser: string) => BrowserTuple> = [
   Browsers.macOS as (b: string) => BrowserTuple,
-  Browsers.windows as (b: string) => BrowserTuple,
-  Browsers.ubuntu as (b: string) => BrowserTuple
+  Browsers.windows as (b: string) => BrowserTuple
 ]
 
 /** 候选浏览器名 */

@@ -115,6 +115,34 @@ export class TelegramAdapter extends ChannelAdapter {
     return { externalId: String(r.message_id) }
   }
 
+  override async fetchSelfAvatar(): Promise<string | undefined> {
+    if (this.status !== 'connected' || !this.selfId || !this.saveMedia) return undefined
+    try {
+      const result = await this.call<{
+        total_count: number
+        photos: Array<Array<{ file_id: string }>>
+      }>('getUserProfilePhotos', { user_id: this.selfId, limit: 1 })
+      const sizes = result.photos?.[0] ?? []
+      const photo = sizes[sizes.length - 1]
+      if (!photo?.file_id) return undefined
+      const file = await this.call<{ file_path?: string }>('getFile', { file_id: photo.file_id })
+      if (!file.file_path) return undefined
+      const token = this.getBotToken()
+      if (!token) return undefined
+      const res = await fetch(
+        `https://api.telegram.org/file/bot${token}/${file.file_path}`,
+        withDispatcher({ signal: AbortSignal.timeout(30_000) }, this.dispatcher)
+      )
+      if (!res.ok) return undefined
+      const buffer = Buffer.from(await res.arrayBuffer())
+      if (buffer.length === 0) return undefined
+      return await this.saveMedia(buffer, '.jpg')
+    } catch (err) {
+      this.log.debug('账号头像拉取失败', { err: String(err) })
+      return undefined
+    }
+  }
+
   private async pollLoop(): Promise<void> {
     if (this.polling) return
     this.polling = true

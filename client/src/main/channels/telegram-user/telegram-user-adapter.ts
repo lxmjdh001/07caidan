@@ -295,6 +295,22 @@ export class TelegramUserAdapter extends ChannelAdapter {
     }
   }
 
+  override async fetchSelfAvatar(): Promise<string | undefined> {
+    const client = this.client
+    const saveMedia = this.opts.saveMedia
+    if (!client || this.status !== 'connected' || !saveMedia) return undefined
+    try {
+      const photo = await client.downloadProfilePhoto('me', { isBig: false })
+      if (!photo) return undefined
+      const buffer = Buffer.isBuffer(photo) ? photo : await readFile(photo)
+      if (buffer.length === 0) return undefined
+      return await saveMedia(buffer, '.jpg')
+    } catch (err) {
+      this.log.debug('账号头像拉取失败', { err: String(err) })
+      return undefined
+    }
+  }
+
   // ── 内部 ──
 
   /** 挂起等待 UI 输入；stop/logout 时会被 reject */

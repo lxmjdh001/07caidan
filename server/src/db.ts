@@ -124,6 +124,10 @@ export function openDb(dbPath: string): Db {
       tenant TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL,
       account_ids TEXT NOT NULL DEFAULT '[]',
       account_labels TEXT NOT NULL DEFAULT '{}',
+      account_profiles TEXT NOT NULL DEFAULT '{}',
+      total_target INTEGER NOT NULL DEFAULT 0,
+      account_targets TEXT NOT NULL DEFAULT '{}',
+      reset_time TEXT NOT NULL DEFAULT '00:00',
       start_at INTEGER NOT NULL, end_at INTEGER,
       dedup_library_ids TEXT NOT NULL DEFAULT '[]', dedup_before_at INTEGER,
       dedup_account_ids TEXT NOT NULL DEFAULT '[]',
@@ -331,6 +335,10 @@ export function openDb(dbPath: string): Db {
 function migrate(sqlite: BetterSqlite3.Database): void {
   const columns = [
     ['campaigns', 'account_labels', `TEXT NOT NULL DEFAULT '{}'`],
+    ['campaigns', 'account_profiles', `TEXT NOT NULL DEFAULT '{}'`],
+    ['campaigns', 'total_target', 'INTEGER NOT NULL DEFAULT 0'],
+    ['campaigns', 'account_targets', `TEXT NOT NULL DEFAULT '{}'`],
+    ['campaigns', 'reset_time', `TEXT NOT NULL DEFAULT '00:00'`],
     ['campaigns', 'dedup_account_ids', `TEXT NOT NULL DEFAULT '[]'`],
     ['campaigns', 'tz_offset_minutes', 'INTEGER NOT NULL DEFAULT 480'],
     ['campaigns', 'source_codes', `TEXT NOT NULL DEFAULT '[]'`],

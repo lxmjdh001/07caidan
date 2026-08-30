@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ChannelState, Conversation, UnifiedMessage } from '@shared/domain'
+import { parseConversationId, type ChannelState, type Conversation, type UnifiedMessage } from '@shared/domain'
 import type { AppSettings } from '@shared/settings'
 import type { ChannelPluginInfo, OutboundPreview, TranslatorInfo } from '@shared/ipc'
 import { AccountList, type AccountRow } from './components/AccountList'
@@ -21,6 +21,17 @@ import { I18nProvider, localeDir, resolveLocale, type Locale } from './i18n'
 import type { ThemeMode } from '@shared/settings'
 
 const api = window.omni
+
+function sortConversations(a: Conversation, b: Conversation): number {
+  const pinnedDelta = Number(Boolean(b.pinned)) - Number(Boolean(a.pinned))
+  return pinnedDelta || b.lastMessageAt - a.lastMessageAt
+}
+
+function accountPresence(status?: ChannelState['status']): 'online' | 'offline' | 'error' {
+  if (status === 'connected') return 'online'
+  if (status === 'error') return 'error'
+  return 'offline'
+}
 
 type MainView = 'home' | 'chat' | 'campaigns' | 'billing' | 'support' | 'settings' | 'team' | 'management'
 
@@ -102,7 +113,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   const upsertConversation = useCallback((conv: Conversation) => {
     setConversations((prev) => {
       const rest = prev.filter((c) => c.id !== conv.id)
-      return [...rest, conv].sort((a, b) => b.lastMessageAt - a.lastMessageAt)
+      return [...rest, conv].sort(sortConversations)
     })
   }, [])
 
@@ -200,14 +211,53 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   )
 
   const sendText = useCallback(
-    async (text: string, prepared?: OutboundPreview) => {
-      if (!activeId) return
-      const msg = await api.sendText(activeId, text, prepared)
-      setMessages((prev) => {
-        const list = prev[activeId] ?? []
-        if (list.some((m) => m.id === msg.id)) return prev
-        return { ...prev, [activeId]: [...list, msg] }
-      })
+    async (text: string, prepared?: OutboundPreview): Promise<UnifiedMessage> => {
+      if (!activeId) throw new Error('未选择会话')
+      const conversationId = activeId
+      const { channel, accountId } = parseConversationId(conversationId)
+      const optimisticId = crypto.randomUUID()
+      const optimistic: UnifiedMessage = {
+        id: optimisticId,
+        channel,
+        accountId,
+        conversationId,
+        direction: 'out',
+        body: { type: 'text', text: prepared?.send ?? text },
+        translation: prepared?.engine
+          ? { text: prepared.original, targetLang: prepared.targetLang, engine: prepared.engine }
+          : undefined,
+        timestamp: Date.now(),
+        status: 'pending'
+      }
+
+      // 先本地回显，网络发送和持久化在后台完成，避免点击后聊天区空等。
+      setMessages((prev) => ({
+        ...prev,
+        [conversationId]: [...(prev[conversationId] ?? []), optimistic]
+      }))
+
+      try {
+        const msg = await api.sendText(conversationId, text, prepared)
+        setMessages((prev) => {
+          const list = prev[conversationId] ?? []
+          return {
+            ...prev,
+            [conversationId]: [
+              ...list.filter((item) => item.id !== optimisticId && item.id !== msg.id),
+              msg
+            ]
+          }
+        })
+        return msg
+      } catch (error) {
+        setMessages((prev) => ({
+          ...prev,
+          [conversationId]: (prev[conversationId] ?? []).map((item) =>
+            item.id === optimisticId ? { ...item, status: 'failed' } : item
+          )
+        }))
+        throw error
+      }
     },
     [activeId]
   )
@@ -238,10 +288,57 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
     [activeId]
   )
 
+  const toggleConversationPinned = useCallback(
+    async (conversationId: string, pinned: boolean): Promise<void> => {
+      const previousPinned =
+        conversations.find((conversation) => conversation.id === conversationId)?.pinned ?? false
+      setConversations((prev) =>
+        prev
+          .map((conversation) =>
+            conversation.id === conversationId ? { ...conversation, pinned } : conversation
+          )
+          .sort(sortConversations)
+      )
+      try {
+        await api.setConversationPinned(conversationId, pinned)
+      } catch (error) {
+        setConversations((prev) =>
+          prev
+            .map((conversation) =>
+              conversation.id === conversationId
+                ? { ...conversation, pinned: previousPinned }
+                : conversation
+            )
+            .sort(sortConversations)
+        )
+        const detail = error instanceof Error ? error.message : String(error)
+        window.alert(`设置置顶失败：${detail}`)
+      }
+    },
+    [conversations]
+  )
+
   const saveSettings = useCallback(async (patch: Partial<AppSettings>) => {
     const updated = await api.updateSettings(patch)
     setSettings(updated)
   }, [])
+
+  /** 删除后以主进程的实际注册表为准刷新，避免事件延迟导致界面残留。 */
+  const removeAccount = useCallback(async (key: string): Promise<boolean> => {
+    try {
+      await api.removeAccount(key)
+      const [updated, channelList] = await Promise.all([api.getSettings(), api.listChannels()])
+      setSettings(updated)
+      setChannels(Object.fromEntries(channelList.map((state) => [`${state.kind}:${state.accountId}`, state])))
+      if (activeAccountKey === key) setActiveAccountKey(null)
+      if (activeId?.startsWith(`${key}:`)) setActiveId(null)
+      return true
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      window.alert(`删除账号失败：${detail}`)
+      return false
+    }
+  }, [activeAccountKey, activeId])
 
   const selectAccount = useCallback(
     (key: string | null) => {
@@ -285,9 +382,8 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
     root.dir = localeDir(locale)
   }, [settings?.theme, locale])
 
-  // main 账号永远排最前，其余按 key
-  const sortKeys = (a: string, b: string): number =>
-    a === 'whatsapp:main' ? -1 : b === 'whatsapp:main' ? 1 : a.localeCompare(b)
+  // 各平台账号按 key 稳定排序，不再保留不可删除的固定主账号。
+  const sortKeys = (a: string, b: string): number => a.localeCompare(b)
 
   /** 账号显示名：备注名 > 登录名 > 序号 */
   const accountLabels = useMemo(() => {
@@ -309,7 +405,9 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
           label: accountLabels[key] ?? key,
           channel: key.split(':')[0] ?? '',
           accountId: key.split(':').slice(1).join(':'),
-          selfHandle: channels[key]?.selfHandle
+          selfHandle: channels[key]?.selfHandle,
+          avatarMediaId: channels[key]?.avatarMediaId,
+          status: accountPresence(channels[key]?.status)
         })),
     [channels, accountLabels]
   )
@@ -331,14 +429,25 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
         key,
         label: accountLabels[key] ?? key,
         state,
-        unread: unreadByAccount[key] ?? 0
+        unread: unreadByAccount[key] ?? 0,
+        disabled: settings?.accounts[key]?.disabled === true
       }))
-  }, [channels, accountLabels, unreadByAccount])
+  }, [channels, accountLabels, unreadByAccount, settings])
 
   const totalUnread = useMemo(
     () => conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0),
     [conversations]
   )
+
+  const toggleAccountEnabled = useCallback(async (key: string, enabled: boolean): Promise<void> => {
+    try {
+      await api.setAccountEnabled(key, enabled)
+      setSettings(await api.getSettings())
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error)
+      window.alert(`${enabled ? '启用' : '禁用'}账号失败：${detail}`)
+    }
+  }, [])
 
   // 总未读同步到系统角标：客服把窗口切走后也能看到有新客进线
   useEffect(() => {
@@ -434,6 +543,8 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
                 const st = channels[key]
                 if (
                   st &&
+                  settings !== null &&
+                  !settings.accounts[key]?.disabled &&
                   (st.status === 'stopped' || st.status === 'logged_out' || st.status === 'error')
                 ) {
                   void api.startChannel(key)
@@ -441,7 +552,10 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
               }
             }}
             onAccountSettings={(key) => setAccountModalKey(key)}
-            onReconnect={(key) => void api.startChannel(key)}
+            onReconnect={(key) => {
+              if (settings && !settings.accounts[key]?.disabled) void api.startChannel(key)
+            }}
+            onToggleEnabled={(key, enabled) => void toggleAccountEnabled(key, enabled)}
             onMarkAccountRead={(key) => {
               const accountConversations = conversations.filter((conversation) => `${conversation.channel}:${conversation.accountId}` === key)
               for (const conversation of accountConversations) void api.markRead(conversation.id)
@@ -452,16 +566,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             }}
             onRemoveAccount={(key) => {
               if (!window.confirm('确定删除这个账号？账号会从列表移除，聊天记录会保留。')) return
-              void api.removeAccount(key).then(async () => {
-                const updated = await api.getSettings()
-                setSettings(updated)
-                setChannels((prev) => {
-                  const next = { ...prev }
-                  delete next[key]
-                  return next
-                })
-                if (activeAccountKey === key) setActiveAccountKey(null)
-              })
+              void removeAccount(key)
             }}
             onAddAccount={() => setShowPicker(true)}
             onOpenSettings={() => navigateTo(view === 'settings' ? 'chat' : 'settings')}
@@ -490,7 +595,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
                       setActiveId(null)
                       navigateTo('chat')
                       const state = channels[existing]
-                      if (state && ['stopped', 'logged_out', 'error'].includes(state.status)) {
+                      if (state && !settings?.accounts[existing]?.disabled && ['stopped', 'logged_out', 'error'].includes(state.status)) {
                         void api.startChannel(existing)
                       }
                       return
@@ -539,13 +644,18 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             />
           ) : (
             <>
-              <ConversationList
+            <ConversationList
                 conversations={visibleConversations}
                 activeId={activeId}
                 states={relevantStates}
                 accountLabels={accountLabels}
                 showSourceTags={activeAccountKey === null}
                 onSelect={selectConversation}
+                onTogglePinned={toggleConversationPinned}
+                onMarkAllRead={() => {
+                  for (const conversation of conversations) void api.markRead(conversation.id)
+                  setConversations((prev) => prev.map((conversation) => ({ ...conversation, unreadCount: 0 })))
+                }}
               />
               <main className="content">
                 {showQr ? (
@@ -595,12 +705,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
               await saveSettings({ accounts: { [key]: config } })
             }}
             onLogout={(key) => api.logoutChannel(key)}
-            onRemove={async (key) => {
-              await api.removeAccount(key)
-              const updated = await api.getSettings()
-              setSettings(updated)
-              if (activeAccountKey === key) setActiveAccountKey(null)
-            }}
+            onRemove={removeAccount}
             onClose={() => setAccountModalKey(null)}
           />
         )}

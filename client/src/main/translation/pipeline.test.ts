@@ -129,7 +129,7 @@ describe('TranslationPipeline.processOutbound', () => {
     expect(await p.processOutbound('hi', 'en')).toEqual({ send: 'hi', original: 'hi' })
   })
 
-  it('关闭时原样发送；引擎失败时降级原文', async () => {
+  it('关闭时原样发送；引擎失败时返回可见错误而不把原文当译文', async () => {
     const off = new TranslationPipeline(upperCaser, SETTINGS_ON)
     expect(await off.processOutbound('hi', 'en')).toEqual({ send: 'hi', original: 'hi' })
 
@@ -137,7 +137,11 @@ describe('TranslationPipeline.processOutbound', () => {
       { name: 'broken', translate: async () => Promise.reject(new Error('down')) },
       { ...SETTINGS_ON, outboundEnabled: true }
     )
-    expect(await broken.processOutbound('hi', 'en')).toEqual({ send: 'hi', original: 'hi' })
+    expect(await broken.processOutbound('hi', 'en')).toEqual({
+      send: 'hi',
+      original: 'hi',
+      error: '翻译服务暂不可用，请稍后重试或在设置中切换翻译引擎。'
+    })
   })
 })
 

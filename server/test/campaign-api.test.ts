@@ -248,6 +248,42 @@ describe('分享链接与公开看板', () => {
     assert.equal(pub.json.stats.total, 1)
   })
 
+  test('公开统计返回账号联系方式与头像地址', async () => {
+    await seed('a1', 'wa:+8613800138000', T0 + 3600_000)
+    const uploaded = await app.inject({
+      method: 'PUT',
+      url: '/api/media/avatar-a1.jpg',
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'image/jpeg' },
+      payload: Buffer.from('fake-image')
+    })
+    assert.equal(uploaded.statusCode, 200)
+    const c = (
+      await api('POST', '/api/campaigns', {
+        name: '账号资料',
+        accountIds: ['a1'],
+        accountProfiles: {
+          a1: {
+            channel: 'whatsapp',
+            handle: '8613800138000',
+            avatarMediaId: 'avatar-a1.jpg',
+            status: 'error'
+          }
+        },
+        startAt: T0
+      })
+    ).json.campaign
+    const link = (await api('POST', `/api/campaigns/${c.id}/links`)).json.link
+    const pub = await api('GET', `/public/campaign/${link.token}`, undefined, null)
+    const row = pub.json.stats.byAccount[0]
+    assert.equal(row.handle, '8613800138000')
+    assert.equal(row.status, 'error')
+    assert.match(row.avatarUrl, new RegExp(`/public/campaign/${link.token}/media/avatar-a1\\.jpg$`))
+    assert.equal(row.avatarMediaId, undefined)
+    const image = await app.inject({ method: 'GET', url: row.avatarUrl })
+    assert.equal(image.statusCode, 200)
+    assert.equal(image.headers['content-type'], 'image/jpeg')
+  })
+
   // 最新功能（IP 地区限制）：默认拒绝中国大陆/香港 IP，老板可逐项放开。
   // geoip.test 只测判定函数，路由把 req.ip 接进去这条 HTTP 闭环此前没测。
   // inject 的 remoteAddress 会成为 req.ip（未开 trustProxy），可据此模拟来访地区。
@@ -328,6 +364,15 @@ describe('分享链接与公开看板', () => {
     const pub = await api('GET', `/public/campaign/${link.token}`, undefined, null)
     assert.equal(pub.status, 404)
     assert.equal(pub.json.error, 'revoked')
+  })
+
+  test('撤销后可以通过恢复接口重新访问', async () => {
+    const { link } = await setup()
+    await api('POST', `/api/campaigns/links/${link.token}/revoke`)
+    assert.equal((await api('GET', `/public/campaign/${link.token}`, undefined, null)).status, 404)
+    const restored = await api('POST', `/api/campaigns/links/${link.token}/restore`)
+    assert.equal(restored.status, 200)
+    assert.equal((await api('GET', `/public/campaign/${link.token}`, undefined, null)).status, 200)
   })
 
   test('过期链接返回 expired', async () => {

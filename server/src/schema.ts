@@ -196,6 +196,14 @@ export const campaigns = sqliteTable(
     accountIds: text('account_ids').notNull().default('[]'),
     /** JSON 字符串：accountId → 备注名。账号是老板自己的，可在看板展示 */
     accountLabels: text('account_labels').notNull().default('{}'),
+    /** JSON 字符串：accountId → 工单创建时的账号资料（平台、手机号、头像媒体） */
+    accountProfiles: text('account_profiles').notNull().default('{}'),
+    /** 工单总目标数 */
+    totalTarget: integer('total_target').notNull().default(0),
+    /** JSON 字符串：accountId → 该账号目标数 */
+    accountTargets: text('account_targets').notNull().default('{}'),
+    /** 每日统计重置时间，按北京时间解释，格式 HH:mm */
+    resetTime: text('reset_time').notNull().default('00:00'),
     startAt: integer('start_at').notNull(),
     /** 空 = 持续进行 */
     endAt: integer('end_at'),
@@ -211,7 +219,7 @@ export const campaigns = sqliteTable(
     allowCnIp: integer('allow_cn_ip').notNull().default(0),
     /** 公开看板是否允许香港 IP 访问（默认不允许） */
     allowHkIp: integer('allow_hk_ip').notNull().default(0),
-    /** 看板时区偏移（分钟），默认 UTC+8 */
+    /** 看板时区偏移（分钟），固定 UTC+8（北京时间） */
     tzOffsetMinutes: integer('tz_offset_minutes').notNull().default(480),
     createdBy: text('created_by'),
     createdAt: integer('created_at').notNull(),

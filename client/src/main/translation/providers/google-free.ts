@@ -10,28 +10,56 @@ const LANG_ALIAS: Record<string, string> = {
 /**
  * 免费翻译引擎（默认）：Google Translate 网页版的公开接口，无需 API Key。
  * 注意：非官方接口，可用性无 SLA，量大或商用建议在设置中切换为
- * 自定义接口 / 付费引擎。失败由 TranslationPipeline 兜底（展示原文）。
+ * 自定义接口 / 付费引擎。两个公开端点都不可用时由 TranslationPipeline 呈现错误。
  */
 export class GoogleFreeTranslator implements Translator {
   readonly name = 'google-free'
 
   async translate(text: string, targetLang: string): Promise<TranslateResult> {
     const tl = LANG_ALIAS[targetLang] ?? targetLang
-    const url =
+    // translate.googleapis.com 在部分网络环境会限流并返回 HTML；备用端点仍提供相同译文。
+    const urls = [
+      'https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto' +
+        `&tl=${encodeURIComponent(tl)}&q=${encodeURIComponent(text)}`,
       'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&dt=t' +
-      `&tl=${encodeURIComponent(tl)}&q=${encodeURIComponent(text)}`
+        `&tl=${encodeURIComponent(tl)}&q=${encodeURIComponent(text)}`
+    ]
 
-    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
-    if (!res.ok) throw new Error(`google-free HTTP ${res.status}`)
+    let lastError: unknown
+    for (const url of urls) {
+      try {
+        const res = await fetch(url, { signal: AbortSignal.timeout(10_000) })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return parseGoogleResponse(await res.json())
+      } catch (error) {
+        lastError = error
+      }
+    }
 
-    // 响应结构: [[[译文片段, 原文片段, ...], ...], null, 源语言, ...]
-    const data = (await res.json()) as [Array<[string, ...unknown[]]>, unknown, string?]
-    const segments = data[0]
-    if (!Array.isArray(segments)) throw new Error('google-free 响应格式异常')
+    throw new Error(`Google 翻译不可用：${lastError instanceof Error ? lastError.message : String(lastError)}`)
+  }
+}
 
+/** Google 的两个公开端点返回的数组层级不同，统一为内部结果。 */
+function parseGoogleResponse(data: unknown): TranslateResult {
+  if (!Array.isArray(data) || !Array.isArray(data[0])) {
+    throw new Error('Google 翻译响应格式异常')
+  }
+  const first = data[0] as unknown[]
+
+  // clients5: [["translated text", "source-language"]]
+  if (typeof first[0] === 'string') {
     return {
-      text: segments.map((seg) => seg[0] ?? '').join(''),
-      sourceLang: typeof data[2] === 'string' ? data[2] : undefined
+      text: first[0],
+      sourceLang: typeof first[1] === 'string' ? first[1] : undefined
     }
   }
+
+  // gtx: [[["translated chunk", "source chunk", ...], ...], null, "source-language", ...]
+  const text = first
+    .filter((segment): segment is unknown[] => Array.isArray(segment))
+    .map((segment) => (typeof segment[0] === 'string' ? segment[0] : ''))
+    .join('')
+  if (!text) throw new Error('Google 翻译返回空结果')
+  return { text, sourceLang: typeof data[2] === 'string' ? data[2] : undefined }
 }

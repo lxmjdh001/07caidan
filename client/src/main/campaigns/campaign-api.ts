@@ -49,6 +49,30 @@ export class CampaignApi {
     return this.request('PATCH', `/api/campaigns/${encodeURIComponent(id)}`, patch).then(() => {})
   }
 
+  /** 上传工单账号头像，返回后台媒体库 ID，供公开分享页读取。 */
+  async uploadAvatar(data: Uint8Array, mimeType: string): Promise<string> {
+    const cfg = this.getConfig()
+    if (!cfg.serverUrl || !cfg.token) throw new Error('请先登录后台账号')
+    const mediaId = `campaign-avatar-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    let res: Response
+    try {
+      res = await fetch(
+        `${cfg.serverUrl.replace(/\/$/, '')}/api/media/${encodeURIComponent(mediaId)}`,
+        {
+          method: 'PUT',
+          headers: { authorization: `Bearer ${cfg.token}`, 'content-type': mimeType || 'image/png' },
+          body: new Uint8Array(data) as unknown as BodyInit,
+          signal: AbortSignal.timeout(15_000)
+        }
+      )
+    } catch (error) {
+      this.log.warn('账号头像上传连接失败', { serverUrl: cfg.serverUrl, error: String(error) })
+      throw new Error('后台服务连接失败，请检查后台地址和服务是否已启动')
+    }
+    if (!res.ok) throw new Error(`头像上传失败（${res.status}）`)
+    return mediaId
+  }
+
   deleteCampaign(id: string): Promise<void> {
     return this.request('DELETE', `/api/campaigns/${encodeURIComponent(id)}`).then(() => {})
   }
@@ -56,6 +80,7 @@ export class CampaignApi {
   campaignStats(id: string): Promise<CampaignStatsResult> {
     return this.request<CampaignStatsResult>('GET', `/api/campaigns/${encodeURIComponent(id)}/stats`)
   }
+
 
   // ── 分享链接 ──
 
@@ -88,6 +113,12 @@ export class CampaignApi {
 
   revokeLink(token: string): Promise<void> {
     return this.request('POST', `/api/campaigns/links/${encodeURIComponent(token)}/revoke`).then(
+      () => {}
+    )
+  }
+
+  restoreLink(token: string): Promise<void> {
+    return this.request('POST', `/api/campaigns/links/${encodeURIComponent(token)}/restore`).then(
       () => {}
     )
   }
@@ -139,14 +170,21 @@ export class CampaignApi {
     if (!cfg.serverUrl || !cfg.token) {
       throw new Error('请先登录后台账号（工单数据保存在后台，看板才能公开访问）')
     }
-    const res = await fetch(`${cfg.serverUrl.replace(/\/$/, '')}${path}`, {
-      method,
-      headers: {
-        authorization: `Bearer ${cfg.token}`,
-        ...(body === undefined ? {} : { 'content-type': 'application/json' })
-      },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) })
-    })
+    let res: Response
+    try {
+      res = await fetch(`${cfg.serverUrl.replace(/\/$/, '')}${path}`, {
+        method,
+        headers: {
+          authorization: `Bearer ${cfg.token}`,
+          ...(body === undefined ? {} : { 'content-type': 'application/json' })
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        signal: AbortSignal.timeout(15_000)
+      })
+    } catch (error) {
+      this.log.warn('工单后台连接失败', { path, serverUrl: cfg.serverUrl, error: String(error) })
+      throw new Error('后台服务连接失败，请检查后台地址和服务是否已启动')
+    }
     if (!res.ok) {
       // 后台会带上人话错误信息，优先透传给用户
       const detail = await res

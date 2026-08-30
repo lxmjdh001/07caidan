@@ -128,6 +128,34 @@ export class LineAdapter extends ChannelAdapter {
     return {}
   }
 
+  override async fetchSelfAvatar(): Promise<string | undefined> {
+    const token = this.getCreds().channelAccessToken
+    if (this.status !== 'connected' || !token || !this.saveMedia) return undefined
+    try {
+      const infoRes = await fetch(
+        'https://api.line.me/v2/bot/info',
+        withDispatcher(
+          { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15_000) },
+          this.dispatcher
+        )
+      )
+      if (!infoRes.ok) return undefined
+      const info = (await infoRes.json()) as { pictureUrl?: string }
+      if (!info.pictureUrl) return undefined
+      const imageRes = await fetch(
+        info.pictureUrl,
+        withDispatcher({ signal: AbortSignal.timeout(15_000) }, this.dispatcher)
+      )
+      if (!imageRes.ok) return undefined
+      const buffer = Buffer.from(await imageRes.arrayBuffer())
+      if (buffer.length === 0) return undefined
+      return await this.saveMedia(buffer, '.jpg')
+    } catch (err) {
+      this.log.debug('账号头像拉取失败', { err: String(err) })
+      return undefined
+    }
+  }
+
   /** 协调器分发来的事件批 */
   private handleEvents(events: LineEvent[]): void {
     if (this.stopping) return

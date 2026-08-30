@@ -1,11 +1,17 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   BriefcaseBusiness,
-  MessageCircle,
+  ChevronDown,
+  ChevronRight,
+  CircleQuestionMark,
+  CreditCard,
   MoreVertical,
+  Power,
+  PowerOff,
   RefreshCw,
-  Send,
+  Search,
   Settings2,
+  Settings,
   Trash2,
   CheckCheck,
   LogOut
@@ -13,6 +19,9 @@ import {
 import type { ChannelState } from '@shared/domain'
 import { UnreadBadge } from './UnreadBadge'
 import { useI18n } from '../i18n'
+import whatsappLogo from '../assets/platforms/whatsapp.svg'
+import telegramLogo from '../assets/platforms/telegram.svg'
+import lineLogo from '../assets/platforms/line.svg'
 
 const STATUS_COLOR: Record<string, string> = {
   connected: 'var(--ok)',
@@ -24,19 +33,26 @@ const STATUS_COLOR: Record<string, string> = {
   waiting_password: 'var(--warn)',
   error: 'var(--danger)',
   logged_out: 'var(--muted)',
-  stopped: 'var(--muted)'
+  stopped: 'var(--muted)',
+  disabled: 'var(--muted)'
 }
 
-const AVATAR_COLORS = ['#4f9cf9', '#22a06b', '#e8833a', '#9a6ff0', '#e5588c', '#2fb5b5']
-function avatarColor(id: string): string {
-  let hash = 0
-  for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) | 0
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]!
+const PLATFORM_META: Record<string, { label: string; color: string; logo: string }> = {
+  whatsapp: { label: 'WhatsApp', color: '#25d366', logo: whatsappLogo },
+  telegram: { label: 'Telegram', color: '#229ed9', logo: telegramLogo },
+  telegram_bot: { label: 'Telegram Bot', color: '#229ed9', logo: telegramLogo },
+  line: { label: 'LINE', color: '#06c755', logo: lineLogo }
+}
+const PLATFORM_ORDER = ['whatsapp', 'telegram', 'telegram_bot', 'line']
+
+function platformMeta(kind: string): { label: string; color: string; logo: string } {
+  return PLATFORM_META[kind] ?? { label: kind, color: '#94a3b8', logo: telegramLogo }
 }
 
-function channelGlyph(kind: string): React.JSX.Element {
-  if (kind === 'telegram' || kind === 'telegram_bot') return <Send size={17} fill="currentColor" strokeWidth={1.8} />
-  return <MessageCircle size={18} strokeWidth={2.1} />
+function statusTone(status: ChannelState['status']): 'online' | 'offline' | 'abnormal' {
+  if (status === 'connected') return 'online'
+  if (status === 'error') return 'abnormal'
+  return 'offline'
 }
 
 export interface AccountRow {
@@ -44,6 +60,7 @@ export interface AccountRow {
   label: string
   state: ChannelState
   unread: number
+  disabled: boolean
 }
 
 interface Props {
@@ -55,6 +72,7 @@ interface Props {
   onSelect: (key: string | null) => void
   onAccountSettings: (key: string) => void
   onReconnect: (key: string) => void
+  onToggleEnabled: (key: string, enabled: boolean) => void
   onMarkAccountRead: (key: string) => void
   onLogoutAccount: (key: string) => void
   onRemoveAccount: (key: string) => void
@@ -79,6 +97,7 @@ export function AccountList({
   onSelect,
   onAccountSettings,
   onReconnect,
+  onToggleEnabled,
   onMarkAccountRead,
   onLogoutAccount,
   onRemoveAccount,
@@ -97,6 +116,18 @@ export function AccountList({
   const [query, setQuery] = useState('')
   const [menuKey, setMenuKey] = useState<string | null>(null)
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [navMenuOpen, setNavMenuOpen] = useState(false)
+  const menuAccount = menuKey ? accounts.find((account) => account.key === menuKey) : undefined
+
+  useEffect(() => {
+    if (!navMenuOpen) return
+    const closeOnEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setNavMenuOpen(false)
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [navMenuOpen])
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -106,10 +137,33 @@ export function AccountList({
     )
   }, [accounts, query])
 
+  const groups = useMemo(() => {
+    const map = new Map<string, AccountRow[]>()
+    for (const account of filtered) {
+      const list = map.get(account.state.kind) ?? []
+      list.push(account)
+      map.set(account.state.kind, list)
+    }
+    return [...map.entries()]
+      .sort(([a], [b]) => {
+        const ai = PLATFORM_ORDER.indexOf(a)
+        const bi = PLATFORM_ORDER.indexOf(b)
+        if (ai >= 0 && bi >= 0) return ai - bi
+        if (ai >= 0) return -1
+        if (bi >= 0) return 1
+        return a.localeCompare(b)
+      })
+      .map(([kind, groupAccounts]) => ({ kind, accounts: groupAccounts, ...platformMeta(kind) }))
+  }, [filtered])
+
   const openMenu = (key: string, target: HTMLElement): void => {
     const rect = target.getBoundingClientRect()
+    const menuHeight = 250
     setMenuKey(key)
-    setMenuPos({ top: rect.bottom + 6, left: Math.min(rect.right - 184, window.innerWidth - 200) })
+    setMenuPos({
+      top: Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - menuHeight - 8)),
+      left: Math.max(8, Math.min(rect.right - 184, window.innerWidth - 200))
+    })
   }
 
   return (
@@ -135,16 +189,15 @@ export function AccountList({
         <p className="account-quota-hint">{t('rail.accountQuotaFull')}</p>
       )}
 
-      {accounts.length > 6 && (
-        <div className="account-list-search">
-          <input
-            type="text"
-            placeholder={t('rail.searchAccounts')}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-        </div>
-      )}
+      <div className="account-list-search">
+        <Search size={15} aria-hidden />
+        <input
+          type="text"
+          placeholder={t('rail.searchAccounts')}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
 
       <div className="account-list-scroll" onScroll={() => menuKey && setMenuKey(null)}>
         <button
@@ -163,36 +216,72 @@ export function AccountList({
           <UnreadBadge count={totalUnread} />
         </button>
 
-        {filtered.map((a) => (
-          <div
-            key={a.key}
-            className={`account-row ${activeKey === a.key ? 'active' : ''}`}
-            role="button"
-            tabIndex={0}
-            onClick={() => onSelect(a.key)}
-            onContextMenu={(e) => { e.preventDefault(); openMenu(a.key, e.currentTarget) }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') onSelect(a.key)
-            }}
-          >
-            <span className="account-row-avatar" style={{ background: avatarColor(a.key) }}>
-              {channelGlyph(a.state.kind)}
-              <span className="status-dot" style={{ background: STATUS_COLOR[a.state.status] }} />
-            </span>
-            <span className="account-row-main">
-              <span className="account-row-name">{a.label}</span>
-              <span className="account-row-status">
-                {t(`status.${a.state.status}` as 'status.stopped')}
-              </span>
-            </span>
-            <UnreadBadge count={a.unread} />
-            {allowAccountSettings && (
-            <button type="button" className="account-row-more" title={t('account.more')} onClick={(e) => { e.stopPropagation(); openMenu(a.key, e.currentTarget) }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); openMenu(a.key, e.currentTarget) }}>
-              <MoreVertical size={17} />
-            </button>
-            )}
-          </div>
-        ))}
+        {groups.map((group) => {
+          const isCollapsed = collapsed[group.kind] === true
+          const groupUnread = group.accounts.reduce((sum, account) => sum + account.unread, 0)
+          return (
+            <section className="account-platform-group" key={group.kind}>
+              <button
+                type="button"
+                className="account-platform-header"
+                onClick={() => setCollapsed((prev) => ({ ...prev, [group.kind]: !isCollapsed }))}
+                aria-expanded={!isCollapsed}
+              >
+                {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                <img src={group.logo} alt="" />
+                <span>{group.label}</span>
+                <span className="account-platform-count">{group.accounts.length}</span>
+                <UnreadBadge count={groupUnread} />
+              </button>
+              {!isCollapsed && group.accounts.map((a) => {
+                const meta = platformMeta(a.state.kind)
+                const tone = a.disabled ? 'disabled' : statusTone(a.state.status)
+                return (
+                  <div
+                    key={a.key}
+                    className={`account-row ${activeKey === a.key ? 'active' : ''} ${a.disabled ? 'disabled' : ''}`}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onSelect(a.key)}
+                    onContextMenu={(e) => { e.preventDefault(); openMenu(a.key, e.currentTarget) }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') onSelect(a.key)
+                    }}
+                  >
+                    <span className="account-row-avatar account-row-avatar-brand" style={{ background: `${meta.color}24` }}>
+                      {a.state.avatarMediaId ? (
+                        <img
+                          className="account-avatar-image"
+                          src={`omni-media://local/${a.state.avatarMediaId}`}
+                          alt=""
+                          onError={(event) => {
+                            // 媒体被清理或损坏时仍显示平台 Logo，不让账号列表出现破图。
+                            event.currentTarget.onerror = null
+                            event.currentTarget.classList.remove('account-avatar-image')
+                            event.currentTarget.src = meta.logo
+                          }}
+                        />
+                      ) : (
+                        <img src={meta.logo} alt="" />
+                      )}
+                      <span className={`status-dot status-${tone}`} style={{ background: STATUS_COLOR[tone] }} />
+                    </span>
+                    <span className="account-row-main">
+                      <span className="account-row-name">{a.label}</span>
+                      <span className="account-row-status">{t(a.disabled ? 'status.disabled' : `status.${tone}` as 'status.online')}</span>
+                    </span>
+                    <UnreadBadge count={a.unread} />
+                    {allowAccountSettings && (
+                      <button type="button" className="account-row-more" title={t('account.more')} onClick={(e) => { e.stopPropagation(); openMenu(a.key, e.currentTarget) }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); openMenu(a.key, e.currentTarget) }}>
+                        <MoreVertical size={17} />
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </section>
+          )
+        })}
 
         {filtered.length === 0 && query && (
           <div className="account-list-empty">{t('rail.noMatch')}</div>
@@ -205,58 +294,94 @@ export function AccountList({
           <div className="account-context-menu" style={{ top: menuPos.top, left: menuPos.left }} role="menu">
             <button type="button" onClick={() => { onAccountSettings(menuKey); setMenuKey(null) }}><Settings2 size={17} />{t('account.edit')}</button>
             <button type="button" onClick={() => { onReconnect(menuKey); setMenuKey(null) }}><RefreshCw size={17} />{t('account.refresh')}</button>
+            <button
+              type="button"
+              onClick={() => {
+                onToggleEnabled(menuKey, Boolean(menuAccount?.disabled))
+                setMenuKey(null)
+              }}
+            >
+              {menuAccount?.disabled ? <Power size={17} /> : <PowerOff size={17} />}
+              {t(menuAccount?.disabled ? 'account.enable' : 'account.disable')}
+            </button>
             <button type="button" onClick={() => { onMarkAccountRead(menuKey); setMenuKey(null) }}><CheckCheck size={17} />{t('account.markAllRead')}</button>
             <button type="button" onClick={() => { onLogoutAccount(menuKey); setMenuKey(null) }}><LogOut size={17} />{t('account.logout')}</button>
-            {menuKey !== 'whatsapp:main' && <button type="button" className="danger" onClick={() => { onRemoveAccount(menuKey); setMenuKey(null) }}><Trash2 size={17} />{t('account.delete')}</button>}
+            <button type="button" className="danger" onClick={() => { onRemoveAccount(menuKey); setMenuKey(null) }}><Trash2 size={17} />{t('account.delete')}</button>
           </div>
         </>
       )}
 
-      {/* 固定在底部：工单与全局设置不随账号列表滚动，账号再多也点得到 */}
+      {/* 固定在底部：整页导航收进设置按钮，账号再多也点得到 */}
       <footer className="account-list-footer">
         <button
           type="button"
-          className={`rail-nav rail-nav-management ${activeView === 'management' ? 'active' : ''}`}
-          onClick={onOpenManagement}
+          className={`account-settings-trigger ${navMenuOpen ? 'open' : ''}`}
+          title={t('settings.title')}
+          aria-label={t('settings.title')}
+          aria-expanded={navMenuOpen}
+          onClick={() => setNavMenuOpen((open) => !open)}
         >
-          <BriefcaseBusiness size={17} strokeWidth={1.8} />
-          <span>{t('management.nav')}</span>
-        </button>
-        {showBilling && (
-        <button
-          type="button"
-          className={`rail-nav ${activeView === 'billing' ? 'active' : ''}`}
-          onClick={onOpenBilling}
-        >
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-            <rect x="2" y="5" width="20" height="14" rx="2" />
-            <path d="M2 10h20" />
-          </svg>
-          <span>{t('bill.title')}</span>
-        </button>
-        )}
-        <button
-          type="button"
-          className={`rail-nav ${activeView === 'support' ? 'active' : ''}`}
-          onClick={onOpenSupport}
-        >
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-            <circle cx="12" cy="12" r="10" />
-            <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4.5M12 18h.01" />
-          </svg>
-          <span>{t('sup.title')}</span>
-        </button>
-        <button
-          type="button"
-          className={`rail-nav ${activeView === 'settings' ? 'active' : ''}`}
-          onClick={onOpenSettings}
-        >
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden>
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1a1.7 1.7 0 0 0 1.9.3h.1a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0-.3 1.9v.1a1.7 1.7 0 0 0 1.5 1h.2a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1Z" />
-          </svg>
+          <Settings size={19} strokeWidth={1.8} />
           <span>{t('settings.title')}</span>
         </button>
+        {navMenuOpen && (
+          <>
+            <button
+              type="button"
+              className="account-settings-scrim"
+              aria-label={t('account.closeMenu')}
+              onClick={() => setNavMenuOpen(false)}
+            />
+            <nav className="account-settings-menu" aria-label={t('settings.title')}>
+              <button
+                type="button"
+                className={activeView === 'management' ? 'active' : ''}
+                onClick={() => {
+                  setNavMenuOpen(false)
+                  onOpenManagement()
+                }}
+              >
+                <BriefcaseBusiness size={21} strokeWidth={1.8} />
+                <span>{t('management.nav')}</span>
+              </button>
+              {showBilling && (
+                <button
+                  type="button"
+                  className={activeView === 'billing' ? 'active' : ''}
+                  onClick={() => {
+                    setNavMenuOpen(false)
+                    onOpenBilling()
+                  }}
+                >
+                  <CreditCard size={21} strokeWidth={1.8} />
+                  <span>{t('bill.title')}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                className={activeView === 'support' ? 'active' : ''}
+                onClick={() => {
+                  setNavMenuOpen(false)
+                  onOpenSupport()
+                }}
+              >
+                <CircleQuestionMark size={21} strokeWidth={1.8} />
+                <span>{t('sup.title')}</span>
+              </button>
+              <button
+                type="button"
+                className={activeView === 'settings' ? 'active' : ''}
+                onClick={() => {
+                  setNavMenuOpen(false)
+                  onOpenSettings()
+                }}
+              >
+                <Settings size={21} strokeWidth={1.8} />
+                <span>{t('settings.system')}</span>
+              </button>
+            </nav>
+          </>
+        )}
       </footer>
     </aside>
   )
