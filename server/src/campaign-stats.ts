@@ -62,7 +62,7 @@ export interface CampaignStats {
     /** 服务端媒体库中的账号头像 ID */
     avatarMediaId?: string
     /** 工单创建/编辑时记录的账号连接状态 */
-    status?: 'online' | 'offline' | 'error'
+    status?: 'online' | 'offline' | 'error' | 'removed'
     /** 工单窗口内该账号最近一次进粉时间（毫秒） */
     lastAt?: number
     /** 当前统计日该账号进粉数 */
@@ -75,6 +75,13 @@ export interface CampaignStats {
   byDay: Array<{ date: string } & Bucket>
   /** 按工单置零时间计算的当前统计日 */
   today: Bucket
+  /** 已从客户端删除、但仍保留在工单中的账号历史统计。 */
+  removed: Bucket & {
+    accounts: number
+    dayTotal: number
+    dayFresh: number
+    dayDuplicate: number
+  }
   /**
    * 按投放来源拆分。code 是广告 id 或追踪码 —— 是老板自己的投放标识，
    * 不是客户信息，可以在公开看板展示。未归因的客户归到 code 为空的那一行。
@@ -281,6 +288,15 @@ export function computeCampaignStats(input: ComputeInput): CampaignStats {
       .map(([date, v]) => ({ date, ...v }))
       .sort((a, b) => a.date.localeCompare(b.date)),
     today,
+    removed: {
+      accounts: 0,
+      total: 0,
+      duplicate: 0,
+      fresh: 0,
+      dayTotal: 0,
+      dayFresh: 0,
+      dayDuplicate: 0
+    },
     bySource: [...bySource.entries()]
       .map(([code, v]) => ({ code, via: v.via, total: v.total, duplicate: v.duplicate, fresh: v.fresh }))
       // 量大的排前面；未归因（空 code）永远排最后，它不是一个"来源"

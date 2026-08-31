@@ -36,7 +36,7 @@ export interface AccountProfile {
   channel: string
   handle?: string
   avatarMediaId?: string
-  status?: 'online' | 'offline' | 'error'
+  status?: 'online' | 'offline' | 'error' | 'removed'
 }
 
 export interface CampaignInput {
@@ -98,12 +98,13 @@ export interface CampaignStats {
     handle?: string
     avatarMediaId?: string
     avatarUrl?: string
-    status?: 'online' | 'offline' | 'error'
+    status?: 'online' | 'offline' | 'error' | 'removed'
     dayTotal?: number
     dayFresh?: number
     dayDuplicate?: number
   } & Bucket>
   today?: Bucket
+  removed?: Bucket & { accounts: number; dayTotal: number; dayFresh: number; dayDuplicate: number }
   byDay: Array<{ date: string } & Bucket>
   /** 按投放来源拆分；code 是广告 id 或追踪码，未归因的 code 为空 */
   bySource: Array<{ code: string; via?: 'ad' | 'code' } & Bucket>

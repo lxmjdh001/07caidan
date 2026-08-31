@@ -63,6 +63,7 @@
       .info-label { color: var(--muted); font-size: 13px; }
       .info-value { overflow: hidden; color: var(--text); font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
       .summary-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+      .summary-grid.has-removed { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       .summary-card {
         --tone: var(--accent);
         display: flex;
@@ -78,6 +79,8 @@
       }
       .summary-card.green { --tone: var(--green); }
       .summary-card.amber { --tone: var(--amber); }
+      .summary-card.removed-total { --tone: #35a889; }
+      .summary-card.removed-today { --tone: #a755e8; }
       .summary-label { color: var(--tone); font-size: 13px; font-weight: 700; }
       .summary-caption { color: var(--muted); font-size: 11px; }
       .summary-value { color: var(--tone); font-size: 29px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
@@ -168,6 +171,7 @@
       .status-online { color: var(--green); background: color-mix(in srgb, var(--green) 10%, var(--panel)); }
       .status-offline { color: var(--muted); background: color-mix(in srgb, var(--muted) 10%, var(--panel)); }
       .status-error { color: var(--red); background: color-mix(in srgb, var(--red) 10%, var(--panel)); }
+      .status-removed { color: #a855c7; background: color-mix(in srgb, #a855c7 10%, var(--panel)); }
       .empty { padding: 26px 12px; color: var(--muted); text-align: center; }
       .pagination { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin-top: 11px; color: var(--muted); font-size: 11px; }
       .pagination button { min-width: 29px; height: 27px; border: 1px solid var(--line); border-radius: 4px; background: var(--panel); color: var(--text); }
@@ -267,6 +271,7 @@
         const status = row.status || 'offline'
         if (status === 'online') return '<span class="status status-online">在线</span>'
         if (status === 'error') return '<span class="status status-error">异常</span>'
+        if (status === 'removed') return '<span class="status status-removed">已移除</span>'
         return '<span class="status status-offline">离线</span>'
       }
       function accountCountLabel(rows) {
@@ -274,10 +279,11 @@
           const status = row.status || 'offline'
           if (status === 'online') result.online++
           else if (status === 'error') result.error++
+          else if (status === 'removed') result.removed++
           else result.offline++
           return result
-        }, { online: 0, offline: 0, error: 0 })
-        return '共 ' + rows.length + ' 个账号 / ' + counts.online + ' 个在线 / ' + counts.offline + ' 个离线 / ' + counts.error + ' 个异常'
+        }, { online: 0, offline: 0, error: 0, removed: 0 })
+        return '共 ' + rows.length + ' 个账号 / ' + counts.online + ' 个在线 / ' + counts.offline + ' 个离线 / ' + counts.error + ' 个异常 / ' + counts.removed + ' 个已移除'
       }
       function openDialog(title, body) {
         const old = document.getElementById('campaign-dialog')
@@ -397,6 +403,7 @@
         const tz = 480
         state.resetTime = c.resetTime || '00:00:00'
         const today = s.today || s.byDay.find((d) => d.date === todayKey(tz)) || { total: 0 }
+        const removed = s.removed || { accounts: 0, fresh: 0, dayFresh: 0 }
         const type = c.type || s.byAccount.find((row) => row.channel)?.channel || '—'
         const expiresAt = c.endAt ? fmtDateTime(c.endAt, tz) : '长期有效'
         state.rows = s.byAccount || []
@@ -406,8 +413,8 @@
           '<div class="refresh-bar"><span>最后更新：' + new Date(state.lastUpdated).toLocaleString() + '</span><label class="refresh-toggle"><span>自动刷新</span><input id="list-refresh-toggle" type="checkbox" ' + (state.listAutoRefresh ? 'checked' : '') + ' /><i class="refresh-switch"></i></label><select id="list-refresh-minutes"><option value="3"' + (state.listRefreshMinutes === 3 ? ' selected' : '') + '>3分钟</option><option value="5"' + (state.listRefreshMinutes === 5 ? ' selected' : '') + '>5分钟</option><option value="10"' + (state.listRefreshMinutes === 10 ? ' selected' : '') + '>10分钟</option><option value="30"' + (state.listRefreshMinutes === 30 ? ' selected' : '') + '>30分钟</option></select></div>' +
           '<div class="info-heading"><span class="info-icon" aria-hidden="true"><svg viewBox="0 0 32 36"><rect x="6" y="4" width="20" height="28" rx="3"></rect><path d="M11 4.5V3a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.5"></path><path d="M11 12h2M17 12h4M11 18h2M17 18h4M11 24h2M17 24h4"></path></svg></span><h1>工单信息</h1></div>' +
           '<section class="info-card"><div class="info-column"><div class="info-row"><span class="info-label">工单编号：</span><span class="info-value" title="' + esc(c.id) + '">' + esc(c.id || '—') + '</span></div><div class="info-row"><span class="info-label">工单类型：</span><span class="info-value">' + esc(type) + '</span></div><div class="info-row"><span class="info-label">创建时间：</span><span class="info-value">' + fmtDateTime(c.createdAt, tz) + '</span></div><div class="info-row"><span class="info-label">总目标数：</span><span class="info-value">' + Number(c.totalTarget || 0) + '</span></div></div><div class="info-column"><div class="info-row"><span class="info-label">置零时间：</span><span class="info-value">' + esc(state.resetTime) + '</span></div><div class="info-row"><span class="info-label">重置倒计时：</span><span class="info-value" id="reset-countdown">00:00:00</span></div><div class="info-row"><span class="info-label">工单名称：</span><span class="info-value" title="' + esc(c.name) + '">' + esc(c.name || '—') + '</span></div><div class="info-row"><span class="info-label">到期时间：</span><span class="info-value">' + esc(expiresAt) + '</span></div></div></section>' +
-          '<div class="summary-grid"><article class="summary-card green"><div><div class="summary-label">引流统计总览</div><div class="summary-caption">申请总数</div></div><strong class="summary-value">' + s.total + '</strong></article><article class="summary-card amber"><div><div class="summary-label">今日引流统计</div><div class="summary-caption">申请总数</div></div><strong class="summary-value">' + today.total + '</strong></article></div>' +
-          '<section class="section"><div class="section-head"><h2>所属账号</h2><span class="section-count" id="account-count"></span></div><div class="filters"><label class="filter-field"><input id="account-id-query" type="search" placeholder="进粉账号 ID / 手机号" value="' + esc(state.idQuery) + '" /></label><label class="filter-field"><input id="account-name-query" type="search" placeholder="进粉账号名称" value="' + esc(state.nameQuery) + '" /></label><select id="status-filter"><option value="all"' + (state.status === 'all' ? ' selected' : '') + '>全部状态</option><option value="online"' + (state.status === 'online' ? ' selected' : '') + '>在线</option><option value="offline"' + (state.status === 'offline' ? ' selected' : '') + '>离线</option><option value="error"' + (state.status === 'error' ? ' selected' : '') + '>异常</option></select><select id="channel-filter"><option value="all"' + (state.channel === 'all' ? ' selected' : '') + '>全部平台</option>' + options + '</select><button class="filter-search" id="account-search" type="button">查询</button><button class="filter-reset" id="filter-reset" type="button">重置</button></div><div class="table-scroll"><table class="account-table"><thead><tr><th>账号</th><th>平台</th><th>状态</th><th>最近进粉</th><th class="num">今日进粉/重粉</th><th class="num">总进粉/重粉</th><th class="num">今日重复</th><th class="num">总重复</th><th>主页链接</th><th>二维码</th><th class="operation-col">操作</th></tr></thead><tbody id="account-body"></tbody></table></div><div class="pagination"><span id="page-info"></span><button id="page-prev" type="button">‹</button><button id="page-next" type="button">›</button><select id="page-size"><option value="10"' + (state.pageSize === 10 ? ' selected' : '') + '>10 条/页</option><option value="50"' + (state.pageSize === 50 ? ' selected' : '') + '>50 条/页</option><option value="100"' + (state.pageSize === 100 ? ' selected' : '') + '>100 条/页</option></select></div></section>' +
+          '<div class="summary-grid has-removed"><article class="summary-card green"><div><div class="summary-label">引流统计总览</div><div class="summary-caption">申请总数</div></div><strong class="summary-value">' + s.total + '</strong></article><article class="summary-card amber"><div><div class="summary-label">今日引流统计</div><div class="summary-caption">申请总数</div></div><strong class="summary-value">' + today.total + '</strong></article><article class="summary-card removed-total"><div><div class="summary-label">移除主号新粉总数</div><div class="summary-caption">' + Number(removed.accounts || 0) + ' 个已移除账号</div></div><strong class="summary-value">' + Number(removed.fresh || 0) + '</strong></article><article class="summary-card removed-today"><div><div class="summary-label">移除主号当日新粉数</div><div class="summary-caption">北京时间当前统计日</div></div><strong class="summary-value">' + Number(removed.dayFresh || 0) + '</strong></article></div>' +
+          '<section class="section"><div class="section-head"><h2>所属账号</h2><span class="section-count" id="account-count"></span></div><div class="filters"><label class="filter-field"><input id="account-id-query" type="search" placeholder="进粉账号 ID / 手机号" value="' + esc(state.idQuery) + '" /></label><label class="filter-field"><input id="account-name-query" type="search" placeholder="进粉账号名称" value="' + esc(state.nameQuery) + '" /></label><select id="status-filter"><option value="all"' + (state.status === 'all' ? ' selected' : '') + '>全部状态</option><option value="online"' + (state.status === 'online' ? ' selected' : '') + '>在线</option><option value="offline"' + (state.status === 'offline' ? ' selected' : '') + '>离线</option><option value="error"' + (state.status === 'error' ? ' selected' : '') + '>异常</option><option value="removed"' + (state.status === 'removed' ? ' selected' : '') + '>已移除</option></select><select id="channel-filter"><option value="all"' + (state.channel === 'all' ? ' selected' : '') + '>全部平台</option>' + options + '</select><button class="filter-search" id="account-search" type="button">查询</button><button class="filter-reset" id="filter-reset" type="button">重置</button></div><div class="table-scroll"><table class="account-table"><thead><tr><th>账号</th><th>平台</th><th>状态</th><th>最近进粉</th><th class="num">今日进粉/重粉</th><th class="num">总进粉/重粉</th><th class="num">今日重复</th><th class="num">总重复</th><th>主页链接</th><th>二维码</th><th class="operation-col">操作</th></tr></thead><tbody id="account-body"></tbody></table></div><div class="pagination"><span id="page-info"></span><button id="page-prev" type="button">‹</button><button id="page-next" type="button">›</button><select id="page-size"><option value="10"' + (state.pageSize === 10 ? ' selected' : '') + '>10 条/页</option><option value="50"' + (state.pageSize === 50 ? ' selected' : '') + '>50 条/页</option><option value="100"' + (state.pageSize === 100 ? ' selected' : '') + '>100 条/页</option></select></div></section>' +
           '<p class="note">看板首页展示统计数据；点击账号操作可查看该账号的进粉明细。更新于 ' + fmtDate(s.computedAt, tz) + '</p>'
         const runSearch = () => {
           state.idQuery = document.getElementById('account-id-query').value

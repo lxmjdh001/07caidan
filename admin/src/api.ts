@@ -66,6 +66,7 @@ export interface CampaignStats {
   fresh: number
   effective: number
   duplicateBy: { library: number; timeRange: number }
+  removed?: Bucket & { accounts: number; dayTotal: number; dayFresh: number; dayDuplicate: number }
   byAccount: Array<{ accountId: string; channel: string; label?: string } & Bucket>
   byDay: Array<{ date: string } & Bucket>
   /** 按投放来源拆分；code 是广告 id 或追踪码，未归因的 code 为空 */

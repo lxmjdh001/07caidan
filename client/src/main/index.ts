@@ -376,6 +376,12 @@ async function bootstrap(): Promise<void> {
       return key
     },
     onRemoveAccount: async (key) => {
+      const separator = key.indexOf(':')
+      const channel = separator > 0 ? key.slice(0, separator) : 'unknown'
+      const accountId = separator > 0 ? key.slice(separator + 1) : key
+      await campaignApi.markAccountRemoved(accountId, channel).catch((error) => {
+        logger.warn('账号删除后标记工单账号失败', { key, error: String(error) })
+      })
       await manager.logout(key).catch(() => undefined)
       await manager.unregister(key)
       await settings.removeAccount(key)

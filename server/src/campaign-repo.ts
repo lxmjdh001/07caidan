@@ -64,7 +64,7 @@ export interface AccountProfile {
   channel: string
   handle?: string
   avatarMediaId?: string
-  status?: 'online' | 'offline' | 'error'
+  status?: 'online' | 'offline' | 'error' | 'removed'
 }
 
 export interface EntryLinkRow {
@@ -758,6 +758,19 @@ export class CampaignRepo {
       stats.byAccount.sort((a, b) => b.total - a.total || a.accountId.localeCompare(b.accountId))
     }
 
+    // 删除客户端账号不能抹掉该账号已经产生的工单成绩。账号仍保留在
+    // campaign.accountIds 中，只用 removed 状态区分并汇总历史/今日数据。
+    const removedRows = stats.byAccount.filter((row) => row.status === 'removed')
+    stats.removed = {
+      accounts: removedRows.length,
+      total: removedRows.reduce((sum, row) => sum + row.total, 0),
+      duplicate: removedRows.reduce((sum, row) => sum + row.duplicate, 0),
+      fresh: removedRows.reduce((sum, row) => sum + row.fresh, 0),
+      dayTotal: removedRows.reduce((sum, row) => sum + row.dayTotal, 0),
+      dayFresh: removedRows.reduce((sum, row) => sum + row.dayFresh, 0),
+      dayDuplicate: removedRows.reduce((sum, row) => sum + row.dayDuplicate, 0)
+    }
+
     // 趋势图补齐空白天，截止到工单结束或当前时间
     stats.byDay = fillDays(
       stats.byDay,
@@ -924,7 +937,7 @@ function parseJsonProfiles(v: string): Record<string, AccountProfile> {
         channel: profile.channel,
         ...(typeof profile.handle === 'string' ? { handle: profile.handle } : {}),
         ...(typeof profile.avatarMediaId === 'string' ? { avatarMediaId: profile.avatarMediaId } : {}),
-        ...(profile.status === 'online' || profile.status === 'offline' || profile.status === 'error'
+        ...(profile.status === 'online' || profile.status === 'offline' || profile.status === 'error' || profile.status === 'removed'
           ? { status: profile.status }
           : {})
       }

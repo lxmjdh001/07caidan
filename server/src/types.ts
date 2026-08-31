@@ -48,7 +48,7 @@ export interface SyncAccountProfile {
   channel: string
   handle?: string
   avatarMediaId?: string
-  status?: 'online' | 'offline' | 'error'
+  status?: 'online' | 'offline' | 'error' | 'removed'
 }
 
 export interface StoredMessage extends SyncMessage {}

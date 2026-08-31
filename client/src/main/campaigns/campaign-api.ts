@@ -49,6 +49,22 @@ export class CampaignApi {
     return this.request('PATCH', `/api/campaigns/${encodeURIComponent(id)}`, patch).then(() => {})
   }
 
+  /** 账号被客户端删除后保留工单历史，并在分享页标记为“已移除”。 */
+  async markAccountRemoved(accountId: string, channel: string): Promise<void> {
+    const campaigns = await this.listCampaigns()
+    await Promise.all(campaigns
+      .filter((campaign) => campaign.accountIds.includes(accountId))
+      .map((campaign) => this.updateCampaign(campaign.id, {
+        accountProfiles: {
+          ...campaign.accountProfiles,
+          [accountId]: {
+            ...(campaign.accountProfiles[accountId] ?? { channel }),
+            status: 'removed'
+          }
+        }
+      })))
+  }
+
   /** 上传工单账号头像，返回后台媒体库 ID，供公开分享页读取。 */
   async uploadAvatar(data: Uint8Array, mimeType: string): Promise<string> {
     const cfg = this.getConfig()
