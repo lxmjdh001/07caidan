@@ -30,6 +30,17 @@ deploy/deploy.sh
 本地 `BRAND=prod` 构建 admin 并同步到 `/var/www/omnichat-admin` → 同步 `website/` 到 `/var/www/omnichat-site` → 装 systemd 单元与 Caddyfile →
 重启 `omnichat` 与 `caddy` → 健康检查 `/health`。
 
+官网的下载按钮读取 `/downloads/` 下的客户端安装包。部署前可在 macOS 上构建并放入 `client/release/default/`：
+
+```bash
+cd client
+BRAND=default npm run dist
+cd ..
+deploy/deploy.sh
+```
+
+脚本会自动把 `OmniChat-*.dmg`、更新元数据同步到 `https://www.wzzapp.cloud/downloads/`。
+
 ## 客户端打包（对接生产域名）
 
 `branding/prod.json` 的 `apiUrl` 已指向 `https://wzzapp.cloud`：

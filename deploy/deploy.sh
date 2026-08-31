@@ -61,7 +61,16 @@ rsync -az --delete -e "$RSH" admin/dist/ "$SERVER:/var/www/omnichat-admin/"
 
 echo "==> [5/7] 同步官网到 /var/www/omnichat-site"
 ssh "$SERVER" 'mkdir -p /var/www/omnichat-site'
-rsync -az --delete --exclude '._*' -e "$RSH" website/ "$SERVER:/var/www/omnichat-site/"
+rsync -az --delete --exclude '._*' --exclude 'downloads/**' -e "$RSH" website/ "$SERVER:/var/www/omnichat-site/"
+if compgen -G "client/release/default/*.dmg" >/dev/null; then
+  echo "  同步 macOS 安装包（Apple 芯片 / Intel）"
+  ssh "$SERVER" 'mkdir -p /var/www/omnichat-site/downloads'
+  rsync -az --delete \
+    --include '*.dmg' --include '*.blockmap' --include 'latest-mac.yml' --exclude '*' \
+    -e "$RSH" client/release/default/ "$SERVER:/var/www/omnichat-site/downloads/"
+else
+  echo "  未找到 client/release/default/*.dmg，保留服务器上已有下载包"
+fi
 
 echo "==> [6/7] 安装/更新 systemd 单元与 Caddyfile"
 scp deploy/omnichat.service "$SERVER:/etc/systemd/system/omnichat.service"

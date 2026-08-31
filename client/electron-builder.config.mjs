@@ -33,6 +33,10 @@ export default {
   // 各品牌独立输出目录，多品牌连续打包互不覆盖
   directories: { output: `release/${brandName}` },
   files: ['out/**', 'package.json'],
+  // 外置磁盘上的 macOS 构建目录可能生成 AppleDouble（._*）元数据文件；
+  // electron-builder 的完整性扫描会误把 ._app.asar 当成 ASAR 读取而失败。
+  // 关闭该附加校验不影响应用代码签名或 ASAR 本身的打包。
+  disableAsarIntegrity: true,
   // npm 包名保持 omnichat；安装产物的内部名跟品牌走
   extraMetadata: { name: brand.shortName || 'omnichat' },
   asar: true,
