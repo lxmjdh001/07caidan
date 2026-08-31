@@ -83,6 +83,7 @@ interface Props {
   onOpenBilling: () => void
   onOpenSupport: () => void
   onOpenManagement: () => void
+  onQuitApplication: () => void
   /** 当前主视图，用于底部导航高亮 */
   activeView: 'chat' | 'campaigns' | 'billing' | 'support' | 'settings' | 'team' | 'management'
   showBilling: boolean
@@ -109,6 +110,7 @@ export function AccountList({
   onOpenBilling,
   onOpenSupport,
   onOpenManagement,
+  onQuitApplication,
   activeView,
   showBilling,
   allowAddAccount,
@@ -382,6 +384,17 @@ export function AccountList({
               >
                 <Settings size={21} strokeWidth={1.8} />
                 <span>{t('settings.system')}</span>
+              </button>
+              <button
+                type="button"
+                className="account-settings-quit"
+                onClick={() => {
+                  setNavMenuOpen(false)
+                  onQuitApplication()
+                }}
+              >
+                <LogOut size={21} strokeWidth={1.8} />
+                <span>{t('app.quit')}</span>
               </button>
             </nav>
           </>

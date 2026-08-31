@@ -380,6 +380,10 @@ async function bootstrap(): Promise<void> {
       await manager.unregister(key)
       await settings.removeAccount(key)
       logger.info('已删除账号', { key })
+    },
+    onQuit: () => {
+      tray.quitting = true
+      app.quit()
     }
   })
 

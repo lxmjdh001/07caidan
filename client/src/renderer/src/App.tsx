@@ -18,8 +18,10 @@ import { ChatView } from './components/ChatView'
 import { ConversationList } from './components/ConversationList'
 import { QrPanel } from './components/QrPanel'
 import { TopToolbar } from './components/TopToolbar'
-import { I18nProvider, localeDir, resolveLocale, type Locale } from './i18n'
+import { I18nProvider, localeDir, resolveLocale, type Locale, useI18n } from './i18n'
 import type { ThemeMode } from '@shared/settings'
+import { Check, LogOut, X } from 'lucide-react'
+import './quit-modal.css'
 
 const api = window.omni
 
@@ -37,6 +39,7 @@ function accountPresence(status?: ChannelState['status']): 'online' | 'offline' 
 type MainView = 'home' | 'chat' | 'campaigns' | 'billing' | 'support' | 'settings' | 'team' | 'management'
 
 export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element {
+  const { t } = useI18n()
   const [channels, setChannels] = useState<Record<string, ChannelState>>({})
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [messages, setMessages] = useState<Record<string, UnifiedMessage[]>>({})
@@ -64,9 +67,19 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   const [inheritTargetKey, setInheritTargetKey] = useState<string | null>(null)
   const [plugins, setPlugins] = useState<ChannelPluginInfo[]>([])
   const [showPicker, setShowPicker] = useState(false)
+  const [quitConfirmOpen, setQuitConfirmOpen] = useState(false)
   const noticeState = useNotices()
   const activeIdRef = useRef<string | null>(null)
   activeIdRef.current = activeId
+
+  useEffect(() => {
+    if (!quitConfirmOpen) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setQuitConfirmOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [quitConfirmOpen])
 
   const navigateTo = useCallback((next: MainView) => {
     setView((current) => {
@@ -658,6 +671,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             onOpenBilling={() => navigateTo(view === 'billing' ? 'chat' : 'billing')}
             onOpenSupport={() => navigateTo(view === 'support' ? 'chat' : 'support')}
             onOpenManagement={() => navigateTo(view === 'management' ? 'chat' : 'management')}
+            onQuitApplication={() => setQuitConfirmOpen(true)}
             activeView={view === 'home' ? 'chat' : view}
             showBilling={can('billing:manage')}
             allowAddAccount={can('accounts:manage')}
@@ -813,6 +827,19 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             onClose={() => setInheritTargetKey(null)}
           />
         })()}
+        {quitConfirmOpen && (
+          <div className="quit-modal-backdrop" role="presentation" onMouseDown={() => setQuitConfirmOpen(false)}>
+            <section className="quit-modal" role="dialog" aria-modal="true" aria-labelledby="quit-modal-title" onMouseDown={(event) => event.stopPropagation()}>
+              <div className="quit-modal-icon"><LogOut size={42} strokeWidth={2.4} /></div>
+              <h2 id="quit-modal-title">{t('app.quitTitle')}</h2>
+              <p>{t('app.quitConfirm')}</p>
+              <div className="quit-modal-actions">
+                <button type="button" className="quit-cancel" onClick={() => setQuitConfirmOpen(false)}><X size={21} />{t('app.quitCancel')}</button>
+                <button type="button" className="quit-confirm" onClick={() => void api.quitApp()}><Check size={21} />{t('app.quit')}</button>
+              </div>
+            </section>
+          </div>
+        )}
       </div>
     </I18nProvider>
   )

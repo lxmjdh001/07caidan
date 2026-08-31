@@ -2207,6 +2207,18 @@ body {
   flex: none;
 }
 
+.account-settings-menu button.account-settings-quit {
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 8px 8px;
+  color: var(--danger);
+}
+
+.account-settings-menu button.account-settings-quit:hover {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
 /* ── 整页视图（工单 / 设置） ── */
 .page {
   flex: 1;

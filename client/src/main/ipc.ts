@@ -39,6 +39,8 @@ export interface IpcDeps {
   onAddAccount: (channel: string) => Promise<string>
   /** 删除账号 */
   onRemoveAccount: (key: string) => Promise<void>
+  /** 用户确认退出应用 */
+  onQuit: () => void
 }
 
 /** 允许渲染进程调用的工单接口白名单 */
@@ -149,6 +151,7 @@ export function registerIpc(deps: IpcDeps): void {
   }))
   ipcMain.handle(IPC_METHODS.checkUpdates, () => deps.updater.checkNow())
   ipcMain.handle(IPC_METHODS.installUpdate, () => deps.updater.quitAndInstall())
+  ipcMain.handle(IPC_METHODS.quitApp, () => deps.onQuit())
 
   ipcMain.handle(IPC_METHODS.setUnreadTotal, (_e, total: number) => {
     deps.notifier.setUnreadTotal(Number(total) || 0)

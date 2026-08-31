@@ -54,6 +54,7 @@ export const IPC_METHODS = {
   appInfo: 'omni:appInfo',
   checkUpdates: 'omni:checkUpdates',
   installUpdate: 'omni:installUpdate'
+  ,quitApp: 'omni:quitApp'
 } as const
 
 export type OmniEvent =
@@ -224,6 +225,8 @@ export interface OmniApi {
   checkUpdates(): Promise<void>
   /** 更新已就绪时：立即重启安装 */
   installUpdate(): Promise<void>
+  /** 请求退出桌面应用（由主进程统一执行） */
+  quitApp(): Promise<void>
   /** 订阅主进程推送，返回取消订阅函数 */
   onEvent(cb: (evt: OmniEvent) => void): () => void
 }

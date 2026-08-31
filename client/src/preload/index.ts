@@ -28,6 +28,7 @@ const api: OmniApi = {
   appInfo: () => ipcRenderer.invoke(IPC_METHODS.appInfo),
   checkUpdates: () => ipcRenderer.invoke(IPC_METHODS.checkUpdates),
   installUpdate: () => ipcRenderer.invoke(IPC_METHODS.installUpdate),
+  quitApp: () => ipcRenderer.invoke(IPC_METHODS.quitApp),
   logoutChannel: (key: string) => ipcRenderer.invoke(IPC_METHODS.logoutChannel, key),
   addAccount: (channel: string) => ipcRenderer.invoke(IPC_METHODS.addAccount, channel),
   removeAccount: (key: string) => ipcRenderer.invoke(IPC_METHODS.removeAccount, key),

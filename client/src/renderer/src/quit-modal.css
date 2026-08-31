@@ -1,0 +1,86 @@
+.quit-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(16 20 28 / 58%);
+  backdrop-filter: blur(4px);
+  animation: quit-backdrop-in 160ms ease-out;
+}
+
+.quit-modal {
+  width: min(520px, 100%);
+  padding: 48px 46px 40px;
+  border: 1px solid rgb(255 255 255 / 70%);
+  border-radius: 28px;
+  background: var(--panel);
+  box-shadow: 0 26px 80px rgb(8 16 30 / 28%);
+  text-align: center;
+  animation: quit-modal-in 180ms ease-out;
+}
+
+.quit-modal-icon {
+  width: 144px;
+  height: 144px;
+  margin: 0 auto 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #3d32e4;
+  box-shadow: 0 14px 34px rgb(61 50 228 / 32%);
+}
+
+.quit-modal h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 36px;
+  line-height: 1.2;
+  letter-spacing: -.04em;
+}
+
+.quit-modal p {
+  margin: 26px 0 42px;
+  color: var(--text-secondary);
+  font-size: 22px;
+}
+
+.quit-modal-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.quit-modal-actions button {
+  min-height: 78px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 13px;
+  border: 0;
+  border-radius: 15px;
+  font: inherit;
+  font-size: 25px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 140ms ease, filter 140ms ease;
+}
+
+.quit-modal-actions button:hover { transform: translateY(-2px); filter: brightness(1.03); }
+.quit-modal-actions button:active { transform: translateY(0); }
+.quit-cancel { color: #30353b; background: #dfe4e9; }
+.quit-confirm { color: #fff; background: #3026d8; box-shadow: 0 12px 25px rgb(48 38 216 / 27%); }
+
+@keyframes quit-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes quit-modal-in { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+@media (max-width: 560px) {
+  .quit-modal { padding: 34px 22px 24px; border-radius: 22px; }
+  .quit-modal-icon { width: 102px; height: 102px; margin-bottom: 24px; }
+  .quit-modal h2 { font-size: 30px; }
+  .quit-modal p { margin: 18px 0 28px; font-size: 18px; }
+  .quit-modal-actions { gap: 12px; }
+  .quit-modal-actions button { min-height: 58px; border-radius: 12px; font-size: 19px; }
+}
