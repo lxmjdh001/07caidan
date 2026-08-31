@@ -61,12 +61,13 @@ rsync -az --delete -e "$RSH" admin/dist/ "$SERVER:/var/www/omnichat-admin/"
 
 echo "==> [5/7] 同步官网到 /var/www/omnichat-site"
 ssh "$SERVER" 'mkdir -p /var/www/omnichat-site'
-rsync -az --delete --exclude '._*' --exclude 'downloads/**' -e "$RSH" website/ "$SERVER:/var/www/omnichat-site/"
+rsync -az --delete --exclude '._*' --exclude 'downloads/**' --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r -e "$RSH" website/ "$SERVER:/var/www/omnichat-site/"
 if compgen -G "client/release/default/*.dmg" >/dev/null; then
   echo "  同步 macOS 安装包（Apple 芯片 / Intel）"
   ssh "$SERVER" 'mkdir -p /var/www/omnichat-site/downloads'
   rsync -az --delete \
     --include '*.dmg' --include '*.blockmap' --include 'latest-mac.yml' --exclude '*' \
+    --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r \
     -e "$RSH" client/release/default/ "$SERVER:/var/www/omnichat-site/downloads/"
 else
   echo "  未找到 client/release/default/*.dmg，保留服务器上已有下载包"
