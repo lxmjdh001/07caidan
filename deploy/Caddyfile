@@ -11,6 +11,13 @@ wzzapp.cloud {
 	reverse_proxy 127.0.0.1:8787
 }
 
+# 官网：独立静态站点（www.wzzapp.cloud）。
+www.wzzapp.cloud {
+	encode gzip zstd
+	root * /var/www/omnichat-site
+	file_server
+}
+
 # 管理后台：静态 SPA + 同源 API 反代。
 # admin 的 API_BASE 生产回落到 window.location.origin（见 admin/src/config.ts 注释「生产用反代」），
 # 即它会打 admin.wzzapp.cloud/api/*，所以这里必须把 /api/* 反代到后端，否则后台所有请求 404。

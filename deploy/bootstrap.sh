@@ -59,7 +59,7 @@ else
 fi
 
 echo "==> 建配置目录 /etc/omnichat 与数据目录 /var/lib/omnichat"
-mkdir -p /etc/omnichat /var/lib/omnichat /etc/caddy /var/www/omnichat-admin
+mkdir -p /etc/omnichat /var/lib/omnichat /etc/caddy /var/www/omnichat-admin /var/www/omnichat-site
 
 echo ""
 echo "完成。下一步："

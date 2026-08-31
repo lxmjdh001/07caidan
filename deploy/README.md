@@ -1,6 +1,6 @@
 # 部署到生产服务器
 
-目标：`wzzapp.cloud`（API + 公开引流看板）、`admin.wzzapp.cloud`（管理后台）。
+目标：`www.wzzapp.cloud`（官网首页）、`wzzapp.cloud`（API + 公开引流看板）、`admin.wzzapp.cloud`（管理后台）。
 后端只绑回环 `127.0.0.1:8787`，外网经 Caddy 反代终止 TLS。
 
 > **不必等我解封也能上线**：我的公网 IP 被服务器 fail2ban 挡在 SSH 握手前（端口通、握手被拒），
@@ -27,7 +27,7 @@ deploy/deploy.sh
 ```
 
 脚本做：检查前置 → rsync 后端到 `/opt/omnichat/server` → `npm install --omit=dev` →
-本地 `BRAND=prod` 构建 admin 并同步到 `/var/www/omnichat-admin` → 装 systemd 单元与 Caddyfile →
+本地 `BRAND=prod` 构建 admin 并同步到 `/var/www/omnichat-admin` → 同步 `website/` 到 `/var/www/omnichat-site` → 装 systemd 单元与 Caddyfile →
 重启 `omnichat` 与 `caddy` → 健康检查 `/health`。
 
 ## 客户端打包（对接生产域名）
