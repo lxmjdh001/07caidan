@@ -12,6 +12,7 @@ import {
 } from './campaign-stats.ts'
 import type { LibraryChannel } from './contact-id.ts'
 import type { Db } from './db.ts'
+import { hashPassword, verifyPassword } from './auth.ts'
 import {
   campaignLinks,
   campaigns,
@@ -34,8 +35,11 @@ export interface Campaign {
   accountProfiles: Record<string, AccountProfile>
   /** 工单总目标数 */
   totalTarget: number
+  /** 分享页是否启用访问密码；密码哈希不返回 */
+  accessPasswordEnabled: boolean
   /** accountId → 该账号目标数 */
   accountTargets: Record<string, number>
+  accountTargetsManual: boolean
   /** 每日统计重置时间，按北京时间解释，格式 HH:mm */
   resetTime: string
   startAt: number
@@ -101,7 +105,10 @@ export interface CampaignInput {
   accountLabels?: Record<string, string>
   accountProfiles?: Record<string, AccountProfile>
   totalTarget?: number
+  accessPasswordEnabled?: boolean
+  accessPassword?: string
   accountTargets?: Record<string, number>
+  accountTargetsManual?: boolean
   resetTime?: string
   startAt: number
   endAt?: number
@@ -150,7 +157,14 @@ export class CampaignRepo {
       accountLabels: JSON.stringify(input.accountLabels ?? {}),
       accountProfiles: JSON.stringify(input.accountProfiles ?? {}),
       totalTarget: normalizeTarget(input.totalTarget),
-      accountTargets: JSON.stringify(normalizeAccountTargets(input.accountTargets)),
+      accessPasswordEnabled: input.accessPasswordEnabled ? 1 : 0,
+      accessPasswordHash: input.accessPasswordEnabled && input.accessPassword ? hashPassword(input.accessPassword) : null,
+      accountTargets: JSON.stringify(
+        input.accountTargets === undefined
+          ? distributeAccountTargets(input.accountIds, input.totalTarget)
+          : normalizeAccountTargets(input.accountTargets)
+      ),
+      accountTargetsManual: input.accountTargetsManual ? 1 : 0,
       resetTime: normalizeResetTime(input.resetTime),
       startAt: input.startAt,
       endAt: input.endAt ?? null,
@@ -200,9 +214,17 @@ export class CampaignRepo {
       set.accountProfiles = JSON.stringify(patch.accountProfiles)
     }
     if (patch.totalTarget !== undefined) set.totalTarget = normalizeTarget(patch.totalTarget)
+    if (patch.accessPasswordEnabled !== undefined) {
+      set.accessPasswordEnabled = patch.accessPasswordEnabled ? 1 : 0
+      if (!patch.accessPasswordEnabled) set.accessPasswordHash = null
+      else if (patch.accessPassword) set.accessPasswordHash = hashPassword(patch.accessPassword)
+    } else if (patch.accessPassword) {
+      set.accessPasswordHash = hashPassword(patch.accessPassword)
+    }
     if (patch.accountTargets !== undefined) {
       set.accountTargets = JSON.stringify(normalizeAccountTargets(patch.accountTargets))
     }
+    if (patch.accountTargetsManual !== undefined) set.accountTargetsManual = patch.accountTargetsManual ? 1 : 0
     if (patch.resetTime !== undefined) set.resetTime = normalizeResetTime(patch.resetTime)
     if (patch.startAt !== undefined) set.startAt = patch.startAt
     if (patch.endAt !== undefined) set.endAt = patch.endAt
@@ -313,6 +335,16 @@ export class CampaignRepo {
     const campaign = this.getCampaign(link.tenant, link.campaignId)
     if (!campaign) return { ok: false, reason: 'not_found' }
     return { ok: true, tenant: link.tenant, campaign }
+  }
+
+  verifyAccessPassword(tenant: string, campaign: Campaign, password: string): boolean {
+    if (!campaign.accessPasswordEnabled) return true
+    const row = this.db
+      .select({ hash: campaigns.accessPasswordHash })
+      .from(campaigns)
+      .where(and(eq(campaigns.tenant, tenant), eq(campaigns.id, campaign.id)))
+      .get()
+    return Boolean(row?.hash && verifyPassword(password, row.hash))
   }
 
   // ── 重粉库 ──
@@ -715,6 +747,9 @@ export class CampaignRepo {
           avatarMediaId: profiles[accountId]?.avatarMediaId,
           status: profiles[accountId]?.status ?? 'offline',
           lastAt: undefined,
+          dayTotal: 0,
+          dayFresh: 0,
+          dayDuplicate: 0,
           total: 0,
           duplicate: 0,
           fresh: 0
@@ -785,7 +820,9 @@ function toCampaign(r: typeof campaigns.$inferSelect): Campaign {
     accountLabels: parseJsonObject(r.accountLabels),
     accountProfiles: parseJsonProfiles(r.accountProfiles),
     totalTarget: normalizeTarget(r.totalTarget),
+    accessPasswordEnabled: r.accessPasswordEnabled === 1,
     accountTargets: parseJsonNumberObject(r.accountTargets),
+    accountTargetsManual: r.accountTargetsManual === 1,
     resetTime: normalizeResetTime(r.resetTime),
     startAt: r.startAt,
     endAt: r.endAt ?? undefined,
@@ -853,6 +890,15 @@ function normalizeAccountTargets(value?: Record<string, number>): Record<string,
       .map(([id, target]) => [id, normalizeTarget(target)] as const)
       .filter(([, target]) => target > 0)
   )
+}
+
+function distributeAccountTargets(accountIds: string[], totalTarget: unknown): Record<string, number> {
+  const ids = [...new Set(accountIds)]
+  const total = normalizeTarget(totalTarget)
+  if (ids.length === 0 || total === 0) return {}
+  const base = Math.floor(total / ids.length)
+  const remainder = total % ids.length
+  return Object.fromEntries(ids.map((id, index) => [id, base + (index < remainder ? 1 : 0)]))
 }
 
 function parseJsonNumberObject(v: string): Record<string, number> {

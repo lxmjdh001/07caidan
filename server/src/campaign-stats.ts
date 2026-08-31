@@ -65,6 +65,11 @@ export interface CampaignStats {
     status?: 'online' | 'offline' | 'error'
     /** 工单窗口内该账号最近一次进粉时间（毫秒） */
     lastAt?: number
+    /** 当前统计日该账号进粉数 */
+    dayTotal: number
+    /** 当前统计日新粉/重粉拆分 */
+    dayFresh: number
+    dayDuplicate: number
   } & Bucket>
   /** 按天趋势（date 为 YYYY-MM-DD） */
   byDay: Array<{ date: string } & Bucket>
@@ -174,7 +179,7 @@ export function computeCampaignStats(input: ComputeInput): CampaignStats {
     now = 0
   } = input
 
-  const byAccount = new Map<string, { channel: string; lastAt?: number } & Bucket>()
+  const byAccount = new Map<string, { channel: string; lastAt?: number; dayTotal: number; dayFresh: number; dayDuplicate: number } & Bucket>()
   const byDay = new Map<string, Bucket>()
   const bySource = new Map<string, { via?: 'ad' | 'code' } & Bucket>()
   let duplicate = 0
@@ -200,12 +205,21 @@ export function computeCampaignStats(input: ComputeInput): CampaignStats {
       channel: lead.channel,
       total: 0,
       duplicate: 0,
-      fresh: 0
+      fresh: 0,
+      dayTotal: 0,
+      dayFresh: 0,
+      dayDuplicate: 0
     }
     acc.total++
     acc.lastAt = acc.lastAt === undefined ? lead.firstAt : Math.max(acc.lastAt, lead.firstAt)
+    const inToday = todayStartAt !== undefined && lead.firstAt >= todayStartAt && lead.firstAt <= now
+    if (inToday) acc.dayTotal++
     if (isDuplicateLead) acc.duplicate++
     else acc.fresh++
+    if (inToday) {
+      if (isDuplicateLead) acc.dayDuplicate++
+      else acc.dayFresh++
+    }
     byAccount.set(lead.accountId, acc)
 
     const key = dayKey(lead.firstAt, tzOffsetMinutes)
@@ -255,6 +269,9 @@ export function computeCampaignStats(input: ComputeInput): CampaignStats {
         channel: v.channel,
         label: accountLabels[accountId],
         lastAt: v.lastAt,
+        dayTotal: v.dayTotal,
+        dayFresh: v.dayFresh,
+        dayDuplicate: v.dayDuplicate,
         total: v.total,
         duplicate: v.duplicate,
         fresh: v.fresh

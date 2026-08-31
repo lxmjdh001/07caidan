@@ -57,6 +57,7 @@ export class Notifier {
     const cfg = this.opts.getConfig()
     if (!cfg.enabled) return
     if (message.direction !== 'in') return
+    if (conversation.muted) return
     if (!Notification.isSupported()) return
 
     const focused = BrowserWindow.getAllWindows().some((w) => w.isFocused() && w.isVisible())

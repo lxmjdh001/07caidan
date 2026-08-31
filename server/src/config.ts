@@ -32,6 +32,8 @@ export interface ServerConfig {
   smtp: { host: string; port: number; user: string; pass: string; from: string } | undefined
   /** 对外可访问的公网地址（生成 LINE Webhook 地址用） */
   publicUrl: string
+  /** 工单分享页公网域名；可由管理后台覆盖 */
+  campaignShareDomain?: string
   /**
    * Fastify trustProxy：置真后 req.ip 取自 X-Forwarded-For（反代传来的真实客户端 IP）。
    * 公开看板的地区限制靠 req.ip 判属地——若前置 Caddy/nginx 终止 TLS 而这里不信任代理，
@@ -80,6 +82,8 @@ export function loadConfig(): ServerConfig {
     publicUrl:
       process.env.OMNI_PUBLIC_URL ||
       `http://localhost:${Number(process.env.PORT || 8787)}`,
+    campaignShareDomain:
+      process.env.OMNI_CAMPAIGN_SHARE_DOMAIN || process.env.OMNI_PUBLIC_URL || 'https://wzzapp.cloud',
     trustProxy: parseTrustProxy(process.env.OMNI_TRUST_PROXY),
     updatesDir: process.env.OMNI_UPDATES_DIR || join(dataDir, 'updates'),
     crispWebsiteId: process.env.OMNI_CRISP_WEBSITE_ID || undefined

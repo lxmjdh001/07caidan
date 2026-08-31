@@ -33,6 +33,9 @@ const api: OmniApi = {
   removeAccount: (key: string) => ipcRenderer.invoke(IPC_METHODS.removeAccount, key),
   setAccountEnabled: (key: string, enabled: boolean) =>
     ipcRenderer.invoke(IPC_METHODS.setAccountEnabled, key, enabled),
+  listGroups: (key: string) => ipcRenderer.invoke(IPC_METHODS.listGroups, key),
+  createGroup: (key: string, subject: string, participantIds: string[]) =>
+    ipcRenderer.invoke(IPC_METHODS.createGroup, key, subject, participantIds),
   listConversations: () => ipcRenderer.invoke(IPC_METHODS.listConversations),
   listMessages: (conversationId: string, limit?: number) =>
     ipcRenderer.invoke(IPC_METHODS.listMessages, conversationId, limit),
@@ -51,6 +54,16 @@ const api: OmniApi = {
     ipcRenderer.invoke(IPC_METHODS.setConversationAutoReply, conversationId, on),
   setConversationPinned: (conversationId: string, pinned: boolean) =>
     ipcRenderer.invoke(IPC_METHODS.setConversationPinned, conversationId, pinned),
+  setConversationMuted: (conversationId: string, muted: boolean) =>
+    ipcRenderer.invoke(IPC_METHODS.setConversationMuted, conversationId, muted),
+  clearConversation: (conversationId: string) =>
+    ipcRenderer.invoke(IPC_METHODS.clearConversation, conversationId),
+  deleteConversation: (conversationId: string) =>
+    ipcRenderer.invoke(IPC_METHODS.deleteConversation, conversationId),
+  inheritAccountConversations: (sourceAccountKey: string, targetAccountKey: string) =>
+    ipcRenderer.invoke(IPC_METHODS.inheritAccountConversations, sourceAccountKey, targetAccountKey),
+  updateConversationProfile: (conversationId: string, title: string, customerNote: string) =>
+    ipcRenderer.invoke(IPC_METHODS.updateConversationProfile, conversationId, title, customerNote),
   markRead: (conversationId: string) => ipcRenderer.invoke(IPC_METHODS.markRead, conversationId),
   getSettings: () => ipcRenderer.invoke(IPC_METHODS.getSettings),
   updateSettings: (patch: Partial<AppSettings>) =>

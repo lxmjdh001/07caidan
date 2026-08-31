@@ -12,7 +12,9 @@ export interface Campaign {
   accountLabels: Record<string, string>
   accountProfiles: Record<string, AccountProfile>
   totalTarget: number
+  accessPasswordEnabled: boolean
   accountTargets: Record<string, number>
+  accountTargetsManual: boolean
   resetTime: string
   startAt: number
   endAt?: number
@@ -43,7 +45,10 @@ export interface CampaignInput {
   accountLabels?: Record<string, string>
   accountProfiles?: Record<string, AccountProfile>
   totalTarget?: number
+  accessPasswordEnabled?: boolean
+  accessPassword?: string
   accountTargets?: Record<string, number>
+  accountTargetsManual?: boolean
   resetTime?: string
   startAt: number
   endAt?: number
@@ -94,6 +99,9 @@ export interface CampaignStats {
     avatarMediaId?: string
     avatarUrl?: string
     status?: 'online' | 'offline' | 'error'
+    dayTotal?: number
+    dayFresh?: number
+    dayDuplicate?: number
   } & Bucket>
   today?: Bucket
   byDay: Array<{ date: string } & Bucket>

@@ -138,6 +138,10 @@ export interface Conversation {
   autoReply?: boolean
   /** 是否置顶显示在会话列表顶部 */
   pinned?: boolean
+  /** 是否静音该会话的系统通知 */
+  muted?: boolean
+  /** 客户备注（客服自定义） */
+  customerNote?: string
   isGroup: boolean
   lastMessageAt: number
   lastMessagePreview: string

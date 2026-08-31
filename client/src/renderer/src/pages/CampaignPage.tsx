@@ -421,6 +421,9 @@ function CampaignForm({
   const [endAt, setEndAt] = useState(editing?.endAt ? toLocalInput(editing.endAt) : '')
   const [resetTime, setResetTime] = useState(editing?.resetTime ?? '00:00')
   const [totalTarget, setTotalTarget] = useState(String(editing?.totalTarget ?? 0))
+  const [customTargets, setCustomTargets] = useState(
+    Boolean(editing?.accountTargetsManual)
+  )
   const [accountTargets, setAccountTargets] = useState<Record<string, string>>(
     Object.fromEntries(Object.entries(editing?.accountTargets ?? {}).map(([id, value]) => [id, String(value)]))
   )
@@ -430,6 +433,8 @@ function CampaignForm({
   /** 公开看板地区限制：默认拒绝大陆与香港 */
   const [allowCn, setAllowCn] = useState(editing?.allowCnIp ?? false)
   const [allowHk, setAllowHk] = useState(editing?.allowHkIp ?? false)
+  const [accessPasswordEnabled, setAccessPasswordEnabled] = useState(editing?.accessPasswordEnabled ?? false)
+  const [accessPassword, setAccessPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -465,6 +470,15 @@ function CampaignForm({
     })
   }, [accounts, editing?.accountTargets, picked])
 
+  useEffect(() => {
+    if (customTargets) return
+    const ids = picked.map((key) => key.startsWith('gone:') ? key.slice(5) : (accounts.find((a) => a.key === key)?.accountId ?? key))
+    const total = Math.max(0, Math.floor(Number(totalTarget) || 0))
+    const base = ids.length > 0 ? Math.floor(total / ids.length) : 0
+    const remainder = ids.length > 0 ? total % ids.length : 0
+    setAccountTargets(Object.fromEntries(ids.map((id, index) => [id, String(base + (index < remainder ? 1 : 0))])))
+  }, [accounts, customTargets, picked, totalTarget])
+
   const startPresets: DatePreset[] = [
     { label: t('form.now'), value: () => Date.now() },
     { label: t('form.today'), value: () => startOfDay() },
@@ -473,7 +487,6 @@ function CampaignForm({
   ]
   const endPresets: DatePreset[] = [
     { label: t('form.clear'), value: () => undefined },
-    { label: t('form.tomorrow'), value: () => startOfDay(2) },
     { label: t('form.days3'), value: () => startOfDay(4) },
     { label: t('form.days7'), value: () => startOfDay(8) },
     { label: t('form.days30'), value: () => startOfDay(31) }
@@ -491,10 +504,23 @@ function CampaignForm({
     if (end !== undefined && end <= start) return setErr(t('campaign.errEnd'))
     const parsedTotalTarget = Number(totalTarget || 0)
     if (!Number.isInteger(parsedTotalTarget) || parsedTotalTarget < 0) return setErr(t('campaign.errTarget'))
+    if (accessPasswordEnabled && accessPassword && (accessPassword.length < 6 || accessPassword.length > 12)) {
+      return setErr(t('campaign.errAccessPassword'))
+    }
+    if (accessPasswordEnabled && !editing && accessPassword.length < 6) {
+      return setErr(t('campaign.errAccessPassword'))
+    }
+    if (accessPasswordEnabled && editing && !editing.accessPasswordEnabled && accessPassword.length < 6) {
+      return setErr(t('campaign.errAccessPassword'))
+    }
     const parsedAccountTargets: Record<string, number> = {}
-    for (const key of picked) {
+    const autoBase = picked.length > 0 ? Math.floor(parsedTotalTarget / picked.length) : 0
+    const autoRemainder = picked.length > 0 ? parsedTotalTarget % picked.length : 0
+    for (const [index, key] of picked.entries()) {
       const accountId = toAccountId(key)
-      const value = Number(accountTargets[accountId] || 0)
+      const value = customTargets
+        ? Number(accountTargets[accountId] || 0)
+        : autoBase + (index < autoRemainder ? 1 : 0)
       if (!Number.isInteger(value) || value < 0) return setErr(t('campaign.errTarget'))
       if (value > 0) parsedAccountTargets[accountId] = value
     }
@@ -553,6 +579,9 @@ function CampaignForm({
         resetTime,
         totalTarget: parsedTotalTarget,
         accountTargets: parsedAccountTargets,
+        accountTargetsManual: customTargets,
+        accessPasswordEnabled,
+        ...(accessPassword ? { accessPassword } : {}),
         // 只提交与所选账号同平台的库，避免改过账号后留下永不命中的脏规则
         dedupLibraryIds: libIds.filter((id) => usableLibs.some((l) => l.id === id)),
         sourceCodes: sources.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean),
@@ -637,8 +666,11 @@ function CampaignForm({
             <span className="field-hint">{t('campaign.totalTargetHint')}</span>
           </label>
           <div className="field account-target-field">
-            <span>{t('campaign.accountTargets')}</span>
-            <div className="account-target-list">
+            <label className="check-row target-toggle">
+              <input type="checkbox" checked={customTargets} onChange={(e) => setCustomTargets(e.target.checked)} />
+              <span>{t('campaign.accountTargets')}</span>
+            </label>
+            {customTargets && <div className="account-target-list">
               {picked.map((key) => {
                 const accountId = key.startsWith('gone:') ? key.slice(5) : (accounts.find((a) => a.key === key)?.accountId ?? key)
                 const account = accounts.find((a) => a.accountId === accountId)
@@ -649,8 +681,8 @@ function CampaignForm({
                   </label>
                 )
               })}
-            </div>
-            <span className="field-hint">{t('campaign.accountTargetsHint')}</span>
+            </div>}
+            <span className="field-hint">{customTargets ? t('campaign.accountTargetsHint') : t('campaign.accountTargetsAutoHint')}</span>
           </div>
         </div>
 
@@ -684,6 +716,25 @@ function CampaignForm({
             <span>{t('campaign.allowHk')}</span>
           </label>
           <span className="field-hint">{t('campaign.regionHint')}</span>
+        </div>
+
+        <div className="field">
+          <label className="check-row">
+            <input type="checkbox" checked={accessPasswordEnabled} onChange={(e) => setAccessPasswordEnabled(e.target.checked)} />
+            <span>{t('campaign.accessPasswordEnabled')}</span>
+          </label>
+          {accessPasswordEnabled && <>
+            <input
+              type="password"
+              minLength={6}
+              maxLength={12}
+              autoComplete="new-password"
+              value={accessPassword}
+              placeholder={editing?.accessPasswordEnabled ? t('campaign.accessPasswordKeep') : t('campaign.accessPasswordPlaceholder')}
+              onChange={(e) => setAccessPassword(e.target.value)}
+            />
+            <span className="field-hint">{t('campaign.accessPasswordHint')}</span>
+          </>}
         </div>
       </section>
 
@@ -889,6 +940,7 @@ function CampaignDetail({
       <section className="form-card">
         <h3>{t('campaign.links')}</h3>
         <p className="field-hint">{t('campaign.linksHint')}</p>
+        {campaign.accessPasswordEnabled && <p className="field-hint">{t('campaign.accessPasswordLinkHint')}</p>}
 
         <div className="field-row">
           <label className="field">

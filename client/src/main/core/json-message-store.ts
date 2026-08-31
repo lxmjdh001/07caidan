@@ -1,4 +1,5 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
+import { randomUUID } from 'node:crypto'
 import { dirname, join } from 'node:path'
 import type { Conversation, UnifiedMessage } from '@shared/domain'
 import { previewOf } from '@shared/domain'
@@ -96,8 +97,25 @@ export class JsonMessageStore implements MessageStore {
     if (patch.leadSource) conv.leadSource = patch.leadSource
     if (patch.autoReply !== undefined) conv.autoReply = patch.autoReply
     if (patch.pinned !== undefined) conv.pinned = patch.pinned
+    if (patch.muted !== undefined) conv.muted = patch.muted
+    if (patch.customerNote !== undefined) conv.customerNote = patch.customerNote
     this.scheduleFlush()
     return conv
+  }
+
+  async upsertConversation(conversation: Conversation): Promise<Conversation> {
+    const existing = this.data.conversations[conversation.id]
+    if (existing) {
+      existing.title = conversation.title || existing.title
+      existing.isGroup = conversation.isGroup
+      existing.externalChatId = conversation.externalChatId
+      this.scheduleFlush()
+      return existing
+    }
+    this.data.conversations[conversation.id] = conversation
+    this.data.messages[conversation.id] ??= []
+    this.scheduleFlush()
+    return conversation
   }
 
   async getConversation(id: string): Promise<Conversation | undefined> {
@@ -122,6 +140,84 @@ export class JsonMessageStore implements MessageStore {
       conv.unreadCount = 0
       this.scheduleFlush()
     }
+  }
+
+  async clearConversation(conversationId: string): Promise<void> {
+    const conv = this.data.conversations[conversationId]
+    if (!conv) return
+    this.data.messages[conversationId] = []
+    conv.unreadCount = 0
+    conv.lastMessageAt = 0
+    conv.lastMessagePreview = ''
+    this.scheduleFlush()
+  }
+
+  async deleteConversation(conversationId: string): Promise<void> {
+    delete this.data.conversations[conversationId]
+    delete this.data.messages[conversationId]
+    this.scheduleFlush()
+  }
+
+  async inheritAccountConversations(sourceAccountKey: string, targetAccountKey: string): Promise<{ conversations: number; messages: number }> {
+    const sourceSep = sourceAccountKey.indexOf(':')
+    const targetSep = targetAccountKey.indexOf(':')
+    if (sourceSep <= 0 || targetSep <= 0) throw new Error('账号标识无效')
+    const sourceChannel = sourceAccountKey.slice(0, sourceSep)
+    const sourceAccount = sourceAccountKey.slice(sourceSep + 1)
+    const targetChannel = targetAccountKey.slice(0, targetSep)
+    const targetAccount = targetAccountKey.slice(targetSep + 1)
+    if (sourceChannel !== targetChannel) throw new Error('只能在相同平台账号之间继承客户')
+    if (sourceAccountKey === targetAccountKey) throw new Error('来源账号和目标账号不能相同')
+
+    let conversationCount = 0
+    let messageCount = 0
+    for (const source of Object.values(this.data.conversations)) {
+      if (source.channel !== sourceChannel || source.accountId !== sourceAccount) continue
+      const targetId = `${targetChannel}:${targetAccount}:${source.externalChatId}`
+      const target = this.data.conversations[targetId]
+      if (target) {
+        if (!target.title || target.title === target.externalChatId || /^\+\d+$/.test(target.title)) {
+          target.title = source.title
+        }
+        target.contactId ??= source.contactId
+        target.avatarMediaId ??= source.avatarMediaId
+        target.detectedLang ??= source.detectedLang
+        target.langOverride ??= source.langOverride
+        target.leadSource ??= source.leadSource
+        target.customerNote ??= source.customerNote
+        if (source.lastMessageAt >= target.lastMessageAt) {
+          target.lastMessageAt = source.lastMessageAt
+          target.lastMessagePreview = source.lastMessagePreview
+        }
+      } else {
+        this.data.conversations[targetId] = {
+          ...source,
+          id: targetId,
+          accountId: targetAccount,
+          pinned: false,
+          unreadCount: 0
+        }
+        conversationCount += 1
+      }
+      const sourceMessages = this.data.messages[source.id] ?? []
+      const targetMessages = (this.data.messages[targetId] ??= [])
+      const knownExternal = new Set(targetMessages.map((m) => m.externalId).filter(Boolean))
+      for (const message of sourceMessages) {
+        if (message.externalId && knownExternal.has(message.externalId)) continue
+        if (!message.externalId && targetMessages.some((m) => m.id === message.id)) continue
+        targetMessages.push({
+          ...message,
+          id: randomUUID(),
+          conversationId: targetId,
+          accountId: targetAccount,
+          channel: targetChannel as typeof message.channel
+        })
+        if (message.externalId) knownExternal.add(message.externalId)
+        messageCount += 1
+      }
+    }
+    if (conversationCount > 0 || messageCount > 0) this.scheduleFlush()
+    return { conversations: conversationCount, messages: messageCount }
   }
 
   async flush(): Promise<void> {

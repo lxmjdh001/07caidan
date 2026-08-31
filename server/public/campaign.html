@@ -153,6 +153,13 @@
       .account-handle { overflow: hidden; max-width: 230px; color: var(--muted); font-size: 11px; text-overflow: ellipsis; }
       .account-home-link { display: inline-block; max-width: 250px; overflow: hidden; color: var(--green); text-overflow: ellipsis; white-space: nowrap; }
       .account-home-qr { width: 76px; height: 76px; padding: 4px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+      .metric { display: inline-flex; min-width: 42px; justify-content: center; padding: 3px 7px; border: 1px solid currentColor; border-radius: 4px; font-variant-numeric: tabular-nums; line-height: 1.2; }
+      .metric-green { color: var(--green); background: color-mix(in srgb, var(--green) 9%, var(--panel)); }
+      .metric-blue { color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, var(--panel)); }
+      .metric-red { color: var(--red); background: color-mix(in srgb, var(--red) 9%, var(--panel)); }
+      .metric-amber { color: var(--amber); background: color-mix(in srgb, var(--amber) 10%, var(--panel)); }
+      .total-row td { background: var(--panel-soft); border-top: 2px solid var(--line); border-bottom: 0; font-weight: 700; }
+      .total-row .total-label { color: var(--text); text-align: center; }
       .account-actions { display: flex; gap: 7px; white-space: nowrap; }
       .account-actions button { min-height: 31px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); }
       .account-actions button:hover { border-color: var(--accent); color: var(--accent); }
@@ -169,6 +176,13 @@
       .note { margin: 15px 0 0; color: var(--muted); font-size: 11px; text-align: center; }
       .msg { padding: 70px 20px; color: var(--muted); text-align: center; }
       .msg strong { display: block; margin-bottom: 6px; color: var(--text); font-size: 17px; }
+      .password-gate { width: min(380px, 100%); margin: 16vh auto 0; padding: 28px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow); text-align: center; }
+      .password-gate h1 { margin: 0 0 8px; font-size: 21px; }
+      .password-gate p { margin: 0 0 18px; color: var(--muted); }
+      .password-gate form { display: flex; gap: 8px; }
+      .password-gate input { min-width: 0; flex: 1; height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 5px; outline: 0; background: var(--panel-soft); color: var(--text); }
+      .password-gate input:focus { border-color: var(--accent); }
+      .password-gate button { height: 36px; padding: 0 14px; border: 1px solid var(--accent); border-radius: 5px; background: var(--accent); color: #fff; }
       .dialog-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgb(15 23 42 / 35%); }
       .dialog { width: min(1180px, 100%); max-height: 88vh; overflow: auto; padding: 22px; border-radius: 10px; background: var(--panel); box-shadow: 0 18px 50px rgb(15 23 42 / 22%); }
       .dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 15px; }
@@ -199,6 +213,7 @@
     </main>
     <script>
       const token = location.pathname.split('/').pop()
+      const urlPassword = new URLSearchParams(location.search).get('password') || ''
       const app = document.getElementById('app')
       const FAIL = {
         not_found: ['链接无效', '这个分享链接不存在，或者对应的工单已被删除。'],
@@ -224,6 +239,22 @@
         clearInterval(countdownTimer)
         const [title, body] = FAIL[reason] || ['无法访问', '请联系发起人。']
         app.innerHTML = '<div class="msg"><strong>' + esc(title) + '</strong>' + esc(body) + '</div>'
+      }
+      function publicPath(path) {
+        return urlPassword ? path + (path.includes('?') ? '&' : '?') + 'password=' + encodeURIComponent(urlPassword) : path
+      }
+      function showPasswordGate(invalid) {
+        clearInterval(countdownTimer)
+        app.innerHTML = '<div class="password-gate"><h1>工单访问验证</h1><p>' + (invalid ? '密码错误，请重新输入。' : '请输入访问密码后查看工单。') + '</p><form id="password-form"><input id="campaign-password" type="password" minlength="6" maxlength="12" autocomplete="off" placeholder="6-12位密码" required /><button type="submit">进入工单</button></form></div>'
+        document.getElementById('password-form').addEventListener('submit', (event) => {
+          event.preventDefault()
+          const value = document.getElementById('campaign-password').value
+          if (value.length < 6 || value.length > 12) return
+          const next = new URL(location.href)
+          next.searchParams.set('password', value)
+          location.href = next.pathname + next.search
+        })
+        document.getElementById('campaign-password').focus()
       }
       function channelLabel(channel) {
         return ({ whatsapp: 'WhatsApp', telegram: 'Telegram', telegram_bot: 'Telegram Bot', line: 'LINE' })[channel] || channel || '—'
@@ -262,7 +293,7 @@
       function loadAccountAction(accountId, mode) {
         const title = mode === 'fans' ? '粉丝详情' : '进粉趋势'
         openDialog(title, '<div class="empty">加载中…</div>')
-        fetch('/public/campaign/' + encodeURIComponent(token) + '/account/' + encodeURIComponent(accountId) + '/' + mode)
+        fetch(publicPath('/public/campaign/' + encodeURIComponent(token) + '/account/' + encodeURIComponent(accountId) + '/' + mode))
           .then(async (res) => {
             const body = await res.json().catch(() => ({}))
             if (!res.ok) throw new Error(body.error || '加载失败')
@@ -329,15 +360,28 @@
         state.page = Math.min(state.page, pages)
         const start = (state.page - 1) * state.pageSize
         const pageRows = filtered.slice(start, start + state.pageSize)
-        const body = pageRows.length ? pageRows.map((row, i) => {
+        const totals = filtered.reduce((acc, row) => {
+          acc.dayFresh += Number(row.dayFresh || 0)
+          acc.dayDuplicate += Number(row.dayDuplicate || 0)
+          acc.total += Number(row.total || 0)
+          acc.fresh += Number(row.fresh || 0)
+          acc.duplicate += Number(row.duplicate || 0)
+          return acc
+        }, { dayFresh: 0, dayDuplicate: 0, total: 0, fresh: 0, duplicate: 0 })
+        let body = pageRows.length ? pageRows.map((row, i) => {
           const avatar = row.avatarUrl
             ? '<img src="' + esc(row.avatarUrl) + '" alt="" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'" /><span class="account-avatar-empty" style="display:none">无</span>'
             : '<span class="account-avatar-empty">无</span>'
           const homepage = row.homepageUrl ? '<a class="account-home-link" href="' + esc(row.homepageUrl) + '" target="_blank" rel="noreferrer">' + esc(row.homepageUrl) + '</a>' : '<span class="account-avatar-empty">无</span>'
           const qr = row.homepageQrDataUrl ? '<img class="account-home-qr" src="' + esc(row.homepageQrDataUrl) + '" alt="主页二维码" />' : '<span class="account-avatar-empty">无</span>'
           const lastAt = row.lastAt ? fmtDateTime(row.lastAt, 480) : '无'
-          return '<tr><td><div class="account-cell"><span class="account-index">' + (start + i + 1) + '</span><span class="account-avatar">' + avatar + '</span><span class="account-primary"><span class="account-name">' + esc(row.label || row.accountId) + '</span><span class="account-handle">' + esc(handleLabel(row)) + '</span></span></div></td><td>' + esc(channelLabel(row.channel)) + '</td><td>' + statusLabel(row) + '</td><td>' + lastAt + '</td><td class="num">' + (row.target || 0) + '</td><td class="num">' + row.total + '</td><td class="num">' + row.fresh + '</td><td class="num">' + row.duplicate + '</td><td>' + homepage + '</td><td>' + qr + '</td><td class="operation-col"><div class="account-actions"><button type="button" data-action="fans" data-account="' + esc(row.accountId) + '">粉丝详情</button><button type="button" data-action="trend" data-account="' + esc(row.accountId) + '">进粉趋势</button></div></td></tr>'
+          const dayMetric = '<span class="metric metric-green">' + Number(row.dayFresh || 0) + '/' + Number(row.dayDuplicate || 0) + '</span>'
+          const historyMetric = '<span class="metric metric-blue">' + Number(row.total || 0) + '/' + Number(row.duplicate || 0) + '</span>'
+          return '<tr><td><div class="account-cell"><span class="account-index">' + (start + i + 1) + '</span><span class="account-avatar">' + avatar + '</span><span class="account-primary"><span class="account-name">' + esc(row.label || row.accountId) + '</span><span class="account-handle">' + esc(handleLabel(row)) + '</span></span></div></td><td>' + esc(channelLabel(row.channel)) + '</td><td>' + statusLabel(row) + '</td><td>' + lastAt + '</td><td class="num">' + dayMetric + '</td><td class="num">' + historyMetric + '</td><td class="num"><span class="metric metric-amber">' + Number(row.dayDuplicate || 0) + '</span></td><td class="num"><span class="metric metric-red">' + Number(row.duplicate || 0) + '</span></td><td>' + homepage + '</td><td>' + qr + '</td><td class="operation-col"><div class="account-actions"><button type="button" data-action="fans" data-account="' + esc(row.accountId) + '">粉丝详情</button><button type="button" data-action="trend" data-account="' + esc(row.accountId) + '">进粉趋势</button></div></td></tr>'
         }).join('') : '<tr><td colspan="11"><div class="empty">暂无匹配账号</div></td></tr>'
+        if (filtered.length > 0) {
+          body += '<tr class="total-row"><td colspan="4" class="total-label">总计</td><td class="num"><span class="metric metric-green">' + totals.dayFresh + '/' + totals.dayDuplicate + '</span></td><td class="num"><span class="metric metric-blue">' + totals.total + '/' + totals.duplicate + '</span></td><td class="num"><span class="metric metric-amber">' + totals.dayDuplicate + '</span></td><td class="num"><span class="metric metric-red">' + totals.duplicate + '</span></td><td colspan="3"></td></tr>'
+        }
         document.getElementById('account-body').innerHTML = body
         document.getElementById('account-count').textContent = accountCountLabel(filtered)
         document.getElementById('page-info').textContent = pages > 1 ? state.page + ' / ' + pages : ''
@@ -363,7 +407,7 @@
           '<div class="info-heading"><span class="info-icon" aria-hidden="true"><svg viewBox="0 0 32 36"><rect x="6" y="4" width="20" height="28" rx="3"></rect><path d="M11 4.5V3a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.5"></path><path d="M11 12h2M17 12h4M11 18h2M17 18h4M11 24h2M17 24h4"></path></svg></span><h1>工单信息</h1></div>' +
           '<section class="info-card"><div class="info-column"><div class="info-row"><span class="info-label">工单编号：</span><span class="info-value" title="' + esc(c.id) + '">' + esc(c.id || '—') + '</span></div><div class="info-row"><span class="info-label">工单类型：</span><span class="info-value">' + esc(type) + '</span></div><div class="info-row"><span class="info-label">创建时间：</span><span class="info-value">' + fmtDateTime(c.createdAt, tz) + '</span></div><div class="info-row"><span class="info-label">总目标数：</span><span class="info-value">' + Number(c.totalTarget || 0) + '</span></div></div><div class="info-column"><div class="info-row"><span class="info-label">置零时间：</span><span class="info-value">' + esc(state.resetTime) + '</span></div><div class="info-row"><span class="info-label">重置倒计时：</span><span class="info-value" id="reset-countdown">00:00:00</span></div><div class="info-row"><span class="info-label">工单名称：</span><span class="info-value" title="' + esc(c.name) + '">' + esc(c.name || '—') + '</span></div><div class="info-row"><span class="info-label">到期时间：</span><span class="info-value">' + esc(expiresAt) + '</span></div></div></section>' +
           '<div class="summary-grid"><article class="summary-card green"><div><div class="summary-label">引流统计总览</div><div class="summary-caption">申请总数</div></div><strong class="summary-value">' + s.total + '</strong></article><article class="summary-card amber"><div><div class="summary-label">今日引流统计</div><div class="summary-caption">申请总数</div></div><strong class="summary-value">' + today.total + '</strong></article></div>' +
-          '<section class="section"><div class="section-head"><h2>所属账号</h2><span class="section-count" id="account-count"></span></div><div class="filters"><label class="filter-field"><input id="account-id-query" type="search" placeholder="进粉账号 ID / 手机号" value="' + esc(state.idQuery) + '" /></label><label class="filter-field"><input id="account-name-query" type="search" placeholder="进粉账号名称" value="' + esc(state.nameQuery) + '" /></label><select id="status-filter"><option value="all"' + (state.status === 'all' ? ' selected' : '') + '>全部状态</option><option value="online"' + (state.status === 'online' ? ' selected' : '') + '>在线</option><option value="offline"' + (state.status === 'offline' ? ' selected' : '') + '>离线</option><option value="error"' + (state.status === 'error' ? ' selected' : '') + '>异常</option></select><select id="channel-filter"><option value="all"' + (state.channel === 'all' ? ' selected' : '') + '>全部平台</option>' + options + '</select><button class="filter-search" id="account-search" type="button">查询</button><button class="filter-reset" id="filter-reset" type="button">重置</button></div><div class="table-scroll"><table class="account-table"><thead><tr><th>账号</th><th>平台</th><th>状态</th><th>上次进粉时间</th><th class="num">目标数</th><th class="num">总申请数</th><th class="num">新粉</th><th class="num">重复</th><th>主页链接</th><th>二维码</th><th class="operation-col">操作</th></tr></thead><tbody id="account-body"></tbody></table></div><div class="pagination"><span id="page-info"></span><button id="page-prev" type="button">‹</button><button id="page-next" type="button">›</button><select id="page-size"><option value="10"' + (state.pageSize === 10 ? ' selected' : '') + '>10 条/页</option><option value="50"' + (state.pageSize === 50 ? ' selected' : '') + '>50 条/页</option><option value="100"' + (state.pageSize === 100 ? ' selected' : '') + '>100 条/页</option></select></div></section>' +
+          '<section class="section"><div class="section-head"><h2>所属账号</h2><span class="section-count" id="account-count"></span></div><div class="filters"><label class="filter-field"><input id="account-id-query" type="search" placeholder="进粉账号 ID / 手机号" value="' + esc(state.idQuery) + '" /></label><label class="filter-field"><input id="account-name-query" type="search" placeholder="进粉账号名称" value="' + esc(state.nameQuery) + '" /></label><select id="status-filter"><option value="all"' + (state.status === 'all' ? ' selected' : '') + '>全部状态</option><option value="online"' + (state.status === 'online' ? ' selected' : '') + '>在线</option><option value="offline"' + (state.status === 'offline' ? ' selected' : '') + '>离线</option><option value="error"' + (state.status === 'error' ? ' selected' : '') + '>异常</option></select><select id="channel-filter"><option value="all"' + (state.channel === 'all' ? ' selected' : '') + '>全部平台</option>' + options + '</select><button class="filter-search" id="account-search" type="button">查询</button><button class="filter-reset" id="filter-reset" type="button">重置</button></div><div class="table-scroll"><table class="account-table"><thead><tr><th>账号</th><th>平台</th><th>状态</th><th>最近进粉</th><th class="num">今日进粉/重粉</th><th class="num">总进粉/重粉</th><th class="num">今日重复</th><th class="num">总重复</th><th>主页链接</th><th>二维码</th><th class="operation-col">操作</th></tr></thead><tbody id="account-body"></tbody></table></div><div class="pagination"><span id="page-info"></span><button id="page-prev" type="button">‹</button><button id="page-next" type="button">›</button><select id="page-size"><option value="10"' + (state.pageSize === 10 ? ' selected' : '') + '>10 条/页</option><option value="50"' + (state.pageSize === 50 ? ' selected' : '') + '>50 条/页</option><option value="100"' + (state.pageSize === 100 ? ' selected' : '') + '>100 条/页</option></select></div></section>' +
           '<p class="note">看板首页展示统计数据；点击账号操作可查看该账号的进粉明细。更新于 ' + fmtDate(s.computedAt, tz) + '</p>'
         const runSearch = () => {
           state.idQuery = document.getElementById('account-id-query').value
@@ -402,10 +446,14 @@
         if (state.listAutoRefresh) listTimer = setInterval(reload, state.listRefreshMinutes * 60 * 1000)
       }
       function reload() {
-        return fetch('/public/campaign/' + encodeURIComponent(token))
+        return fetch(publicPath('/public/campaign/' + encodeURIComponent(token)))
         .then(async (res) => {
           const body = await res.json().catch(() => ({}))
-          if (!res.ok) return showFail(body.error)
+          if (!res.ok) {
+            if (body.error === 'password_required') return showPasswordGate(false)
+            if (body.error === 'password_invalid') return showPasswordGate(true)
+            return showFail(body.error)
+          }
           render(body)
         })
         .catch(() => showFail('not_found'))

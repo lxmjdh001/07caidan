@@ -283,6 +283,21 @@ async function bootstrap(): Promise<void> {
   const syncClient = new SyncClient({
     store,
     media,
+    getAccountProfiles: async () => {
+      const states = manager.listChannels()
+      // 每次同步前刷新一次自身头像；这样头像在 WhatsApp 中更新后最多一个同步周期可见。
+      await Promise.all(states.map(async (state) => {
+        if (state.status !== 'connected') return
+        await manager.refreshSelfProfile(`${state.kind}:${state.accountId}`).catch(() => undefined)
+      }))
+      return manager.listChannels().map((state) => ({
+        accountId: state.accountId,
+        channel: state.kind,
+        handle: state.selfHandle,
+        avatarMediaId: state.avatarMediaId,
+        status: state.status === 'connected' ? 'online' : state.status === 'error' ? 'error' : 'offline'
+      }))
+    },
     getConfig: () => settings.get().sync,
     initialRecord: syncRecord,
     persistRecord: async (r) => {

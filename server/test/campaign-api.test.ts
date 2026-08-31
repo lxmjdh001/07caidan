@@ -284,6 +284,75 @@ describe('分享链接与公开看板', () => {
     assert.equal(image.headers['content-type'], 'image/jpeg')
   })
 
+  test('第三方账号同步 API 返回兼容 JSON 结构', async () => {
+    const now = Date.now()
+    await seed('a1', 'wa:+10001', now - 2000)
+    const created = await api('POST', '/api/campaigns', {
+      name: '同步接口',
+      accountIds: ['a1'],
+      accountLabels: { a1: '主号' },
+      accountProfiles: { a1: { channel: 'whatsapp', handle: '10001', status: 'online' } },
+      startAt: now - 5000,
+      totalTarget: 10,
+      accountTargets: { a1: 10 }
+    })
+    const link = (await api('POST', `/api/campaigns/${created.json.campaign.id}/links`)).json.link
+    const result = await api('GET', `/public/campaign/${link.token}/accounts`, undefined, null)
+    assert.equal(result.status, 200)
+    assert.deepEqual(result.json.data[0], {
+      id: 'a1', nickname: '主号', user: '10001', online: 1, sum: 1, day_sum: 1
+    })
+    assert.equal(result.json.count, 1)
+    assert.deepEqual(result.json.totalRow, { id: '总计：', sum: '1', day_sum: '1' })
+  })
+
+  test('客户端同步账号资料后，已存在工单的头像和状态实时更新', async () => {
+    const created = await api('POST', '/api/campaigns', {
+      name: '资料实时更新',
+      accountIds: ['a1'],
+      accountProfiles: { a1: { channel: 'whatsapp', status: 'offline' } },
+      startAt: Date.now() - 1000
+    })
+    const link = (await api('POST', `/api/campaigns/${created.json.campaign.id}/links`)).json.link
+    const uploaded = await app.inject({
+      method: 'PUT',
+      url: '/api/media/live-avatar.jpg',
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'image/jpeg' },
+      payload: Buffer.from('live-avatar')
+    })
+    assert.equal(uploaded.statusCode, 200)
+    const synced = await api('POST', '/api/sync', {
+      conversations: [],
+      messages: [],
+      accountProfiles: [{ accountId: 'a1', channel: 'whatsapp', handle: '10001', avatarMediaId: 'live-avatar.jpg', status: 'online' }]
+    })
+    assert.equal(synced.status, 200)
+    const pub = await api('GET', `/public/campaign/${link.token}` , undefined, null)
+    const row = pub.json.stats.byAccount[0]
+    assert.equal(row.status, 'online')
+    assert.equal(row.handle, '10001')
+    assert.match(row.avatarUrl, /live-avatar\.jpg$/)
+  })
+
+  test('分享工单访问密码支持输入验证和 URL 参数直达', async () => {
+    const created = await api('POST', '/api/campaigns', {
+      name: '密码工单', accountIds: ['a1'], startAt: Date.now() - 1000,
+      accessPasswordEnabled: true, accessPassword: 'abc123'
+    })
+    const link = (await api('POST', `/api/campaigns/${created.json.campaign.id}/links`)).json.link
+    const missing = await api('GET', `/public/campaign/${link.token}`, undefined, null)
+    assert.equal(missing.status, 401)
+    assert.equal(missing.json.error, 'password_required')
+    const wrong = await api('GET', `/public/campaign/${link.token}?password=wrong1`, undefined, null)
+    assert.equal(wrong.status, 401)
+    assert.equal(wrong.json.error, 'password_invalid')
+    const ok = await api('GET', `/public/campaign/${link.token}?password=abc123`, undefined, null)
+    assert.equal(ok.status, 200)
+    assert.equal(ok.json.campaign.accessPasswordEnabled, true)
+    const accounts = await api('GET', `/public/campaign/${link.token}/accounts?password=abc123`, undefined, null)
+    assert.equal(accounts.status, 200)
+  })
+
   // 最新功能（IP 地区限制）：默认拒绝中国大陆/香港 IP，老板可逐项放开。
   // geoip.test 只测判定函数，路由把 req.ip 接进去这条 HTTP 闭环此前没测。
   // inject 的 remoteAddress 会成为 req.ip（未开 trustProxy），可据此模拟来访地区。

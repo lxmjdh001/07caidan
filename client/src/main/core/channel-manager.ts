@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto'
-import type { ChannelState, UnifiedMessage } from '@shared/domain'
+import type { ChannelState, Conversation, UnifiedMessage } from '@shared/domain'
 import { conversationId, parseConversationId } from '@shared/domain'
 import type { OmniEvent, OutboundPreview } from '@shared/ipc'
 import { basename } from 'node:path'
 import type { TranslationPipeline } from '../translation/pipeline'
-import type { ChannelAdapter } from './channel-adapter'
+import type { ChannelAdapter, GroupSummary } from './channel-adapter'
 import { detectLeadSource } from './lead-source'
 import { noopLogger, type Logger } from './logger'
 import type { JsonContactStore } from './contact-store'
@@ -155,6 +155,57 @@ export class ChannelManager {
       this.disabledAccounts.add(key)
       await adapter.stop()
     }
+  }
+
+  async listGroups(key: string): Promise<Conversation[]> {
+    const adapter = this.requireAdapter(key)
+    if (!adapter.listGroups) throw new Error(`渠道 ${key} 暂不支持群组`)
+    const groups = await adapter.listGroups()
+    const separator = key.indexOf(':')
+    const channel = key.slice(0, separator) as Conversation['channel']
+    const accountId = key.slice(separator + 1)
+    const result: Conversation[] = []
+    for (const group of groups) {
+      const id = conversationId(channel, accountId, group.externalChatId)
+      const existing = await this.store.getConversation(id)
+      const conversation = await this.store.upsertConversation(existing ?? {
+        id,
+        channel,
+        accountId,
+        externalChatId: group.externalChatId,
+        title: group.title,
+        isGroup: true,
+        lastMessageAt: 0,
+        lastMessagePreview: '',
+        unreadCount: 0
+      })
+      result.push(conversation)
+      this.broadcast({ type: 'conversation:updated', conversation })
+    }
+    return result
+  }
+
+  async createGroup(key: string, subject: string, participantIds: string[]): Promise<Conversation> {
+    const adapter = this.requireAdapter(key)
+    if (!adapter.createGroup) throw new Error(`渠道 ${key} 暂不支持创建群组`)
+    const group: GroupSummary = await adapter.createGroup(subject, participantIds)
+    const separator = key.indexOf(':')
+    const channel = key.slice(0, separator) as Conversation['channel']
+    const accountId = key.slice(separator + 1)
+    const id = conversationId(channel, accountId, group.externalChatId)
+    const conversation = await this.store.upsertConversation({
+      id,
+      channel,
+      accountId,
+      externalChatId: group.externalChatId,
+      title: group.title,
+      isGroup: true,
+      lastMessageAt: 0,
+      lastMessagePreview: '',
+      unreadCount: 0
+    })
+    this.broadcast({ type: 'conversation:updated', conversation })
+    return conversation
   }
 
   async startAll(): Promise<void> {

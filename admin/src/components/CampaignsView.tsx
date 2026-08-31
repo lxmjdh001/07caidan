@@ -38,14 +38,17 @@ export function CampaignsView({ client }: Props): React.JSX.Element {
   const [activeId, setActiveId] = useState<string | null>(null)
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
+  const [shareDomain, setShareDomain] = useState('')
+  const [domainSaving, setDomainSaving] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
     setErr('')
     try {
-      const [c, l] = await Promise.all([client.listCampaigns(), client.listLibraries()])
+      const [c, l, d] = await Promise.all([client.listCampaigns(), client.listLibraries(), client.campaignShareDomain()])
       setCampaigns(c.campaigns)
       setLibraries(l.libraries)
+      setShareDomain(d.domain)
     } catch (e) {
       setErr((e as Error).message)
     } finally {
@@ -73,6 +76,14 @@ export function CampaignsView({ client }: Props): React.JSX.Element {
 
       {!loading && (
         <div className="campaign-layout">
+          <section className="card campaign-share-domain-card">
+            <h3>{t('campaign.shareDomain')}</h3>
+            <p className="muted small">{t('campaign.shareDomainHint')}</p>
+            <div className="share-domain-form">
+              <input value={shareDomain} placeholder={t('campaign.shareDomainPlaceholder')} onChange={(e) => setShareDomain(e.target.value)} />
+              <button className="primary" disabled={domainSaving || !shareDomain.trim()} onClick={async () => { setDomainSaving(true); try { const r = await client.updateCampaignShareDomain(shareDomain.trim()); setShareDomain(r.domain); window.alert(t('campaign.shareDomainSaved')) } catch (e) { setErr((e as Error).message) } finally { setDomainSaving(false) } }}>{t('common.save')}</button>
+            </div>
+          </section>
           <aside className="campaign-side">
             <h3>{t('campaign.list')}</h3>
             {campaigns.length === 0 ? (

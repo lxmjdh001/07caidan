@@ -168,6 +168,42 @@ describe('JsonMessageStore', () => {
     expect(got?.autoReply).toBe(true)
   })
 
+  it('静音和客户备注会持久化', async () => {
+    await store.recordMessage(msg())
+    const id = 'whatsapp:main:123@s.whatsapp.net'
+    await store.patchConversation({ id, muted: true, customerNote: '重点客户' })
+    await store.flush()
+    const reloaded = new JsonMessageStore(dir)
+    await reloaded.init()
+    expect(await reloaded.getConversation(id)).toMatchObject({ muted: true, customerNote: '重点客户' })
+  })
+
+  it('清空聊天保留会话，删除聊天同时移除会话和消息', async () => {
+    const id = 'whatsapp:main:123@s.whatsapp.net'
+    await store.recordMessage(msg(), { incrementUnread: true })
+    await store.clearConversation(id)
+    expect(await store.getConversation(id)).toMatchObject({ unreadCount: 0, lastMessagePreview: '' })
+    expect(await store.listMessages(id)).toEqual([])
+
+    await store.recordMessage(msg({ id: 'new' }))
+    await store.deleteConversation(id)
+    expect(await store.getConversation(id)).toBeUndefined()
+    expect(await store.listMessages(id)).toEqual([])
+  })
+
+  it('可将来源账号客户会话和消息复制到目标账号，来源数据保留', async () => {
+    const sourceId = 'whatsapp:old:123@s.whatsapp.net'
+    await store.recordMessage(msg({ conversationId: sourceId, accountId: 'old', externalId: 'old-1' }), { incrementUnread: true })
+    await store.patchConversation({ id: sourceId, contactId: 'wa:+8613800138000', title: '客户A' })
+    const result = await store.inheritAccountConversations('whatsapp:old', 'whatsapp:new')
+    expect(result).toEqual({ conversations: 1, messages: 1 })
+    expect(await store.getConversation(sourceId)).toBeDefined()
+    const targetId = 'whatsapp:new:123@s.whatsapp.net'
+    expect(await store.getConversation(targetId)).toMatchObject({ accountId: 'new', contactId: 'wa:+8613800138000', title: '客户A' })
+    expect(await store.listMessages(targetId)).toHaveLength(1)
+    expect((await store.listMessages(targetId))[0]?.conversationId).toBe(targetId)
+  })
+
   it('updateMessage 按 id 替换（媒体下载完成场景），不存在返回 false', async () => {
     const original = msg({ body: { type: 'media', mediaType: 'image' } })
     await store.recordMessage(original)

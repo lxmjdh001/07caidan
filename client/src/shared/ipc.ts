@@ -16,6 +16,8 @@ export const IPC_METHODS = {
   addAccount: 'omni:addAccount',
   removeAccount: 'omni:removeAccount',
   setAccountEnabled: 'omni:setAccountEnabled',
+  listGroups: 'omni:listGroups',
+  createGroup: 'omni:createGroup',
   listConversations: 'omni:listConversations',
   listMessages: 'omni:listMessages',
   sendText: 'omni:sendText',
@@ -27,6 +29,11 @@ export const IPC_METHODS = {
   setConversationLang: 'omni:setConversationLang',
   setConversationAutoReply: 'omni:setConversationAutoReply',
   setConversationPinned: 'omni:setConversationPinned',
+  setConversationMuted: 'omni:setConversationMuted',
+  clearConversation: 'omni:clearConversation',
+  deleteConversation: 'omni:deleteConversation',
+  inheritAccountConversations: 'omni:inheritAccountConversations',
+  updateConversationProfile: 'omni:updateConversationProfile',
   getSettings: 'omni:getSettings',
   updateSettings: 'omni:updateSettings',
   listTranslators: 'omni:listTranslators',
@@ -53,6 +60,7 @@ export type OmniEvent =
   | { type: 'message:new'; message: UnifiedMessage; conversation: Conversation }
   | { type: 'message:updated'; message: UnifiedMessage }
   | { type: 'conversation:updated'; conversation: Conversation }
+  | { type: 'conversation:removed'; conversationId: string }
   | { type: 'channel:state'; state: ChannelState }
   | { type: 'channel:removed'; key: string }
   /** 用户点击系统通知 → 打开该会话 */
@@ -132,6 +140,8 @@ export interface OmniApi {
   removeAccount(key: string): Promise<void>
   /** 启用或禁用账号的连接与消息接收；禁用不会清除登录凭证。 */
   setAccountEnabled(key: string, enabled: boolean): Promise<void>
+  listGroups(key: string): Promise<Conversation[]>
+  createGroup(key: string, subject: string, participantIds: string[]): Promise<Conversation>
   listConversations(): Promise<Conversation[]>
   listMessages(conversationId: string, limit?: number): Promise<UnifiedMessage[]>
   /** prepared 传入预览结果时直接按其发送（不再重复翻译） */
@@ -162,6 +172,11 @@ export interface OmniApi {
   setConversationAutoReply(conversationId: string, on: boolean): Promise<void>
   /** 设置会话是否置顶 */
   setConversationPinned(conversationId: string, pinned: boolean): Promise<void>
+  setConversationMuted(conversationId: string, muted: boolean): Promise<void>
+  clearConversation(conversationId: string): Promise<void>
+  deleteConversation(conversationId: string): Promise<void>
+  inheritAccountConversations(sourceAccountKey: string, targetAccountKey: string): Promise<{ conversations: number; messages: number }>
+  updateConversationProfile(conversationId: string, title: string, customerNote: string): Promise<void>
   markRead(conversationId: string): Promise<void>
   getSettings(): Promise<AppSettings>
   updateSettings(patch: Partial<AppSettings>): Promise<AppSettings>

@@ -18,7 +18,7 @@ import { startBillingCron } from './billing/billing-cron.ts'
 import { registerBillingRoutes } from './billing/billing-routes.ts'
 import { ChannelRepo } from './billing/channel-repo.ts'
 import { OrderRepo } from './billing/order-repo.ts'
-import { CampaignRepo, type CampaignInput } from './campaign-repo.ts'
+import { CampaignRepo, type Campaign, type CampaignInput } from './campaign-repo.ts'
 import { isLibraryChannel, normalizeContactList } from './contact-id.ts'
 import { PERMISSIONS, ROLE_PRESETS, ROLES, type Permission } from './auth.ts'
 import { ClientAuthRepo, type ClientUser } from './client-auth.ts'
@@ -116,7 +116,10 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     }
   })
 
-  const publicBase = (): string => config.publicUrl.replace(/\/$/, '')
+  const publicBase = (tenant?: string): string => {
+    const configured = tenant ? repo.getTenantSetting(tenant, 'campaignShareDomain') : undefined
+    return (configured || config.campaignShareDomain || config.publicUrl).replace(/\/$/, '')
+  }
 
   /** 分享页 HTML（纯静态文件，首次读取后缓存） */
   let dashboardHtml: string | null = null
@@ -727,7 +730,8 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     const tenant = ctxOf(req).tenant
     const result = repo.ingest(tenant, {
       conversations: payload.conversations ?? [],
-      messages: payload.messages ?? []
+      messages: payload.messages ?? [],
+      accountProfiles: payload.accountProfiles ?? []
     })
     // 实时自动打标签：对本批有入站消息的会话按需重算意向（非阻塞，不拖慢同步）
     if (autoTagger.active) {
@@ -872,6 +876,9 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
       return reply.code(400).send({ error: '至少选择一个账号' })
     }
     if (typeof b.startAt !== 'number') return reply.code(400).send({ error: '开始时间必填' })
+    if (b.accessPasswordEnabled === true && (!b.accessPassword || b.accessPassword.length < 6 || b.accessPassword.length > 12)) {
+      return reply.code(400).send({ error: '访问密码必须为 6-12 位' })
+    }
     if (b.endAt !== undefined && b.endAt !== null && b.endAt <= b.startAt) {
       return reply.code(400).send({ error: '结束时间必须晚于开始时间' })
     }
@@ -883,7 +890,10 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
         accountLabels: b.accountLabels,
         accountProfiles: b.accountProfiles,
         totalTarget: b.totalTarget,
+        accessPasswordEnabled: b.accessPasswordEnabled === true,
+        accessPassword: b.accessPassword,
         accountTargets: b.accountTargets,
+        accountTargetsManual: b.accountTargetsManual === true,
         resetTime: b.resetTime,
         startAt: b.startAt,
         endAt: b.endAt ?? undefined,
@@ -908,6 +918,12 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (!existing) return reply.code(404).send({ error: 'not found' })
     if (patch.name !== undefined && !patch.name.trim()) {
       return reply.code(400).send({ error: '工单名称不能为空' })
+    }
+    if (patch.accessPassword !== undefined && (patch.accessPassword.length < 6 || patch.accessPassword.length > 12)) {
+      return reply.code(400).send({ error: '访问密码必须为 6-12 位' })
+    }
+    if (patch.accessPasswordEnabled === true && !existing.accessPasswordEnabled && !patch.accessPassword) {
+      return reply.code(400).send({ error: '开启访问密码时请输入 6-12 位密码' })
     }
     if (patch.accountIds !== undefined && patch.accountIds.length === 0) {
       return reply.code(400).send({ error: '至少保留一个参与账号' })
@@ -942,7 +958,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   app.get('/api/campaigns/:id/links', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
     const id = (req.params as { id: string }).id
-    return { links: campaignRepo.listLinks(ctxOf(req).tenant, id), publicBase: publicBase() }
+    return { links: campaignRepo.listLinks(ctxOf(req).tenant, id), publicBase: publicBase(ctxOf(req).tenant) }
   })
 
   app.post('/api/campaigns/:id/links', async (req, reply) => {
@@ -956,7 +972,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
       // 不传或传 null = 永不过期
       expiresAt: typeof b.expiresAt === 'number' ? b.expiresAt : undefined
     })
-    return { link, url: `${publicBase()}/c/${link.token}` }
+    return { link, url: `${publicBase(tenant)}/c/${link.token}` }
   })
 
   app.post('/api/campaigns/links/:token/revoke', async (req, reply) => {
@@ -1100,6 +1116,20 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
 
   // ── 公开看板（无需登录，靠不可猜的令牌）──
   // ⚠️ 这里只允许返回聚合数字。任何粉丝身份信息、聊天内容都不得出现。
+  const requirePublicPassword = (req: FastifyRequest, reply: FastifyReply, tenant: string, campaign: Campaign): boolean => {
+    if (!campaign.accessPasswordEnabled) return true
+    const password = String((req.query as { password?: string }).password ?? '')
+    if (!password) {
+      void reply.code(401).send({ error: 'password_required' })
+      return false
+    }
+    if (!campaignRepo.verifyAccessPassword(tenant, campaign, password)) {
+      void reply.code(401).send({ error: 'password_invalid' })
+      return false
+    }
+    return true
+  }
+
   app.get('/public/campaign/:token', async (req, reply) => {
     const token = (req.params as { token: string }).token
     const r = campaignRepo.resolveLink(token)
@@ -1108,6 +1138,8 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (!regionAllowed(req.ip, { allowCn: r.campaign.allowCnIp, allowHk: r.campaign.allowHkIp })) {
       return reply.code(403).send({ error: 'region_blocked' })
     }
+    if (!requirePublicPassword(req, reply, r.tenant, r.campaign)) return
+    const password = String((req.query as { password?: string }).password ?? '')
     const stats = campaignRepo.statsOf(r.tenant, r.campaign)
     const campaignType =
       Object.values(r.campaign.accountProfiles ?? {}).find((profile) => profile?.channel)?.channel ||
@@ -1128,7 +1160,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
         return {
           ...row,
           target: r.campaign.accountTargets[row.accountId] ?? 0,
-          ...(avatarMediaId ? { avatarUrl: `/public/campaign/${encodeURIComponent(token)}/media/${encodeURIComponent(avatarMediaId)}` } : {}),
+          ...(avatarMediaId ? { avatarUrl: `/public/campaign/${encodeURIComponent(token)}/media/${encodeURIComponent(avatarMediaId)}${password ? `?password=${encodeURIComponent(password)}` : ''}` } : {}),
           ...(homepageUrl ? { homepageUrl, homepageQrDataUrl: await QRCode.toDataURL(homepageUrl, { width: 128, margin: 1 }) } : {})
         }
       }))
@@ -1141,6 +1173,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
         createdAt: r.campaign.createdAt,
         resetTime: `${r.campaign.resetTime}:00`,
         totalTarget: r.campaign.totalTarget,
+        accessPasswordEnabled: r.campaign.accessPasswordEnabled,
         accountTargets: r.campaign.accountTargets,
         startAt: r.campaign.startAt,
         endAt: r.campaign.endAt,
@@ -1160,7 +1193,39 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     const r = campaignRepo.resolveLink(token)
     if (!r.ok) return reply.code(404).send({ error: r.reason })
     if (!regionAllowed(req.ip, { allowCn: r.campaign.allowCnIp, allowHk: r.campaign.allowHkIp })) return reply.code(403).send({ error: 'region_blocked' })
+    if (!requirePublicPassword(req, reply, r.tenant, r.campaign)) return
     return { fans: campaignRepo.accountFansOf(r.tenant, r.campaign, accountId) }
+  })
+
+  /**
+   * 第三方同步 API：返回工单账号及聚合统计，结构兼容同行常用格式。
+   * 访问凭分享链接 token；不返回粉丝身份或聊天内容。
+   */
+  app.get('/public/campaign/:token/accounts', async (req, reply) => {
+    const { token } = req.params as { token: string }
+    const r = campaignRepo.resolveLink(token)
+    if (!r.ok) return reply.code(404).send({ code: 404, error: r.reason })
+    if (!regionAllowed(req.ip, { allowCn: r.campaign.allowCnIp, allowHk: r.campaign.allowHkIp })) {
+      return reply.code(403).send({ code: 403, error: 'region_blocked' })
+    }
+    if (!requirePublicPassword(req, reply, r.tenant, r.campaign)) return
+    const stats = campaignRepo.statsOf(r.tenant, r.campaign)
+    const data = stats.byAccount.map((row) => ({
+      id: row.accountId,
+      nickname: row.label || row.accountId,
+      user: row.handle || '',
+      online: row.status === 'online' ? 1 : 0,
+      sum: row.total,
+      day_sum: row.dayTotal
+    }))
+    const sum = data.reduce((total, row) => total + row.sum, 0)
+    const daySum = data.reduce((total, row) => total + row.day_sum, 0)
+    return {
+      code: 0,
+      data,
+      count: data.length,
+      totalRow: { id: '总计：', day_sum: String(daySum), sum: String(sum) }
+    }
   })
 
   app.get('/public/campaign/:token/account/:accountId/trend', async (req, reply) => {
@@ -1168,6 +1233,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     const r = campaignRepo.resolveLink(token)
     if (!r.ok) return reply.code(404).send({ error: r.reason })
     if (!regionAllowed(req.ip, { allowCn: r.campaign.allowCnIp, allowHk: r.campaign.allowHkIp })) return reply.code(403).send({ error: 'region_blocked' })
+    if (!requirePublicPassword(req, reply, r.tenant, r.campaign)) return
     return { days: campaignRepo.accountTrendOf(r.tenant, r.campaign, accountId) }
   })
 
@@ -1179,6 +1245,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (!regionAllowed(req.ip, { allowCn: r.campaign.allowCnIp, allowHk: r.campaign.allowHkIp })) {
       return reply.code(403).send({ error: 'region_blocked' })
     }
+    if (!requirePublicPassword(req, reply, r.tenant, r.campaign)) return
     if (!/^[\w.\-]+$/.test(mediaId)) return reply.code(400).send({ error: 'bad id' })
     const campaignAvatarIds = new Set(
       Object.values(r.campaign.accountProfiles ?? {})
@@ -1258,6 +1325,21 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   app.get('/api/admin/reminder-settings', async (req, reply) => {
     if (!requirePerm(req, reply, 'announcements:manage')) return
     return { settings: notifyRepo.reminderConfig(ctxOf(req).tenant), vars: REMINDER_VARS }
+  })
+
+  app.get('/api/admin/campaign-share-domain', async (req, reply) => {
+    if (!requirePerm(req, reply, 'campaigns:manage')) return
+    return { domain: repo.getTenantSetting(ctxOf(req).tenant, 'campaignShareDomain') || (config.campaignShareDomain || config.publicUrl).replace(/\/$/, '') }
+  })
+
+  app.put('/api/admin/campaign-share-domain', async (req, reply) => {
+    if (!requirePerm(req, reply, 'campaigns:manage')) return
+    const domain = String((req.body as { domain?: unknown } | undefined)?.domain ?? '').trim().replace(/\/$/, '')
+    if (!/^https?:\/\/[^\s/]+(?:\/[^\s]*)?$/.test(domain)) {
+      return reply.code(400).send({ error: '分享域名必须是完整的 http(s) URL' })
+    }
+    repo.setTenantSetting(ctxOf(req).tenant, 'campaignShareDomain', domain)
+    return { domain }
   })
 
   app.put('/api/admin/reminder-settings', async (req, reply) => {

@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, sql } from 'drizzle-orm'
 import type { Db } from './db.ts'
-import { conversations, media, messages } from './schema.ts'
+import { campaigns, conversations, media, messages, tenantSettings } from './schema.ts'
 import type { StoredMessage, SyncConversation, SyncMessage, SyncPayload } from './types.ts'
 
 /** 数据访问层（Drizzle）。幂等 upsert + 查询，全部按 tenant 隔离。 */
@@ -9,6 +9,16 @@ export class Repo {
 
   constructor(db: Db) {
     this.db = db
+  }
+
+  getTenantSetting(tenant: string, key: string): string | undefined {
+    return this.db.select({ value: tenantSettings.value }).from(tenantSettings)
+      .where(and(eq(tenantSettings.tenant, tenant), eq(tenantSettings.key, key))).get()?.value
+  }
+
+  setTenantSetting(tenant: string, key: string, value: string): void {
+    this.db.insert(tenantSettings).values({ tenant, key, value, updatedAt: Date.now() })
+      .onConflictDoUpdate({ target: [tenantSettings.tenant, tenantSettings.key], set: { value, updatedAt: Date.now() } }).run()
   }
 
   /** 批量写入一次同步 payload，返回真正新写入的消息条数（去重后） */
@@ -46,6 +56,45 @@ export class Repo {
             }
           })
           .run()
+      }
+
+      // 账号资料由客户端连接实时上报。工单保存的是展示快照，这里把最新资料
+      // 回写到所有包含该账号的工单，避免头像/在线状态只在创建工单时固定一次。
+      if (payload.accountProfiles && payload.accountProfiles.length > 0) {
+        const campaignRows = tx.select().from(campaigns).where(eq(campaigns.tenant, tenant)).all()
+        for (const campaign of campaignRows) {
+          let accountIds: string[]
+          let profiles: Record<string, Record<string, unknown>>
+          try {
+            accountIds = JSON.parse(campaign.accountIds) as string[]
+            profiles = JSON.parse(campaign.accountProfiles) as Record<string, Record<string, unknown>>
+          } catch {
+            continue
+          }
+          if (!Array.isArray(accountIds) || !profiles || typeof profiles !== 'object') continue
+          let changed = false
+          for (const incoming of payload.accountProfiles) {
+            if (!accountIds.includes(incoming.accountId)) continue
+            const previous = profiles[incoming.accountId] ?? {}
+            const next: Record<string, unknown> = {
+              ...previous,
+              channel: incoming.channel,
+              ...(incoming.handle !== undefined ? { handle: incoming.handle } : {}),
+              ...(incoming.status !== undefined ? { status: incoming.status } : {}),
+              ...(incoming.avatarMediaId ? { avatarMediaId: incoming.avatarMediaId } : {})
+            }
+            if (JSON.stringify(previous) !== JSON.stringify(next)) {
+              profiles[incoming.accountId] = next
+              changed = true
+            }
+          }
+          if (changed) {
+            tx.update(campaigns)
+              .set({ accountProfiles: JSON.stringify(profiles), updatedAt: Date.now() })
+              .where(and(eq(campaigns.tenant, tenant), eq(campaigns.id, campaign.id)))
+              .run()
+          }
+        }
       }
 
       for (const m of payload.messages) {

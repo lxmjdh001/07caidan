@@ -185,6 +185,12 @@ export function registerIpc(deps: IpcDeps): void {
       await manager.setAccountEnabled(key, enabled)
     }
   )
+  ipcMain.handle(IPC_METHODS.listGroups, (_e, key: string) => manager.listGroups(key))
+  ipcMain.handle(
+    IPC_METHODS.createGroup,
+    (_e, key: string, subject: string, participantIds: string[]) =>
+      manager.createGroup(key, subject, participantIds)
+  )
 
   ipcMain.handle(IPC_METHODS.listConversations, () => store.listConversations())
   ipcMain.handle(IPC_METHODS.listMessages, (_e, conversationId: string, limit?: number) =>
@@ -225,6 +231,27 @@ export function registerIpc(deps: IpcDeps): void {
       if (updated) deps.broadcast({ type: 'conversation:updated', conversation: updated })
     }
   )
+
+  ipcMain.handle(IPC_METHODS.setConversationMuted, async (_e, conversationId: string, muted: boolean) => {
+    const updated = await store.patchConversation({ id: conversationId, muted: Boolean(muted) })
+    if (updated) deps.broadcast({ type: 'conversation:updated', conversation: updated })
+  })
+  ipcMain.handle(IPC_METHODS.clearConversation, async (_e, conversationId: string) => {
+    await store.clearConversation(conversationId)
+    const updated = await store.getConversation(conversationId)
+    if (updated) deps.broadcast({ type: 'conversation:updated', conversation: updated })
+  })
+  ipcMain.handle(IPC_METHODS.deleteConversation, async (_e, conversationId: string) => {
+    await store.deleteConversation(conversationId)
+    deps.broadcast({ type: 'conversation:removed', conversationId })
+  })
+  ipcMain.handle(IPC_METHODS.inheritAccountConversations, (_e, sourceAccountKey: string, targetAccountKey: string) =>
+    store.inheritAccountConversations(sourceAccountKey, targetAccountKey)
+  )
+  ipcMain.handle(IPC_METHODS.updateConversationProfile, async (_e, conversationId: string, title: string, customerNote: string) => {
+    const updated = await store.patchConversation({ id: conversationId, title: title.trim() || undefined, customerNote })
+    if (updated) deps.broadcast({ type: 'conversation:updated', conversation: updated })
+  })
 
   ipcMain.handle(IPC_METHODS.sendMedia, async (e, conversationId: string) => {
     const win = BrowserWindow.fromWebContents(e.sender) ?? undefined

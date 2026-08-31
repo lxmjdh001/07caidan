@@ -25,6 +25,14 @@ export const conversations = sqliteTable(
   (t) => [primaryKey({ columns: [t.tenant, t.id] }), index('idx_conv_contact').on(t.tenant, t.contactId)]
 )
 
+/** 租户级后台配置（如工单分享域名） */
+export const tenantSettings = sqliteTable('tenant_settings', {
+  tenant: text('tenant').notNull(),
+  key: text('key').notNull(),
+  value: text('value').notNull().default(''),
+  updatedAt: integer('updated_at').notNull(),
+}, (t) => [primaryKey({ columns: [t.tenant, t.key] })])
+
 export const messages = sqliteTable(
   'messages',
   {
@@ -200,8 +208,12 @@ export const campaigns = sqliteTable(
     accountProfiles: text('account_profiles').notNull().default('{}'),
     /** 工单总目标数 */
     totalTarget: integer('total_target').notNull().default(0),
+    /** 公开分享页访问密码开关；密码本身只保存哈希 */
+    accessPasswordEnabled: integer('access_password_enabled').notNull().default(0),
+    accessPasswordHash: text('access_password_hash'),
     /** JSON 字符串：accountId → 该账号目标数 */
     accountTargets: text('account_targets').notNull().default('{}'),
+    accountTargetsManual: integer('account_targets_manual').notNull().default(0),
     /** 每日统计重置时间，按北京时间解释，格式 HH:mm */
     resetTime: text('reset_time').notNull().default('00:00'),
     startAt: integer('start_at').notNull(),

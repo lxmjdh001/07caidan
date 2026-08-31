@@ -4,6 +4,7 @@ import type { AppSettings } from '@shared/settings'
 import type { ChannelPluginInfo, OutboundPreview, TranslatorInfo } from '@shared/ipc'
 import { AccountList, type AccountRow } from './components/AccountList'
 import { AccountModal } from './components/AccountModal'
+import { AccountInheritanceModal } from './components/AccountInheritanceModal'
 import { NoticeModal, useNotices } from './components/NoticeModal'
 import { BillingPage } from './pages/BillingPage'
 import { TeamPage } from './pages/TeamPage'
@@ -59,6 +60,8 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   const [accountQuota, setAccountQuota] = useState<number | null>(null)
   /** 打开中的账号设置弹窗（channel key） */
   const [accountModalKey, setAccountModalKey] = useState<string | null>(null)
+  const [focusProxyKey, setFocusProxyKey] = useState<string | null>(null)
+  const [inheritTargetKey, setInheritTargetKey] = useState<string | null>(null)
   const [plugins, setPlugins] = useState<ChannelPluginInfo[]>([])
   const [showPicker, setShowPicker] = useState(false)
   const noticeState = useNotices()
@@ -164,6 +167,15 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
           break
         case 'conversation:updated':
           upsertConversation(evt.conversation)
+          break
+        case 'conversation:removed':
+          setConversations((prev) => prev.filter((c) => c.id !== evt.conversationId))
+          setMessages((prev) => {
+            const next = { ...prev }
+            delete next[evt.conversationId]
+            return next
+          })
+          if (activeIdRef.current === evt.conversationId) setActiveId(null)
           break
         case 'message:updated':
           setMessages((prev) => {
@@ -318,6 +330,43 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
     [conversations]
   )
 
+  const toggleConversationMuted = useCallback(async (conversationId: string, muted: boolean): Promise<void> => {
+    setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, muted } : c)))
+    try {
+      await api.setConversationMuted(conversationId, muted)
+    } catch (error) {
+      window.alert(`设置静音失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }, [])
+
+  const clearConversation = useCallback(async (conversationId: string): Promise<void> => {
+    try {
+      await api.clearConversation(conversationId)
+      setMessages((prev) => ({ ...prev, [conversationId]: [] }))
+      setConversations((prev) => prev.map((c) => c.id === conversationId ? { ...c, unreadCount: 0, lastMessageAt: 0, lastMessagePreview: '' } : c))
+    } catch (error) {
+      window.alert(`清空聊天失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }, [])
+
+  const deleteConversation = useCallback(async (conversationId: string): Promise<void> => {
+    try {
+      await api.deleteConversation(conversationId)
+      setConversations((prev) => prev.filter((c) => c.id !== conversationId))
+      setMessages((prev) => { const next = { ...prev }; delete next[conversationId]; return next })
+      if (activeIdRef.current === conversationId) setActiveId(null)
+    } catch (error) {
+      window.alert(`删除聊天失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }, [])
+
+  const inheritAccountConversations = useCallback(async (sourceKey: string, targetKey: string): Promise<{ conversations: number; messages: number }> => {
+    const result = await api.inheritAccountConversations(sourceKey, targetKey)
+    const updated = await api.listConversations()
+    setConversations(updated)
+    return result
+  }, [])
+
   const saveSettings = useCallback(async (patch: Partial<AppSettings>) => {
     const updated = await api.updateSettings(patch)
     setSettings(updated)
@@ -462,6 +511,41 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
     [conversations, activeAccountKey]
   )
 
+  const refreshGroups = useCallback(async (): Promise<void> => {
+    if (!activeAccountKey || !activeAccountKey.startsWith('whatsapp:')) return
+    try {
+      const listGroups = (api as typeof api & { listGroups?: typeof api.listGroups }).listGroups
+      if (!listGroups) {
+        window.alert('当前客户端版本未加载群组功能，请完全退出后重新启动客户端')
+        return
+      }
+      const groups = await listGroups(activeAccountKey)
+      setConversations((prev) => {
+        const incoming = new Map(groups.map((conversation) => [conversation.id, conversation]))
+        return [...prev.filter((conversation) => !incoming.has(conversation.id)), ...groups].sort(sortConversations)
+      })
+    } catch (error) {
+      window.alert(`读取群组失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }, [activeAccountKey])
+
+  const createGroup = useCallback(async (subject: string, participantIds: string[]): Promise<void> => {
+    if (!activeAccountKey || !activeAccountKey.startsWith('whatsapp:')) return
+    try {
+      const createGroupApi = (api as typeof api & { createGroup?: typeof api.createGroup }).createGroup
+      if (!createGroupApi) {
+        window.alert('当前客户端版本未加载群组功能，请完全退出后重新启动客户端')
+        return
+      }
+      const group = await createGroupApi(activeAccountKey, subject, participantIds)
+      setConversations((prev) => [...prev.filter((conversation) => conversation.id !== group.id), group].sort(sortConversations))
+      setActiveId(group.id)
+    } catch (error) {
+      window.alert(`创建群组失败：${error instanceof Error ? error.message : String(error)}`)
+      throw error
+    }
+  }, [activeAccountKey])
+
   /** 当前视图相关的渠道状态（横幅/二维码用） */
   const relevantStates = useMemo(() => {
     if (activeAccountKey) {
@@ -551,7 +635,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
                 }
               }
             }}
-            onAccountSettings={(key) => setAccountModalKey(key)}
+            onAccountSettings={(key) => { setFocusProxyKey(null); setAccountModalKey(key) }}
             onReconnect={(key) => {
               if (settings && !settings.accounts[key]?.disabled) void api.startChannel(key)
             }}
@@ -568,6 +652,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
               if (!window.confirm('确定删除这个账号？账号会从列表移除，聊天记录会保留。')) return
               void removeAccount(key)
             }}
+            onInheritAccount={(key) => setInheritTargetKey(key)}
             onAddAccount={() => setShowPicker(true)}
             onOpenSettings={() => navigateTo(view === 'settings' ? 'chat' : 'settings')}
             onOpenBilling={() => navigateTo(view === 'billing' ? 'chat' : 'billing')}
@@ -652,10 +737,16 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
                 showSourceTags={activeAccountKey === null}
                 onSelect={selectConversation}
                 onTogglePinned={toggleConversationPinned}
+                onToggleMuted={toggleConversationMuted}
+                onClearChat={clearConversation}
+                onDeleteChat={deleteConversation}
                 onMarkAllRead={() => {
                   for (const conversation of conversations) void api.markRead(conversation.id)
                   setConversations((prev) => prev.map((conversation) => ({ ...conversation, unreadCount: 0 })))
                 }}
+                accountKey={activeAccountKey}
+                onRefreshGroups={refreshGroups}
+                onCreateGroup={createGroup}
               />
               <main className="content">
                 {showQr ? (
@@ -677,6 +768,8 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
                     onSetLang={setConvLang}
                     onPreview={previewOutbound}
                     confirmBeforeSend={settings?.translation.confirmBeforeSend ?? true}
+                    quickReplies={settings?.quickReplies ?? []}
+                    onOpenProxySettings={(key) => { setFocusProxyKey(key); setAccountModalKey(key) }}
                   />
                 )}
               </main>
@@ -706,9 +799,20 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             }}
             onLogout={(key) => api.logoutChannel(key)}
             onRemove={removeAccount}
-            onClose={() => setAccountModalKey(null)}
+            onClose={() => { setFocusProxyKey(null); setAccountModalKey(null) }}
+            focusProxy={focusProxyKey === accountModalKey}
           />
         )}
+        {inheritTargetKey && (() => {
+          const target = accountRows.find((a) => a.key === inheritTargetKey)
+          if (!target) return null
+          return <AccountInheritanceModal
+            target={target}
+            candidates={accountRows.filter((a) => a.key !== inheritTargetKey)}
+            onSubmit={inheritAccountConversations}
+            onClose={() => setInheritTargetKey(null)}
+          />
+        })()}
       </div>
     </I18nProvider>
   )

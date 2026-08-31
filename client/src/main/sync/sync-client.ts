@@ -5,6 +5,14 @@ import { noopLogger } from '../core/logger'
 import type { MessageStore } from '../core/message-store'
 import type { MediaStore } from '../core/media-store'
 
+export interface SyncAccountProfile {
+  accountId: string
+  channel: string
+  handle?: string
+  avatarMediaId?: string
+  status?: 'online' | 'offline' | 'error'
+}
+
 const SYNC_INTERVAL_MS = 60_000
 /** 单次批量上传的最大消息数 */
 const BATCH_SIZE = 500
@@ -32,6 +40,7 @@ export class SyncClient {
   private running = false
   private record: SyncRecord = { lastSyncedAt: 0, boundaryIds: [] }
   private readonly persistRecord: (r: SyncRecord) => Promise<void>
+  private readonly getAccountProfiles: (() => Promise<SyncAccountProfile[]>) | undefined
 
   constructor(opts: {
     store: MessageStore
@@ -39,12 +48,14 @@ export class SyncClient {
     getConfig: () => SyncConfig
     initialRecord?: SyncRecord
     persistRecord: (r: SyncRecord) => Promise<void>
+    getAccountProfiles?: () => Promise<SyncAccountProfile[]>
     logger?: Logger
   }) {
     this.store = opts.store
     this.media = opts.media
     this.getConfig = opts.getConfig
     this.persistRecord = opts.persistRecord
+    this.getAccountProfiles = opts.getAccountProfiles
     if (opts.initialRecord) this.record = opts.initialRecord
     this.log = (opts.logger ?? noopLogger).child('sync')
   }
@@ -80,6 +91,8 @@ export class SyncClient {
   }
 
   private async sync(cfg: SyncConfig): Promise<{ conversations: number; messages: number }> {
+    const accountProfiles = this.getAccountProfiles ? await this.getAccountProfiles().catch(() => []) : []
+    await this.uploadProfileMedia(cfg, accountProfiles)
     const conversations = await this.store.listConversations()
     const since = this.record.lastSyncedAt
     const boundary = new Set(this.record.boundaryIds)
@@ -97,6 +110,7 @@ export class SyncClient {
     allNew.sort((a, b) => a.timestamp - b.timestamp)
 
     if (allNew.length === 0) {
+      if (accountProfiles.length > 0) await this.post(cfg, '/api/sync', { conversations: [], messages: [], accountProfiles })
       return { conversations: 0, messages: 0 }
     }
 
@@ -113,7 +127,8 @@ export class SyncClient {
         i === 0 ? conversations : conversations.filter((c) => convIds.has(c.id))
       const payload = {
         conversations: convsForBatch.map(mapConversation),
-        messages: batch.map(mapMessage)
+        messages: batch.map(mapMessage),
+        ...(i === 0 && accountProfiles.length > 0 ? { accountProfiles } : {})
       }
       await this.post(cfg, '/api/sync', payload)
       synced += batch.length
@@ -153,6 +168,25 @@ export class SyncClient {
         headers: { authorization: `Bearer ${cfg.token}` },
         body: new Uint8Array(buf)
       })
+    }
+  }
+
+  private async uploadProfileMedia(cfg: SyncConfig, profiles: SyncAccountProfile[]): Promise<void> {
+    if (!this.media) return
+    const mediaIds = profiles.map((p) => p.avatarMediaId).filter((id): id is string => !!id)
+    if (mediaIds.length === 0) return
+    const { missing } = (await this.post(cfg, '/api/media/missing', { mediaIds })) as { missing: string[] }
+    for (const mediaId of missing) {
+      const path = this.media.resolvePath(mediaId)
+      if (!path) continue
+      const buf = await readFile(path)
+      const res = await fetch(`${cfg.serverUrl.replace(/\/$/, '')}/api/media/${encodeURIComponent(mediaId)}`, {
+        method: 'PUT',
+        headers: { authorization: `Bearer ${cfg.token}`, 'content-type': 'image/jpeg' },
+        body: new Uint8Array(buf),
+        signal: AbortSignal.timeout(30_000)
+      })
+      if (!res.ok) throw new Error(`/api/media/${mediaId} HTTP ${res.status}`)
     }
   }
 

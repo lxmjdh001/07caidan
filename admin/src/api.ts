@@ -341,6 +341,14 @@ export class ApiClient {
     return this.req(`/api/campaigns/${encodeURIComponent(id)}/links`)
   }
 
+  campaignShareDomain(): Promise<{ domain: string }> {
+    return this.req('/api/admin/campaign-share-domain')
+  }
+
+  updateCampaignShareDomain(domain: string): Promise<{ domain: string }> {
+    return this.req('/api/admin/campaign-share-domain', { method: 'PUT', body: JSON.stringify({ domain }) })
+  }
+
   createLink(
     id: string,
     body: { label?: string; expiresAt?: number }

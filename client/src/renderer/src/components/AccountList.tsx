@@ -15,6 +15,7 @@ import {
   Trash2,
   CheckCheck,
   LogOut
+  ,UserRoundPlus
 } from 'lucide-react'
 import type { ChannelState } from '@shared/domain'
 import { UnreadBadge } from './UnreadBadge'
@@ -76,6 +77,7 @@ interface Props {
   onMarkAccountRead: (key: string) => void
   onLogoutAccount: (key: string) => void
   onRemoveAccount: (key: string) => void
+  onInheritAccount: (key: string) => void
   onAddAccount: () => void
   onOpenSettings: () => void
   onOpenBilling: () => void
@@ -101,6 +103,7 @@ export function AccountList({
   onMarkAccountRead,
   onLogoutAccount,
   onRemoveAccount,
+  onInheritAccount,
   onAddAccount,
   onOpenSettings,
   onOpenBilling,
@@ -305,6 +308,7 @@ export function AccountList({
               {t(menuAccount?.disabled ? 'account.enable' : 'account.disable')}
             </button>
             <button type="button" onClick={() => { onMarkAccountRead(menuKey); setMenuKey(null) }}><CheckCheck size={17} />{t('account.markAllRead')}</button>
+            <button type="button" onClick={() => { onInheritAccount(menuKey); setMenuKey(null) }}><UserRoundPlus size={17} />{t('account.inherit')}</button>
             <button type="button" onClick={() => { onLogoutAccount(menuKey); setMenuKey(null) }}><LogOut size={17} />{t('account.logout')}</button>
             <button type="button" className="danger" onClick={() => { onRemoveAccount(menuKey); setMenuKey(null) }}><Trash2 size={17} />{t('account.delete')}</button>
           </div>

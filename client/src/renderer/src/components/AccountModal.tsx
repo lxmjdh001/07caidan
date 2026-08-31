@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ChannelState } from '@shared/domain'
 import type { ChannelPluginInfo } from '@shared/ipc'
 import { LANGUAGES } from '@shared/langs'
@@ -17,6 +17,7 @@ interface Props {
   /** 返回 true 表示账号已删除；失败时保留弹窗，便于用户看到错误后重试。 */
   onRemove: (key: string) => Promise<boolean>
   onClose: () => void
+  focusProxy?: boolean
 }
 
 /** 单账号设置弹窗（凭证 / 备注名 / 默认客户语言 / 代理 / 退出 / 删除） */
@@ -28,7 +29,8 @@ export function AccountModal({
   onSave,
   onLogout,
   onRemove,
-  onClose
+  onClose,
+  focusProxy = false
 }: Props): React.JSX.Element {
   const { t } = useI18n()
   const [label, setLabel] = useState(config.label ?? '')
@@ -42,6 +44,13 @@ export function AccountModal({
   const [authBusy, setAuthBusy] = useState(false)
 
   const [showAdvanced, setShowAdvanced] = useState(false)
+  const proxyInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!focusProxy) return
+    proxyInputRef.current?.focus()
+    proxyInputRef.current?.scrollIntoView({ block: 'center' })
+  }, [focusProxy])
 
   const isWhatsApp = plugin?.kind === 'whatsapp' || accountKey.startsWith('whatsapp:')
   const allCredFields = plugin?.credentialFields ?? []
@@ -223,6 +232,7 @@ export function AccountModal({
         <label className="field">
           <span>{t('account.label')}</span>
           <input
+            ref={proxyInputRef}
             type="text"
             value={label}
             placeholder={state?.selfName ?? ''}

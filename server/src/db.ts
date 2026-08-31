@@ -27,6 +27,11 @@ export function openDb(dbPath: string): Db {
     );
     CREATE INDEX IF NOT EXISTS idx_conv_contact ON conversations (tenant, contact_id);
 
+    CREATE TABLE IF NOT EXISTS tenant_settings (
+      tenant TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL, PRIMARY KEY (tenant, key)
+    );
+
     CREATE TABLE IF NOT EXISTS messages (
       tenant TEXT NOT NULL, external_id TEXT NOT NULL, conversation_id TEXT NOT NULL,
       channel TEXT NOT NULL, account_id TEXT NOT NULL, direction TEXT NOT NULL,
@@ -126,7 +131,10 @@ export function openDb(dbPath: string): Db {
       account_labels TEXT NOT NULL DEFAULT '{}',
       account_profiles TEXT NOT NULL DEFAULT '{}',
       total_target INTEGER NOT NULL DEFAULT 0,
+      access_password_enabled INTEGER NOT NULL DEFAULT 0,
+      access_password_hash TEXT,
       account_targets TEXT NOT NULL DEFAULT '{}',
+      account_targets_manual INTEGER NOT NULL DEFAULT 0,
       reset_time TEXT NOT NULL DEFAULT '00:00',
       start_at INTEGER NOT NULL, end_at INTEGER,
       dedup_library_ids TEXT NOT NULL DEFAULT '[]', dedup_before_at INTEGER,
@@ -337,7 +345,10 @@ function migrate(sqlite: BetterSqlite3.Database): void {
     ['campaigns', 'account_labels', `TEXT NOT NULL DEFAULT '{}'`],
     ['campaigns', 'account_profiles', `TEXT NOT NULL DEFAULT '{}'`],
     ['campaigns', 'total_target', 'INTEGER NOT NULL DEFAULT 0'],
+    ['campaigns', 'access_password_enabled', 'INTEGER NOT NULL DEFAULT 0'],
+    ['campaigns', 'access_password_hash', 'TEXT'],
     ['campaigns', 'account_targets', `TEXT NOT NULL DEFAULT '{}'`],
+    ['campaigns', 'account_targets_manual', 'INTEGER NOT NULL DEFAULT 0'],
     ['campaigns', 'reset_time', `TEXT NOT NULL DEFAULT '00:00'`],
     ['campaigns', 'dedup_account_ids', `TEXT NOT NULL DEFAULT '[]'`],
     ['campaigns', 'tz_offset_minutes', 'INTEGER NOT NULL DEFAULT 480'],

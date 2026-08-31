@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
+import { ContactRound, Globe2, Search, Settings2, X, Zap } from 'lucide-react'
 import type { Conversation, MessageBody, UnifiedMessage } from '@shared/domain'
+import type { QuickReply } from '@shared/settings'
 import { previewOf } from '@shared/domain'
 import type { OutboundPreview } from '@shared/ipc'
 import { LANGUAGES, languageLabel } from '@shared/langs'
@@ -24,6 +26,8 @@ interface Props {
   onPreview: (text: string) => Promise<OutboundPreview>
   /** 发送前是否需要预览确认 */
   confirmBeforeSend: boolean
+  quickReplies: QuickReply[]
+  onOpenProxySettings: (accountKey: string) => void
 }
 
 type MediaBody = Extract<MessageBody, { type: 'media' }>
@@ -210,7 +214,9 @@ export function ChatView({
   onSendMedia,
   onSetLang,
   onPreview,
-  confirmBeforeSend
+  confirmBeforeSend,
+  quickReplies,
+  onOpenProxySettings
 }: Props): React.JSX.Element {
   const { t, locale } = useI18n()
   const [draft, setDraft] = useState('')
@@ -276,13 +282,30 @@ export function ChatView({
   const [preview, setPreview] = useState<OutboundPreview | null>(null)
   const [sendError, setSendError] = useState('')
   const [showConvSettings, setShowConvSettings] = useState(false)
+  const [showProfile, setShowProfile] = useState(false)
+  const [showSearch, setShowSearch] = useState(false)
+  const [messageQuery, setMessageQuery] = useState('')
+  const [profileTitle, setProfileTitle] = useState('')
+  const [profileNote, setProfileNote] = useState('')
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [showQuickReplies, setShowQuickReplies] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setShowConvSettings(false)
+    setShowProfile(false)
+    setShowSearch(false)
+    setMessageQuery('')
+    setShowQuickReplies(false)
     setPreview(null)
     setSendError('')
   }, [conversation?.id])
+
+  useEffect(() => {
+    if (!conversation) return
+    setProfileTitle(conversation.title)
+    setProfileNote(conversation.customerNote ?? '')
+  }, [conversation?.id, conversation?.title, conversation?.customerNote])
 
   useEffect(() => {
     const el = scrollRef.current
@@ -347,6 +370,13 @@ export function ChatView({
 
   // 本地关键词意向：让客服一眼看出当前客户购买意向（仅高/中提示，低/无不打扰）
   const intent = localIntent(messages)
+  const normalizedQuery = messageQuery.trim().toLowerCase()
+  const visibleMessages = normalizedQuery
+    ? messages.filter((m) => {
+        const body = m.body.type === 'text' ? m.body.text : previewOf(m.body)
+        return `${body} ${m.translation?.text ?? ''}`.toLowerCase().includes(normalizedQuery)
+      })
+    : messages
 
   return (
     <div className="chat">
@@ -384,18 +414,14 @@ export function ChatView({
             {conversation.isGroup ? ' · 群组' : ''}
           </div>
         </div>
-        <button
-          type="button"
-          className="conv-settings-btn"
-          title={t('chat.settings')}
-          onClick={() => setShowConvSettings((v) => !v)}
-        >
-          <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
-            <circle cx="12" cy="5" r="1.6" fill="currentColor" stroke="none" />
-            <circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none" />
-            <circle cx="12" cy="19" r="1.6" fill="currentColor" stroke="none" />
-          </svg>
-        </button>
+        {showSearch && <div className="chat-message-search"><Search size={15} /><input autoFocus value={messageQuery} onChange={(e) => setMessageQuery(e.target.value)} placeholder={t('chat.searchMessagesPlaceholder')} /><span>{normalizedQuery ? `${visibleMessages.length}/${messages.length}` : ''}</span><button type="button" onClick={() => { setMessageQuery(''); setShowSearch(false) }}><X size={15} /></button></div>}
+        {showProfile && <div className="customer-profile-popover">
+          <h4>{t('chat.customerInfo')}</h4>
+          <label className="field"><span>{t('chat.customerName')}</span><input value={profileTitle} onChange={(e) => setProfileTitle(e.target.value)} /></label>
+          <label className="field"><span>{t('chat.customerContact')}</span><input value={conversation.contactId?.replace(/^wa:/, '') || conversation.externalChatId} readOnly /></label>
+          <label className="field"><span>{t('chat.customerNote')}</span><textarea rows={3} value={profileNote} onChange={(e) => setProfileNote(e.target.value)} /></label>
+          <button type="button" className="primary-btn" disabled={profileSaving} onClick={async () => { setProfileSaving(true); try { await window.omni.updateConversationProfile(conversation.id, profileTitle, profileNote); setShowProfile(false) } catch (error) { window.alert(`保存客户信息失败：${error instanceof Error ? error.message : String(error)}`) } finally { setProfileSaving(false) } }}>{t('settings.save')}</button>
+        </div>}
         {showConvSettings && (
           <div className="conv-settings-popover">
             <h4>{t('chat.settings')}</h4>
@@ -438,8 +464,15 @@ export function ChatView({
           </div>
         )}
       </header>
+      <aside className="chat-action-rail" aria-label={t('chat.settings')}>
+        <button type="button" className="chat-rail-btn" title={t('chat.settings')} onClick={() => { setShowConvSettings((v) => !v); setShowProfile(false); setShowSearch(false) }}><Settings2 size={20} /></button>
+        <button type="button" className="chat-rail-btn" title={t('chat.customerInfo')} onClick={() => { setShowProfile((v) => !v); setShowConvSettings(false); setShowSearch(false) }}><ContactRound size={20} /></button>
+        <button type="button" className={`chat-rail-btn ${showSearch ? 'active' : ''}`} title={t('chat.searchMessages')} onClick={() => { setShowSearch((v) => !v); setShowConvSettings(false); setShowProfile(false) }}><Search size={20} /></button>
+        <button type="button" className={`chat-rail-btn ${showQuickReplies ? 'active' : ''}`} title={t('chat.quickReplies')} onClick={() => { setShowQuickReplies((v) => !v); setShowConvSettings(false); setShowProfile(false); setShowSearch(false) }}><Zap size={20} /></button>
+        <button type="button" className="chat-rail-btn" title={t('settings.proxy')} onClick={() => onOpenProxySettings(`${conversation.channel}:${conversation.accountId}`)}><Globe2 size={20} /></button>
+      </aside>
       <div className="chat-scroll" ref={scrollRef}>
-        {messages.map((m) => (
+        {visibleMessages.map((m) => (
           <div key={m.id} className={`bubble-row ${m.direction === 'out' ? 'out' : 'in'}`}>
             <div className="bubble">
               {m.origin === 'autoreply' && <span className="ai-chip">AI</span>}
@@ -464,10 +497,11 @@ export function ChatView({
               {m.translation && (
                 <div className="bubble-translation">
                   {m.translation.text}
-                  <span className="translation-meta">
-                    {m.direction === 'out' ? t('chat.original') : t('chat.translatedAs')} ·{' '}
-                    {m.translation.engine}
-                  </span>
+                  {m.direction === 'in' && (
+                    <span className="translation-meta">
+                      {t('chat.translatedAs')} · {m.translation.engine}
+                    </span>
+                  )}
                 </div>
               )}
               <div className="bubble-meta">
@@ -506,6 +540,16 @@ export function ChatView({
       )}
       {sendError && <p className="composer-error" role="alert">{sendError}</p>}
       <footer className="composer">
+        {showQuickReplies && (
+          <div className="quick-replies-popover">
+            <div className="quick-replies-head"><strong>{t('chat.quickReplies')}</strong><button type="button" onClick={() => setShowQuickReplies(false)}><X size={15} /></button></div>
+            {quickReplies.length === 0 ? <p className="field-hint">{t('chat.quickRepliesEmpty')}</p> : quickReplies.map((reply, index) => (
+              <button type="button" className="quick-reply-option" key={reply.id} onClick={() => { setDraft(reply.text); setShowQuickReplies(false) }}>
+                <span className="quick-reply-number">{index + 1}</span><span><strong>{reply.title || reply.text}</strong>{reply.title && <small>{reply.text}</small>}</span>
+              </button>
+            ))}
+          </div>
+        )}
         {recState && (
           <div className="rec-bar">
             <span className="rec-dot" />

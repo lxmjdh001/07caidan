@@ -12,7 +12,7 @@ import {
 import pino from 'pino'
 import QRCode from 'qrcode'
 import type { ChannelStatus, UnifiedMessage } from '@shared/domain'
-import { ChannelAdapter, type OutboundMedia, type OutboundResult } from '../../core/channel-adapter'
+import { ChannelAdapter, type GroupSummary, type OutboundMedia, type OutboundResult } from '../../core/channel-adapter'
 import { noopLogger, type Logger } from '../../core/logger'
 import { extFromMime } from '../../core/mime'
 import { createProxyAgent } from '../../core/proxy'
@@ -40,6 +40,13 @@ const RECONNECT_MAX_MS = 60_000
 /** 超过此大小的媒体不自动下载（避免大视频占满内存/磁盘） */
 const MAX_MEDIA_BYTES = 100 * 1024 * 1024
 
+function normalizeParticipantJid(value: string): string {
+  const raw = value.trim()
+  if (raw.endsWith('@s.whatsapp.net') || raw.endsWith('@lid')) return raw
+  const digits = raw.replace(/\D/g, '')
+  return digits ? `${digits}@s.whatsapp.net` : ''
+}
+
 /**
  * WhatsApp 渠道适配器（Baileys v7，WebSocket 直连 WhatsApp Web 协议）。
  * 连接完全跑在客户端本地：扫码登录后凭证保存在本机，流量走用户自己的网络。
@@ -57,6 +64,8 @@ export class WhatsAppAdapter extends ChannelAdapter {
 
   private sock: ReturnType<typeof makeWASocket> | undefined
   private status: ChannelStatus = 'stopped'
+  private selfAvatarUrl?: string
+  private selfAvatarMediaId?: string
   private stopping = false
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined
   private reconnectDelay = RECONNECT_BASE_MS
@@ -166,6 +175,47 @@ export class WhatsAppAdapter extends ChannelAdapter {
     return undefined
   }
 
+  override async listGroups(): Promise<GroupSummary[]> {
+    if (!this.sock || this.status !== 'connected') {
+      throw new Error('WhatsApp 未连接，无法读取群组')
+    }
+    const groups = await this.sock.groupFetchAllParticipating()
+    return Object.values(groups).map((group) => ({
+      externalChatId: group.id,
+      title: group.subject || '未命名群组',
+      participantIds: (group.participants ?? []).map((participant) => participant.id)
+    }))
+  }
+
+  override async createGroup(subject: string, participantIds: string[]): Promise<GroupSummary> {
+    if (!this.sock || this.status !== 'connected') {
+      throw new Error('WhatsApp 未连接，无法创建群组')
+    }
+    const name = subject.trim()
+    if (!name) throw new Error('群组名称不能为空')
+    const participants = [...new Set((await Promise.all(participantIds.map((id) => this.resolveParticipantJid(id)))).filter(Boolean))]
+    if (participants.length === 0) throw new Error('请至少选择一位成员')
+    const lookupNumbers = participants.map((jid) => jid.split('@')[0]?.split(':')[0] ?? jid)
+    const checked = await this.sock.onWhatsApp(...lookupNumbers).catch(() => undefined)
+    const validParticipants = checked ? checked.filter((entry) => entry.exists).map((entry) => entry.jid) : participants
+    if (validParticipants.length === 0) throw new Error('所选联系人无法加入群组，请重新选择')
+    const group = await this.sock.groupCreate(name, validParticipants)
+    return {
+      externalChatId: group.id,
+      title: group.subject || name,
+      participantIds: (group.participants ?? []).map((participant) => participant.id)
+    }
+  }
+
+  private async resolveParticipantJid(value: string): Promise<string> {
+    const raw = value.trim()
+    if (raw.endsWith('@lid')) {
+      const mapped = await this.sock?.signalRepository?.lidMapping?.getPNForLID(raw).catch(() => null)
+      return mapped ? normalizeParticipantJid(mapped) : ''
+    }
+    return normalizeParticipantJid(raw)
+  }
+
   override async resolveContactId(externalChatId: string): Promise<string | undefined> {
     // 群聊与机器人没有自然人身份
     if (isGroupJid(externalChatId) || externalChatId.endsWith('@bot')) return undefined
@@ -190,9 +240,29 @@ export class WhatsAppAdapter extends ChannelAdapter {
   }
 
   override async fetchSelfAvatar(): Promise<string | undefined> {
-    const selfJid = this.sock?.user?.id
-    if (!selfJid) return undefined
-    return this.downloadProfilePicture(selfJid)
+    const user = this.sock?.user as ({ id?: string; lid?: string } | undefined)
+    const candidates = [user?.id, user?.lid]
+      .filter((jid): jid is string => !!jid)
+      .flatMap((jid) => [jid, jid.replace(/:\d+(?=@)/, '')])
+    for (const jid of candidates) {
+      const mediaId = await this.downloadSelfProfilePicture(jid)
+      if (mediaId) return mediaId
+    }
+    return undefined
+  }
+
+  private async downloadSelfProfilePicture(jid: string): Promise<string | undefined> {
+    if (!this.sock || this.status !== 'connected' || !this.saveMedia) return undefined
+    const url = await this.sock.profilePictureUrl(jid, 'image').catch(() => undefined)
+    if (!url) return undefined
+    if (url === this.selfAvatarUrl && this.selfAvatarMediaId) return this.selfAvatarMediaId
+    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) })
+    if (!res.ok) return undefined
+    const buffer = Buffer.from(await res.arrayBuffer())
+    const mediaId = await this.saveMedia(buffer, '.jpg')
+    this.selfAvatarUrl = url
+    this.selfAvatarMediaId = mediaId
+    return mediaId
   }
 
   private async downloadProfilePicture(jid: string): Promise<string | undefined> {

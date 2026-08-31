@@ -9,6 +9,13 @@ export interface ConversationUpsert {
   isGroup: boolean
 }
 
+/** 群组摘要，用于群组列表和创建后的会话登记。 */
+export interface GroupSummary {
+  externalChatId: string
+  title: string
+  participantIds: string[]
+}
+
 export interface OutboundResult {
   externalId?: string
 }
@@ -72,6 +79,11 @@ export abstract class ChannelAdapter extends TypedEmitter<AdapterEvents> {
    * 群聊/机器人等无自然人身份的会话返回 undefined（可选能力）。
    */
   resolveContactId?(externalChatId: string): Promise<string | undefined>
+
+  /** 获取当前账号已加入的群组（可选能力）。 */
+  listGroups?(): Promise<GroupSummary[]>
+  /** 创建群组并返回平台侧群组摘要（可选能力）。 */
+  createGroup?(subject: string, participantIds: string[]): Promise<GroupSummary>
 
   /**
    * 提交交互式登录的输入（手机号 / 验证码 / 两步密码）。

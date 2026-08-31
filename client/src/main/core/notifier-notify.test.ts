@@ -82,6 +82,11 @@ describe('Notifier.notifyInbound 决策', () => {
     expect(state.shown).toHaveLength(0)
   })
 
+  it('会话静音时不弹通知也不播放声音', () => {
+    make().notifyInbound(msg(), conv({ muted: true }))
+    expect(state.shown).toHaveLength(0)
+  })
+
   it('同一会话短时间内连发只弹一次（合并防刷屏）', () => {
     const n = make()
     n.notifyInbound(msg(), conv())

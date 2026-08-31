@@ -27,6 +27,8 @@ export interface ConversationPatch {
   autoReply?: boolean
   /** 是否置顶显示在会话列表顶部 */
   pinned?: boolean
+  muted?: boolean
+  customerNote?: string
 }
 
 /**
@@ -39,10 +41,15 @@ export interface MessageStore {
   /** 按内部 id 整体替换已存在的消息（媒体下载完成等场景）；不存在则忽略并返回 false */
   updateMessage(msg: UnifiedMessage): Promise<boolean>
   patchConversation(patch: ConversationPatch): Promise<Conversation | undefined>
+  /** 登记没有消息的新会话（例如新建群组后立即显示）。 */
+  upsertConversation(conversation: Conversation): Promise<Conversation>
   getConversation(id: string): Promise<Conversation | undefined>
   listConversations(): Promise<Conversation[]>
   listMessages(conversationId: string, limit?: number): Promise<UnifiedMessage[]>
   markRead(conversationId: string): Promise<void>
+  clearConversation(conversationId: string): Promise<void>
+  deleteConversation(conversationId: string): Promise<void>
+  inheritAccountConversations(sourceAccountKey: string, targetAccountKey: string): Promise<{ conversations: number; messages: number }>
   /** 立即落盘 */
   flush(): Promise<void>
 }

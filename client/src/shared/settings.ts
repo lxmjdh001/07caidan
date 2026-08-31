@@ -86,6 +86,12 @@ export interface NotificationConfig {
   sound: boolean
 }
 
+export interface QuickReply {
+  id: string
+  title: string
+  text: string
+}
+
 /** 平台级默认凭证（账号未单独配置时回退到此） */
 export interface PlatformDefaults {
   /** Telegram 应用级 API 凭证（my.telegram.org 申请），普通账号登录必需 */
@@ -103,6 +109,7 @@ export interface AppSettings {
   theme: ThemeMode
   translation: TranslationConfig
   notifications: NotificationConfig
+  quickReplies: QuickReply[]
   autoReply: AutoReplyConfig
   sync: SyncConfig
   platform: PlatformDefaults
@@ -131,6 +138,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
     llm: { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: '' }
   },
   notifications: { enabled: true, showPreview: true, sound: true },
+  quickReplies: [
+    { id: 'welcome', title: '欢迎语', text: '您好！请问有什么可以帮您的吗？' },
+    { id: 'need-help', title: '需求确认', text: '您好，有什么需要我为您推荐或解答的吗？' },
+    { id: 'wait', title: '稍等', text: '请稍等，我马上为您处理。' }
+  ],
   autoReply: {
     enabled: false,
     systemPrompt:

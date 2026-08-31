@@ -39,6 +39,16 @@ export interface SyncMessage {
 export interface SyncPayload {
   conversations: SyncConversation[]
   messages: SyncMessage[]
+  /** 客户端账号实时资料；用于分享工单中的头像、联系方式和在线状态。 */
+  accountProfiles?: SyncAccountProfile[]
+}
+
+export interface SyncAccountProfile {
+  accountId: string
+  channel: string
+  handle?: string
+  avatarMediaId?: string
+  status?: 'online' | 'offline' | 'error'
 }
 
 export interface StoredMessage extends SyncMessage {}

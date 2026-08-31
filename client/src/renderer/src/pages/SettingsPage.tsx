@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { TranslatorInfo } from '@shared/ipc'
 import { LANGUAGES } from '@shared/langs'
-import type { AppSettings, ThemeMode } from '@shared/settings'
+import type { AppSettings, QuickReply, ThemeMode } from '@shared/settings'
 import { LOCALES, useI18n } from '../i18n'
 
 interface Props {
@@ -52,6 +52,7 @@ export function SettingsPage({
   const [notifyOn, setNotifyOn] = useState(settings.notifications.enabled)
   const [notifyPreview, setNotifyPreview] = useState(settings.notifications.showPreview)
   const [notifySound, setNotifySound] = useState(settings.notifications.sound)
+  const [quickReplies, setQuickReplies] = useState<QuickReply[]>(settings.quickReplies ?? [])
   const [arOn, setArOn] = useState(settings.autoReply.enabled)
   const [arPrompt, setArPrompt] = useState(settings.autoReply.systemPrompt)
   const [arCooldown, setArCooldown] = useState(String(settings.autoReply.cooldownSec))
@@ -95,6 +96,7 @@ export function SettingsPage({
         locale,
         theme,
         notifications: { enabled: notifyOn, showPreview: notifyPreview, sound: notifySound },
+        quickReplies,
         autoReply: {
           enabled: arOn,
           systemPrompt: arPrompt,
@@ -216,6 +218,29 @@ export function SettingsPage({
                 <span>{t('settings.notifySound')}</span>
               </label>
               <p className="field-hint">{t('settings.notifyHint')}</p>
+
+              <h3 style={{ marginTop: 22 }}>{t('settings.quickReplies')}</h3>
+              <p className="field-hint">{t('settings.quickRepliesHint')}</p>
+              <div className="quick-reply-editor">
+                {quickReplies.map((reply, index) => (
+                  <div className="quick-reply-edit-row" key={reply.id}>
+                    <input
+                      className="quick-reply-title-input"
+                      value={reply.title}
+                      placeholder={t('settings.quickReplyTitle')}
+                      onChange={(e) => setQuickReplies((prev) => prev.map((item) => item.id === reply.id ? { ...item, title: e.target.value } : item))}
+                    />
+                    <input
+                      value={reply.text}
+                      placeholder={t('settings.quickReplyText')}
+                      onChange={(e) => setQuickReplies((prev) => prev.map((item) => item.id === reply.id ? { ...item, text: e.target.value } : item))}
+                    />
+                    <button type="button" className="icon-btn" title={t('settings.quickReplyDelete')} onClick={() => setQuickReplies((prev) => prev.filter((item) => item.id !== reply.id))}>×</button>
+                    {index < quickReplies.length - 1 && <span className="quick-reply-order">{index + 1}</span>}
+                  </div>
+                ))}
+                <button type="button" className="ghost-btn" onClick={() => setQuickReplies((prev) => [...prev, { id: `reply-${Date.now()}`, title: '', text: '' }])}>+ {t('settings.quickReplyAdd')}</button>
+              </div>
 
               {canManageSettings && (
                 <>
