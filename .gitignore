@@ -3,8 +3,10 @@ out/
 dist/
 release/
 website/downloads/*.dmg
+website/downloads/*.exe
 website/downloads/*.blockmap
 website/downloads/latest-*.yml
+website/downloads/latest.yml
 *.log
 .DS_Store
 coverage/

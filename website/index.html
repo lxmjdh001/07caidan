@@ -29,7 +29,7 @@
       </nav>
       <div class="header-actions">
         <a class="login-link" href="https://admin.wzzapp.cloud/">登录</a>
-        <a class="download-link" href="/downloads/OmniChat-0.1.0-arm64.dmg" download>下载客户端</a>
+        <a class="download-link" id="header-download" href="#download">下载客户端</a>
         <a class="button button-small" href="https://admin.wzzapp.cloud/">免费开始</a>
       </div>
     </header>
@@ -68,7 +68,7 @@
 
       <section id="download" class="download-section section-shell" aria-label="下载客户端">
         <div class="download-copy"><p class="eyebrow"><span></span> 随时随地开始工作</p><h2>下载 WZZApp<br /><em>连接你的客户</em></h2><p>安装桌面客户端，获得更快的消息提醒与更稳定的多账号工作体验。</p></div>
-        <div class="download-card"><div class="download-platform"><span class="platform-icon"></span><span><strong>macOS 客户端</strong><small>Apple 芯片版（arm64）</small></span></div><div class="download-actions"><a class="button" href="/downloads/OmniChat-0.1.0-arm64.dmg" download>下载 macOS 客户端 <span>↓</span></a></div><small class="download-version">OmniChat 0.1.0 · 未签名版本，首次打开请在系统设置中允许</small></div>
+        <div class="download-card"><div class="download-platform"><span class="platform-icon" id="platform-icon"></span><span><strong id="platform-title">macOS 客户端</strong><small id="platform-subtitle">正在识别你的系统…</small></span></div><div class="download-actions"><a class="button" id="primary-download" href="/downloads/OmniChat-0.1.0-arm64.dmg" download>下载 macOS 客户端 <span>↓</span></a></div><div class="download-alternatives"><span>其他版本：</span><a href="/downloads/OmniChat-0.1.0-arm64.dmg" download>Mac Apple 芯片</a><a href="/downloads/OmniChat-0.1.0.dmg" download>Mac Intel</a><a href="/downloads/OmniChat Setup 0.1.0.exe" download>Windows</a></div><small class="download-version">OmniChat 0.1.0 · Windows 安装包与 macOS 双架构版本均已提供</small></div>
       </section>
 
       <section id="products" class="product-section section-shell">
@@ -97,6 +97,30 @@
       const nav = document.querySelector('.site-nav');
       toggle?.addEventListener('click', () => { const open = nav.classList.toggle('open'); toggle.setAttribute('aria-expanded', String(open)); });
       nav?.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => nav.classList.remove('open')));
+      const downloads = {
+        windows: { href: '/downloads/OmniChat Setup 0.1.0.exe', title: 'Windows 客户端', subtitle: 'Windows 10 / 11 · x64', icon: '⊞' },
+        macArm: { href: '/downloads/OmniChat-0.1.0-arm64.dmg', title: 'macOS 客户端', subtitle: 'Apple 芯片版（arm64）', icon: '' },
+        macIntel: { href: '/downloads/OmniChat-0.1.0.dmg', title: 'macOS 客户端', subtitle: 'Intel 芯片版（x64）', icon: '' }
+      }
+      const platform = String(navigator.userAgentData?.platform || navigator.platform || navigator.userAgent).toLowerCase()
+      const target = platform.includes('win') ? downloads.windows : platform.includes('mac') && (platform.includes('arm') || /\b(arm64|aarch64)\b/i.test(navigator.userAgent)) ? downloads.macArm : platform.includes('mac') ? downloads.macIntel : downloads.macArm
+      const icon = document.getElementById('platform-icon')
+      const title = document.getElementById('platform-title')
+      const subtitle = document.getElementById('platform-subtitle')
+      const primary = document.getElementById('primary-download')
+      const headerDownload = document.getElementById('header-download')
+      if (icon && title && subtitle && primary) {
+        icon.textContent = target.icon
+        title.textContent = target.title
+        subtitle.textContent = target.subtitle
+        primary.href = target.href
+        primary.textContent = '下载 ' + target.title + ' ↓'
+        primary.setAttribute('download', '')
+      }
+      headerDownload?.addEventListener('click', (event) => {
+        event.preventDefault()
+        document.getElementById('download')?.scrollIntoView({ behavior: 'smooth' })
+      })
     </script>
   </body>
 </html>

@@ -66,7 +66,7 @@ if compgen -G "client/release/default/*.dmg" >/dev/null; then
   echo "  同步 macOS 安装包（Apple 芯片 / Intel）"
   ssh "$SERVER" 'mkdir -p /var/www/omnichat-site/downloads'
   rsync -az --delete \
-    --include '*.dmg' --include '*.blockmap' --include 'latest-mac.yml' --exclude '*' \
+    --include '*.dmg' --include '*.exe' --include '*.blockmap' --include 'latest-mac.yml' --exclude '*' \
     --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r \
     -e "$RSH" client/release/default/ "$SERVER:/var/www/omnichat-site/downloads/"
 else
