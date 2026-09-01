@@ -29,7 +29,29 @@
       </nav>
       <div class="header-actions">
         <a class="login-link" href="https://admin.wzzapp.cloud/">登录</a>
-        <a class="download-link" id="header-download" href="#download">下载客户端</a>
+        <div class="download-dropdown">
+          <button class="download-link" id="header-download" type="button" aria-haspopup="true" aria-expanded="false">
+            下载客户端 <span class="download-chevron" aria-hidden="true">⌄</span>
+          </button>
+          <div class="download-menu" id="download-menu" role="menu" aria-label="选择客户端版本">
+            <div class="download-menu-title">选择客户端版本</div>
+            <a role="menuitem" href="/downloads/OmniChat Setup 0.1.0.exe" download>
+              <span class="menu-platform-icon windows">⊞</span>
+              <span><strong>Windows 客户端</strong><small>Windows 10 / 11 · x64</small></span>
+              <span class="menu-arrow" aria-hidden="true">↓</span>
+            </a>
+            <a role="menuitem" href="/downloads/OmniChat-0.1.0-arm64.dmg" download>
+              <span class="menu-platform-icon apple"></span>
+              <span><strong>Mac Apple 芯片</strong><small>macOS · arm64</small></span>
+              <span class="menu-arrow" aria-hidden="true">↓</span>
+            </a>
+            <a role="menuitem" href="/downloads/OmniChat-0.1.0.dmg" download>
+              <span class="menu-platform-icon apple"></span>
+              <span><strong>Mac Intel 芯片</strong><small>macOS · x64</small></span>
+              <span class="menu-arrow" aria-hidden="true">↓</span>
+            </a>
+          </div>
+        </div>
         <a class="button button-small" href="https://admin.wzzapp.cloud/">免费开始</a>
       </div>
     </header>
@@ -67,8 +89,24 @@
       </section>
 
       <section id="download" class="download-section section-shell" aria-label="下载客户端">
-        <div class="download-copy"><p class="eyebrow"><span></span> 随时随地开始工作</p><h2>下载 WZZApp<br /><em>连接你的客户</em></h2><p>安装桌面客户端，获得更快的消息提醒与更稳定的多账号工作体验。</p></div>
-        <div class="download-card"><div class="download-platform"><span class="platform-icon" id="platform-icon"></span><span><strong id="platform-title">macOS 客户端</strong><small id="platform-subtitle">正在识别你的系统…</small></span></div><div class="download-actions"><a class="button" id="primary-download" href="/downloads/OmniChat-0.1.0-arm64.dmg" download>下载 macOS 客户端 <span>↓</span></a></div><div class="download-alternatives"><span>其他版本：</span><a href="/downloads/OmniChat-0.1.0-arm64.dmg" download>Mac Apple 芯片</a><a href="/downloads/OmniChat-0.1.0.dmg" download>Mac Intel</a><a href="/downloads/OmniChat Setup 0.1.0.exe" download>Windows</a></div><small class="download-version">OmniChat 0.1.0 · Windows 安装包与 macOS 双架构版本均已提供</small></div>
+        <div class="download-copy"><p class="eyebrow"><span></span> 随时随地开始工作</p><h2>下载 WZZApp<br /><em>连接你的客户</em></h2><p>安装桌面客户端，获得更快的消息提醒与更稳定的多账号工作体验。根据你的设备选择对应版本，安装即可使用。</p></div>
+        <div class="download-card">
+          <div class="download-card-head">
+            <div class="download-platform"><span class="platform-icon" id="platform-icon"></span><span><strong id="platform-title">macOS 客户端</strong><small id="platform-subtitle">正在识别你的系统…</small></span></div>
+            <span class="download-badge">当前稳定版</span>
+          </div>
+          <div class="download-primary">
+            <div><strong>推荐下载</strong><small id="primary-meta">OmniChat 0.1.0 · 立即安装</small></div>
+            <a class="button" id="primary-download" href="/downloads/OmniChat-0.1.0-arm64.dmg" download>下载 macOS 客户端 <span>↓</span></a>
+          </div>
+          <div class="download-options-title">全部版本</div>
+          <div class="download-options" aria-label="全部客户端版本">
+            <a class="download-option" data-download="windows" href="/downloads/OmniChat Setup 0.1.0.exe" download><span class="option-icon windows">⊞</span><span class="option-copy"><strong>Windows 客户端</strong><small>Windows 10 / 11 · x64</small></span><span class="option-arrow">↓</span></a>
+            <a class="download-option" data-download="macArm" href="/downloads/OmniChat-0.1.0-arm64.dmg" download><span class="option-icon apple"></span><span class="option-copy"><strong>Mac Apple 芯片</strong><small>macOS · arm64</small></span><span class="option-arrow">↓</span></a>
+            <a class="download-option" data-download="macIntel" href="/downloads/OmniChat-0.1.0.dmg" download><span class="option-icon apple"></span><span class="option-copy"><strong>Mac Intel 芯片</strong><small>macOS · x64</small></span><span class="option-arrow">↓</span></a>
+          </div>
+          <small class="download-version">版本 0.1.0 · 桌面端支持多账号、实时消息提醒与稳定连接</small>
+        </div>
       </section>
 
       <section id="products" class="product-section section-shell">
@@ -123,6 +161,7 @@
         const title = document.getElementById('platform-title')
         const subtitle = document.getElementById('platform-subtitle')
         const primary = document.getElementById('primary-download')
+        const primaryMeta = document.getElementById('primary-meta')
         if (icon && title && subtitle && primary) {
           icon.textContent = target.icon
           title.textContent = target.title
@@ -130,13 +169,27 @@
           primary.href = target.href
           primary.textContent = '下载 ' + target.title + ' ↓'
           primary.setAttribute('download', '')
+          if (primaryMeta) primaryMeta.textContent = 'OmniChat 0.1.0 · ' + target.subtitle
+          document.querySelectorAll('.download-option').forEach((option) => option.classList.toggle('recommended', option.dataset.download === Object.keys(downloads).find((key) => downloads[key] === target)))
         }
       }
       void applyRecommendedDownload()
-      headerDownload?.addEventListener('click', (event) => {
-        event.preventDefault()
-        document.getElementById('download')?.scrollIntoView({ behavior: 'smooth' })
+      const headerDownload = document.getElementById('header-download')
+      const downloadMenu = document.getElementById('download-menu')
+      const downloadDropdown = document.querySelector('.download-dropdown')
+      const closeDownloadMenu = () => {
+        downloadDropdown?.classList.remove('open')
+        headerDownload?.setAttribute('aria-expanded', 'false')
+      }
+      headerDownload?.addEventListener('click', () => {
+        const open = downloadDropdown?.classList.toggle('open') || false
+        headerDownload.setAttribute('aria-expanded', String(open))
       })
+      downloadMenu?.querySelectorAll('a').forEach((item) => item.addEventListener('click', closeDownloadMenu))
+      document.addEventListener('click', (event) => {
+        if (downloadDropdown && !downloadDropdown.contains(event.target)) closeDownloadMenu()
+      })
+      document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeDownloadMenu() })
     </script>
   </body>
 </html>
