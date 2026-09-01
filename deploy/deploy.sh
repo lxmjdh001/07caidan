@@ -57,7 +57,7 @@ ssh "$SERVER" 'cd /opt/omnichat/server && npm install --omit=dev'
 echo "==> [4/7] 本地构建管理后台（BRAND=prod）并同步到 /var/www/omnichat-admin"
 ( cd admin && BRAND=prod npm install && BRAND=prod npm run build )
 ssh "$SERVER" 'mkdir -p /var/www/omnichat-admin'
-rsync -az --delete -e "$RSH" admin/dist/ "$SERVER:/var/www/omnichat-admin/"
+rsync -az --delete --chmod=Du=rwx,Dgo=rx,Fu=rw,Fgo=r -e "$RSH" admin/dist/ "$SERVER:/var/www/omnichat-admin/"
 
 echo "==> [5/7] 同步官网到 /var/www/omnichat-site"
 ssh "$SERVER" 'mkdir -p /var/www/omnichat-site'
