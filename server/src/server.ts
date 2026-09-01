@@ -658,6 +658,71 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     return { permissions: PERMISSIONS, roles: ROLES, rolePresets: ROLE_PRESETS }
   })
 
+  // ── 注册用户管理（桌面端账号，需 users:manage）──
+  app.get('/api/admin/client-users', async (req, reply) => {
+    if (!requirePerm(req, reply, 'users:manage')) return
+    const tenant = ctxOf(req).tenant
+    const users = clientAuth.listAdminUsers(tenant)
+    const byId = new Map(users.map((u) => [u.id, u.email]))
+    return {
+      users: users.map((u) => {
+        const billingUserId = u.ownerId ?? u.id
+        const subscription = billingRepo.getSubscription(tenant, billingUserId)
+        const plan = subscription ? billingRepo.getPlan(tenant, subscription.planId) : null
+        const balance = billingRepo.getBalance(tenant, billingUserId)
+        return {
+          ...u,
+          ownerEmail: u.ownerId ? byId.get(u.ownerId) : undefined,
+          balanceCents: balance.balanceCents,
+          credits: balance.credits,
+          subscription: subscription
+            ? { ...subscription, planName: plan?.name ?? subscription.planId }
+            : null
+        }
+      })
+    }
+  })
+
+  app.post('/api/admin/client-users', async (req, reply) => {
+    if (!requirePerm(req, reply, 'users:manage')) return
+    const b = (req.body ?? {}) as { email?: string; password?: string; verified?: boolean }
+    if (!b.email || !b.password) return reply.code(400).send({ error: '邮箱和密码必填' })
+    const result = clientAuth.createAdminUser(ctxOf(req).tenant, b.email, b.password, b.verified !== false)
+    return result.ok ? { user: result.user } : reply.code(400).send({ error: result.error })
+  })
+
+  app.patch('/api/admin/client-users/:id', async (req, reply) => {
+    if (!requirePerm(req, reply, 'users:manage')) return
+    const id = Number((req.params as { id: string }).id)
+    const b = (req.body ?? {}) as { email?: string; password?: string; enabled?: boolean; verified?: boolean }
+    const result = clientAuth.updateAdminUser(ctxOf(req).tenant, id, b)
+    return result.ok ? { ok: true } : reply.code(400).send({ error: result.error })
+  })
+
+  app.delete('/api/admin/client-users/:id', async (req, reply) => {
+    if (!requirePerm(req, reply, 'users:manage')) return
+    const id = Number((req.params as { id: string }).id)
+    const result = clientAuth.deleteAdminUser(ctxOf(req).tenant, id)
+    return result.ok ? { ok: true } : reply.code(result.error === '用户不存在' ? 404 : 409).send({ error: result.error })
+  })
+
+  app.patch('/api/admin/client-users/:id/subscription', async (req, reply) => {
+    if (!requirePerm(req, reply, 'users:manage')) return
+    if (!requirePerm(req, reply, 'billing:manage')) return
+    const id = Number((req.params as { id: string }).id)
+    const user = clientAuth.listAdminUsers(ctxOf(req).tenant).find((u) => u.id === id)
+    if (!user) return reply.code(404).send({ error: '用户不存在' })
+    const b = (req.body ?? {}) as { planId?: string; expiresAt?: number; autoRenew?: boolean; status?: string }
+    if (!b.planId) return reply.code(400).send({ error: '请选择套餐' })
+    const subscription = billingRepo.setSubscriptionByAdmin(ctxOf(req).tenant, user.ownerId ?? user.id, {
+      planId: b.planId,
+      expiresAt: b.expiresAt,
+      autoRenew: b.autoRenew,
+      status: b.status
+    })
+    return subscription ? { subscription } : reply.code(404).send({ error: '套餐不存在' })
+  })
+
   // ── 用户管理（RBAC：需 users:manage）──
   app.get('/api/users', async (req, reply) => {
     if (!requirePerm(req, reply, 'users:manage')) return

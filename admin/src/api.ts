@@ -205,6 +205,28 @@ export interface AdminUser {
   enabled: boolean
 }
 
+export interface RegisteredUserAdmin {
+  id: number
+  email: string
+  verified: boolean
+  ownerId?: number
+  ownerEmail?: string
+  role: string
+  enabled: boolean
+  createdAt: number
+  balanceCents: number
+  credits: number
+  subscription: {
+    userId: number
+    planId: string
+    planName: string
+    startAt: number
+    expiresAt: number
+    autoRenew: boolean
+    status: string
+  } | null
+}
+
 export interface PermMeta {
   permissions: string[]
   roles: string[]
@@ -386,6 +408,10 @@ export class ApiClient {
       method: 'PATCH',
       body: JSON.stringify(body)
     })
+  }
+
+  deletePlan(id: string): Promise<{ ok: boolean }> {
+    return this.req(`/api/admin/plans/${encodeURIComponent(id)}`, { method: 'DELETE' })
   }
 
   listChannels(): Promise<{ channels: PayChannel[] }> {
@@ -619,5 +645,25 @@ export class ApiClient {
 
   deleteUser(id: number): Promise<{ ok: boolean }> {
     return this.req(`/api/users/${id}`, { method: 'DELETE' })
+  }
+
+  listClientUsers(): Promise<{ users: RegisteredUserAdmin[] }> {
+    return this.req('/api/admin/client-users')
+  }
+
+  createClientUser(body: { email: string; password: string; verified?: boolean }): Promise<{ user: RegisteredUserAdmin }> {
+    return this.req('/api/admin/client-users', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  updateClientUser(id: number, body: { email?: string; password?: string; enabled?: boolean; verified?: boolean }): Promise<{ ok: boolean }> {
+    return this.req(`/api/admin/client-users/${id}`, { method: 'PATCH', body: JSON.stringify(body) })
+  }
+
+  deleteClientUser(id: number): Promise<{ ok: boolean }> {
+    return this.req(`/api/admin/client-users/${id}`, { method: 'DELETE' })
+  }
+
+  setClientUserSubscription(id: number, body: { planId: string; expiresAt?: number; autoRenew?: boolean; status?: string }): Promise<{ subscription: RegisteredUserAdmin['subscription'] }> {
+    return this.req(`/api/admin/client-users/${id}/subscription`, { method: 'PATCH', body: JSON.stringify(body) })
   }
 }

@@ -239,6 +239,18 @@ input { font-family: inherit; }
 .pill.on { background: var(--accent-soft); color: var(--accent); }
 .pill.offp { background: var(--danger-bg); color: var(--danger); }
 .link-danger { border: none; background: transparent; color: var(--danger); font-size: 13px; cursor: pointer; }
+.link-button { border: none; background: transparent; color: var(--accent); font-size: 13px; cursor: pointer; }
+.registered-users .users-head { align-items: flex-start; }
+.registered-users .users-hint { margin: 5px 0 0; }
+.table-toolbar { display: flex; gap: 8px; margin: 0 0 14px; }
+.table-toolbar input { flex: 1; max-width: 360px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 11px; font-size: 13px; background: var(--panel); color: var(--text); }
+.table-scroll { overflow-x: auto; }
+.registered-users .users-table { min-width: 900px; }
+.registered-users .users-table td { vertical-align: middle; }
+.table-sub { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
+.row-actions { white-space: nowrap; }
+.row-actions button + button { margin-left: 10px; }
+.empty-cell { text-align: center !important; color: var(--muted); padding: 28px !important; }
 
 /* 新增用户弹窗 */
 .modal-backdrop { position: fixed; inset: 0; background: var(--scrim); display: grid; place-items: center; z-index: 50; }

@@ -3,7 +3,7 @@ import { and, eq, gt, inArray, isNotNull, lt } from 'drizzle-orm'
 import { hashPassword, newSessionToken, verifyPassword } from './auth.ts'
 import type { Db } from './db.ts'
 import { randomUUID } from 'node:crypto'
-import { clientRoles, clientSessions, clientUsers, emailCodes } from './schema.ts'
+import { clientConfigs, clientRoles, clientSessions, clientUsers, emailCodes } from './schema.ts'
 import {
   CLIENT_ROLE_PRESETS,
   canDelegate,
@@ -40,6 +40,18 @@ export interface ClientRole {
   id: string
   name: string
   permissions: string[]
+}
+
+/** 管理后台查看的桌面端注册用户摘要；不返回密码哈希或会话令牌。 */
+export interface RegisteredUserAdmin {
+  id: number
+  tenant: string
+  email: string
+  verified: boolean
+  ownerId?: number
+  role: string
+  enabled: boolean
+  createdAt: number
 }
 
 export type RegisterResult =
@@ -81,6 +93,103 @@ export class ClientAuthRepo {
 
   constructor(db: Db) {
     this.db = db
+  }
+
+  // ══════════ 管理后台：注册用户 CRUD ══════════
+
+  listAdminUsers(tenant: string): RegisteredUserAdmin[] {
+    return this.db
+      .select()
+      .from(clientUsers)
+      .where(eq(clientUsers.tenant, tenant))
+      .all()
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map(toRegisteredUserAdmin)
+  }
+
+  createAdminUser(
+    tenant: string,
+    email: string,
+    password: string,
+    verified = true
+  ): { ok: true; user: RegisteredUserAdmin } | { ok: false; error: string } {
+    const normalized = email.trim().toLowerCase()
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) return { ok: false, error: '邮箱格式不正确' }
+    if (password.length < 6) return { ok: false, error: '密码至少 6 位' }
+    try {
+      const res = this.db
+        .insert(clientUsers)
+        .values({
+          tenant,
+          email: normalized,
+          passwordHash: hashPassword(password),
+          verified: verified ? 1 : 0,
+          ownerId: null,
+          role: 'boss',
+          permissions: '[]',
+          enabled: 1,
+          createdAt: Date.now()
+        })
+        .run()
+      const row = this.db.select().from(clientUsers).where(eq(clientUsers.id, Number(res.lastInsertRowid))).get()
+      return row ? { ok: true, user: toRegisteredUserAdmin(row) } : { ok: false, error: '创建用户失败' }
+    } catch {
+      return { ok: false, error: '该邮箱已注册' }
+    }
+  }
+
+  updateAdminUser(
+    tenant: string,
+    id: number,
+    patch: { email?: string; password?: string; enabled?: boolean; verified?: boolean }
+  ): { ok: true } | { ok: false; error: string } {
+    const row = this.db
+      .select()
+      .from(clientUsers)
+      .where(and(eq(clientUsers.tenant, tenant), eq(clientUsers.id, id)))
+      .get()
+    if (!row) return { ok: false, error: '用户不存在' }
+    const set: Record<string, unknown> = {}
+    if (patch.email !== undefined) {
+      const email = patch.email.trim().toLowerCase()
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { ok: false, error: '邮箱格式不正确' }
+      set.email = email
+    }
+    if (patch.password !== undefined) {
+      if (patch.password.length < 6) return { ok: false, error: '密码至少 6 位' }
+      set.passwordHash = hashPassword(patch.password)
+    }
+    if (patch.enabled !== undefined) set.enabled = patch.enabled ? 1 : 0
+    if (patch.verified !== undefined) set.verified = patch.verified ? 1 : 0
+    try {
+      if (Object.keys(set).length) this.db.update(clientUsers).set(set).where(eq(clientUsers.id, id)).run()
+    } catch {
+      return { ok: false, error: '该邮箱已被占用' }
+    }
+    if (patch.enabled === false || patch.password !== undefined) {
+      this.db.delete(clientSessions).where(eq(clientSessions.userId, id)).run()
+    }
+    return { ok: true }
+  }
+
+  deleteAdminUser(tenant: string, id: number): { ok: true } | { ok: false; error: string } {
+    const row = this.db
+      .select({ id: clientUsers.id })
+      .from(clientUsers)
+      .where(and(eq(clientUsers.tenant, tenant), eq(clientUsers.id, id)))
+      .get()
+    if (!row) return { ok: false, error: '用户不存在' }
+    const child = this.db
+      .select({ id: clientUsers.id })
+      .from(clientUsers)
+      .where(and(eq(clientUsers.tenant, tenant), eq(clientUsers.ownerId, id)))
+      .get()
+    if (child) return { ok: false, error: '该用户仍有子账号，请先处理子账号' }
+    this.db.delete(clientSessions).where(eq(clientSessions.userId, id)).run()
+    this.db.delete(clientConfigs).where(and(eq(clientConfigs.tenant, tenant), eq(clientConfigs.userId, id))).run()
+    this.db.delete(clientRoles).where(and(eq(clientRoles.tenant, tenant), eq(clientRoles.ownerId, id))).run()
+    this.db.delete(clientUsers).where(and(eq(clientUsers.tenant, tenant), eq(clientUsers.id, id))).run()
+    return { ok: true }
   }
 
   /** 生成并存储验证码（6 位数字），返回验证码供发信 */
@@ -639,6 +748,19 @@ export class ClientAuthRepo {
 }
 
 type Row = typeof clientUsers.$inferSelect
+function toRegisteredUserAdmin(r: Row): RegisteredUserAdmin {
+  return {
+    id: r.id,
+    tenant: r.tenant,
+    email: r.email,
+    verified: r.verified === 1,
+    ownerId: r.ownerId ?? undefined,
+    role: r.role,
+    enabled: r.enabled === 1,
+    createdAt: r.createdAt
+  }
+}
+
 function baseUser(r: Row): Omit<ClientUser, 'permissions'> {
   return {
     id: r.id,

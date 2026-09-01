@@ -12,6 +12,7 @@ const zhCN = {
   'nav.chats': '聊天记录',
   'nav.campaigns': '引流工单',
   'nav.users': '用户管理',
+  'nav.registeredUsers': '注册用户',
   'nav.logout': '退出登录',
   'common.refresh': '刷新',
   'common.loading': '加载中…',

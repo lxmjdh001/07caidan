@@ -5,6 +5,7 @@ import { ConversationList } from './components/ConversationList'
 import { ChatView } from './components/ChatView'
 import { AnalysisPanel } from './components/AnalysisPanel'
 import { UsersView } from './components/UsersView'
+import { RegisteredUsersView } from './components/RegisteredUsersView'
 import { AnnouncementsView } from './components/AnnouncementsView'
 import { BillingView } from './components/BillingView'
 import { CampaignsView } from './components/CampaignsView'
@@ -17,7 +18,7 @@ export function App(): React.JSX.Element {
   const { t, locale, setLocale } = useI18n()
   const [client, setClient] = useState<ApiClient | null>(null)
   const [me, setMe] = useState<Me | null>(null)
-  const [view, setView] = useState<'chats' | 'campaigns' | 'billing' | 'announcements' | 'support' | 'logs' | 'users'>('chats')
+  const [view, setView] = useState<'chats' | 'campaigns' | 'billing' | 'announcements' | 'support' | 'logs' | 'users' | 'registeredUsers'>('chats')
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
 
@@ -112,6 +113,12 @@ export function App(): React.JSX.Element {
             </button>
           )}
           {canUsers && (
+            <button className={view === 'registeredUsers' ? 'on' : ''} onClick={() => setView('registeredUsers')}>
+              <UsersIcon />
+              {t('nav.registeredUsers')}
+            </button>
+          )}
+          {canUsers && (
             <button className={view === 'users' ? 'on' : ''} onClick={() => setView('users')}>
               <UsersIcon />
               {t('nav.users')}
@@ -141,7 +148,9 @@ export function App(): React.JSX.Element {
       </aside>
 
       <main className="main">
-        {view === 'users' && canUsers ? (
+        {view === 'registeredUsers' && canUsers ? (
+          <RegisteredUsersView client={client} />
+        ) : view === 'users' && canUsers ? (
           <UsersView client={client} currentUser={me.username} />
         ) : view === 'campaigns' && canCampaigns ? (
           <CampaignsView client={client} />

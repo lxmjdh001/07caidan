@@ -117,6 +117,14 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
   })
 
+  app.delete('/api/admin/plans/:id', async (req, reply) => {
+    if (!requirePerm(req, reply, 'billing:manage')) return
+    const result = billing.deletePlan(ctxOf(req).tenant, (req.params as { id: string }).id)
+    if (result.ok) return { ok: true }
+    if (result.reason === 'in_use') return reply.code(409).send({ error: '套餐已有订阅记录，请停用而不是删除' })
+    return reply.code(404).send({ error: 'not found' })
+  })
+
   // ── 支付通道 ──
   app.get('/api/admin/channels', async (req, reply) => {
     if (!requirePerm(req, reply, 'billing:manage')) return

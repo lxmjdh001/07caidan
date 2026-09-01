@@ -183,6 +183,21 @@ export class BillingRepo {
     return this.updatePlan(tenant, id, { enabled: false })
   }
 
+  /** 只允许删除从未被订阅引用的套餐；有历史关系时应停用。 */
+  deletePlan(tenant: string, id: string): { ok: boolean; reason?: 'in_use' | 'not_found' } {
+    const used = this.db
+      .select({ userId: subscriptions.userId })
+      .from(subscriptions)
+      .where(and(eq(subscriptions.tenant, tenant), eq(subscriptions.planId, id)))
+      .get()
+    if (used) return { ok: false, reason: 'in_use' }
+    const res = this.db
+      .delete(plans)
+      .where(and(eq(plans.tenant, tenant), eq(plans.id, id)))
+      .run()
+    return res.changes > 0 ? { ok: true } : { ok: false, reason: 'not_found' }
+  }
+
   // ── 余额与流水 ──
 
   getBalance(tenant: string, userId: number): Balance {
@@ -428,6 +443,31 @@ export class BillingRepo {
       .where(and(eq(subscriptions.tenant, tenant), eq(subscriptions.userId, userId)))
       .run()
     return res.changes > 0
+  }
+
+  /** 管理后台直接开通/调整套餐；不扣余额，但保留订阅状态与到期时间。 */
+  setSubscriptionByAdmin(
+    tenant: string,
+    userId: number,
+    input: { planId: string; expiresAt?: number; autoRenew?: boolean; status?: string },
+    now = Date.now()
+  ): Subscription | null {
+    const plan = this.getPlan(tenant, input.planId)
+    if (!plan) return null
+    const current = this.getSubscription(tenant, userId)
+    const expiresAt = Number.isFinite(input.expiresAt) && Number(input.expiresAt) > now
+      ? Number(input.expiresAt)
+      : renewExpiry(now, now, planPeriod(plan))
+    const subscription: Subscription = {
+      userId,
+      planId: plan.id,
+      startAt: current?.startAt ?? now,
+      expiresAt,
+      autoRenew: input.autoRenew ?? current?.autoRenew ?? false,
+      status: input.status === 'cancelled' || input.status === 'expired' ? input.status : 'active'
+    }
+    this.putSubscription(tenant, subscription, now)
+    return subscription
   }
 
   /**
