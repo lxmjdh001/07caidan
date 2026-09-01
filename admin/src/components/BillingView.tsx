@@ -92,6 +92,7 @@ function PlansTab({ client }: Props): React.JSX.Element {
   const [desc, setDesc] = useState('')
   /** 正在编辑描述的套餐（弹窗多行编辑，预填当前内容） */
   const [descEdit, setDescEdit] = useState<Plan | null>(null)
+  const [planEdit, setPlanEdit] = useState<Plan | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -199,6 +200,7 @@ function PlansTab({ client }: Props): React.JSX.Element {
                 <th className="num">{t('billing.maxDevices')}</th>
                 <th>{t('billing.planDesc')}</th>
                 <th>{t('billing.enabled')}</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -229,6 +231,10 @@ function PlansTab({ client }: Props): React.JSX.Element {
                       {p.enabled ? t('billing.disable') : t('billing.enable')}
                     </button>
                   </td>
+                  <td className="row-actions">
+                    <button className="ghost small" onClick={() => setPlanEdit(p)}>编辑</button>
+                    <button className="link-danger" onClick={async () => { if (!confirm(`删除套餐「${p.name}」？`)) return; try { await client.deletePlan(p.id); await load() } catch (e) { setErr((e as Error).message) } }}>删除</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -247,8 +253,38 @@ function PlansTab({ client }: Props): React.JSX.Element {
           }}
         />
       )}
+      {planEdit && (
+        <PlanEditModal
+          plan={planEdit}
+          onClose={() => setPlanEdit(null)}
+          onSave={async (patch) => {
+            await client.updatePlan(planEdit.id, patch)
+            setPlanEdit(null)
+            await load()
+          }}
+        />
+      )}
     </>
   )
+}
+
+function PlanEditModal({ plan, onClose, onSave }: { plan: Plan; onClose: () => void; onSave: (patch: Partial<Plan>) => Promise<void> }): React.JSX.Element {
+  const [name, setName] = useState(plan.name)
+  const [price, setPrice] = useState((plan.priceCents / 100).toFixed(2))
+  const [periodUnit, setPeriodUnit] = useState<Plan['periodUnit']>(plan.periodUnit)
+  const [periodCount, setPeriodCount] = useState(String(plan.periodCount))
+  const [maxAccounts, setMaxAccounts] = useState(String(plan.maxAccounts))
+  const [maxDevices, setMaxDevices] = useState(String(plan.maxDevices || 0))
+  const [sortOrder, setSortOrder] = useState(String(plan.sortOrder))
+  const [description, setDescription] = useState(plan.description || '')
+  const [busy, setBusy] = useState(false)
+  const save = async (): Promise<void> => {
+    const cents = parseUsd(price)
+    if (!name.trim() || cents === null) return
+    setBusy(true)
+    try { await onSave({ name: name.trim(), priceCents: cents, periodUnit, periodCount: Number(periodCount) || 1, maxAccounts: Number(maxAccounts) || 0, maxDevices: Math.max(0, Number(maxDevices) || 0), sortOrder: Number(sortOrder) || 0, description }) } finally { setBusy(false) }
+  }
+  return <div className="modal-backdrop" onClick={onClose}><div className="modal plan-edit-modal" onClick={(e) => e.stopPropagation()}><h3>编辑套餐</h3><div className="form-row"><label><span>名称</span><input value={name} onChange={(e) => setName(e.target.value)} /></label><label><span>价格(USD)</span><input value={price} onChange={(e) => setPrice(e.target.value)} /></label><label><span>周期</span><select value={periodUnit} onChange={(e) => setPeriodUnit(e.target.value as Plan['periodUnit'])}>{PERIOD_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}</select></label><label><span>周期数</span><input value={periodCount} onChange={(e) => setPeriodCount(e.target.value)} /></label><label><span>账号上限</span><input value={maxAccounts} onChange={(e) => setMaxAccounts(e.target.value)} /></label><label><span>设备上限</span><input value={maxDevices} onChange={(e) => setMaxDevices(e.target.value)} /></label><label><span>排序</span><input value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} /></label></div><label className="block-label"><span>套餐描述</span><textarea rows={5} value={description} onChange={(e) => setDescription(e.target.value)} /></label><div className="modal-actions"><button className="ghost" onClick={onClose}>取消</button><button className="primary" disabled={busy || !name.trim()} onClick={() => void save()}>{busy ? '保存中…' : '保存'}</button></div></div></div>
 }
 
 /** 套餐描述编辑弹窗：多行 Markdown，预填当前内容 */
