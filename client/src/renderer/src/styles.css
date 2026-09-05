@@ -208,8 +208,7 @@ body {
   height: 33px;
   filter: drop-shadow(0 2px 2px rgb(0 55 35 / .2));
 }
-.auth-logo::after,
-.toolbar-home::after {
+.auth-logo::after {
   position: absolute;
   inset: -35% auto -35% -55%;
   width: 34%;
@@ -3299,16 +3298,8 @@ body {
 }
 .toolbar-icon:hover { background: var(--panel-alt); color: var(--text); border-color: var(--border); }
 .toolbar-icon:disabled { opacity: .35; cursor: not-allowed; }
-.toolbar-home {
-  position: relative;
-  overflow: hidden;
-  border-color: rgb(255 255 255 / .2);
-  background: var(--brand-logo, linear-gradient(145deg, #1ab979, #08734b));
-  color: #fff;
-  box-shadow: 0 5px 14px rgb(11 124 79 / .24), inset 0 1px 0 rgb(255 255 255 / .22);
-}
-.toolbar-home:hover { border-color: rgb(255 255 255 / .32); background: var(--brand-logo, linear-gradient(145deg, #1ab979, #08734b)); color: #fff; transform: translateY(-1px); }
-.toolbar-brand-glyph { position: relative; z-index: 1; width: 23px; height: 23px; filter: drop-shadow(0 1px 1px rgb(0 55 35 / .2)); }
+.toolbar-home { background: #26272b; color: #fff; box-shadow: 0 4px 12px rgb(16 24 40 / .16); }
+.toolbar-home:hover { background: #15161a; color: #fff; }
 
 @keyframes brand-mark-float {
   0%, 100% { transform: translateY(0); }
@@ -3320,8 +3311,7 @@ body {
 }
 @media (prefers-reduced-motion: reduce) {
   .auth-logo,
-  .auth-logo::after,
-  .toolbar-home::after { animation: none; }
+  .auth-logo::after { animation: none; }
 }
 .toolbar-segmented,
 .toolbar-zoom {
