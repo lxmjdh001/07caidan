@@ -3968,13 +3968,15 @@ body {
 .proxy-marketplace-toolbar { min-height: 61px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 13px; border-bottom: 1px solid var(--border); }
 .proxy-marketplace-toolbar h2 { margin: 0; color: var(--text); font-size: 14px; }
 .proxy-marketplace-toolbar p { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.proxy-marketplace-title-line { display: flex; align-items: center; gap: 8px; }
+.proxy-marketplace-title-line > span { padding: 2px 6px; border-radius: 999px; color: var(--accent); background: var(--accent-soft); font-size: 9px; font-weight: 700; white-space: nowrap; }
 .proxy-marketplace-search { width: min(260px, 30vw); height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); background: var(--panel-alt); }
 .proxy-marketplace-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 9%, transparent); }
 .proxy-marketplace-search input { min-width: 0; height: 100%; flex: 1; border: 0; outline: 0; color: var(--text); background: transparent; font-size: 10.5px; }
 .proxy-marketplace-search button { width: 20px; height: 20px; display: grid; place-items: center; border: 0; border-radius: 5px; color: var(--muted); background: transparent; cursor: pointer; }
 .proxy-marketplace-error { display: flex; align-items: center; gap: 7px; margin: 12px 13px 0; padding: 9px 10px; border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border)); border-radius: 8px; color: var(--danger); background: color-mix(in srgb, var(--danger) 7%, var(--panel)); font-size: 10.5px; }
 .proxy-marketplace-error button { margin-left: auto; padding: 4px 8px; border: 1px solid currentColor; border-radius: 6px; color: inherit; background: transparent; font-size: 9.5px; cursor: pointer; }
-.proxy-marketplace-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(245px, 1fr)); gap: 11px; padding: 13px; }
+.proxy-marketplace-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 11px; padding: 13px; }
 .proxy-market-card { position: relative; min-width: 0; min-height: 151px; display: flex; flex-direction: column; padding: 14px; overflow: hidden; border: 1px solid var(--border); border-radius: 11px; background: linear-gradient(150deg, var(--panel), color-mix(in srgb, var(--panel-alt) 78%, var(--panel))); transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease; }
 .proxy-market-card:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); box-shadow: 0 8px 22px rgb(16 24 40 / .07); }
 .proxy-market-card.is-recommended { border-color: color-mix(in srgb, var(--accent) 46%, var(--border)); }
@@ -3990,6 +3992,16 @@ body {
 .proxy-marketplace-empty { min-height: 230px; display: grid; place-content: center; justify-items: center; gap: 7px; color: var(--muted); font-size: 10.5px; text-align: center; }
 .proxy-marketplace-empty strong { color: var(--text); font-size: 12px; }
 .proxy-marketplace-notice { margin: 0 13px 12px; padding: 8px 10px; border-radius: 8px; color: var(--muted); background: var(--panel-alt); font-size: 9.5px; text-align: center; }
+
+@media (max-width: 1120px) {
+  .proxy-marketplace-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .proxy-marketplace-toolbar { align-items: stretch; flex-direction: column; gap: 8px; }
+  .proxy-marketplace-search { width: 100%; }
+  .proxy-marketplace-grid { grid-template-columns: 1fr; }
+}
 .proxy-table-panel { overflow: hidden; border: 1px solid var(--border); border-radius: 11px; background: var(--panel); box-shadow: 0 6px 18px rgb(16 24 40 / .035); }
 .proxy-table-toolbar { min-height: 47px; display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
 .proxy-table-toolbar > select { width: 120px; height: 29px; flex: none; padding: 0 26px 0 9px; border: 1px solid var(--border); border-radius: 7px; outline: 0; color: var(--text-secondary); background: var(--panel-alt); font: 10.5px inherit; cursor: pointer; }

@@ -122,6 +122,10 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     proxyVendors.seedDefaults(config.clientTenant)
     repo.setTenantSetting(config.clientTenant, 'proxyVendorDefaultsV1', '1')
   }
+  if (repo.getTenantSetting(config.clientTenant, 'proxyVendorDefaultsV2') !== '1') {
+    proxyVendors.seedDefaultsV2(config.clientTenant)
+    repo.setTenantSetting(config.clientTenant, 'proxyVendorDefaultsV2', '1')
+  }
   mkdirSync(config.mediaDir, { recursive: true })
   const analyzer = config.anthropicApiKey
     ? new IntentAnalyzer(config.anthropicApiKey, config.analysisModel)

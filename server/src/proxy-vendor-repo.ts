@@ -35,6 +35,10 @@ export interface ProxyVendorInput {
   sortOrder?: number
 }
 
+interface ProxyVendorSeed extends ProxyVendorInput {
+  seedId: string
+}
+
 /** 首次部署提供可编辑的官方站点入口；后台删除后不会在重启时反复生成。 */
 export const DEFAULT_PROXY_VENDORS: ProxyVendorInput[] = [
   {
@@ -93,6 +97,75 @@ export const DEFAULT_PROXY_VENDORS: ProxyVendorInput[] = [
   }
 ]
 
+/**
+ * 第二批官方站点入口。
+ *
+ * 单独使用稳定 seedId，避免已有环境升级时因为数组顺序变化而重复创建；管理员在后台
+ * 删除或修改后，启动过程也不会反复覆盖。这里只提供采购导航，不保存供应商账号或密钥。
+ */
+const DEFAULT_PROXY_VENDORS_V2: ProxyVendorSeed[] = [
+  {
+    seedId: 'default-global-lajiao-http',
+    name: '辣椒 HTTP',
+    region: 'global',
+    summary: '海外住宅、静态住宅与流量型代理服务。',
+    purchaseUrl: 'https://www.lajiaohttp.com/',
+    logoUrl: 'https://www.lajiaohttp.com/static/images/favicon.ico',
+    buttonLabel: '查看官网',
+    sortOrder: 50
+  },
+  {
+    seedId: 'default-global-1024proxy',
+    name: '1024proxy',
+    region: 'global',
+    summary: '动态住宅、静态 ISP 与数据中心代理服务。',
+    purchaseUrl: 'https://1024proxy.com/',
+    logoUrl: 'https://1024proxy.com/static/img/favicon.ico',
+    buttonLabel: '查看官网',
+    sortOrder: 60
+  },
+  {
+    seedId: 'default-global-zooproxy',
+    name: 'ZooProxy',
+    region: 'global',
+    summary: '全球住宅、静态住宅与长效 ISP 代理服务。',
+    purchaseUrl: 'https://zooproxy.com/',
+    logoUrl: 'https://zooproxy.com/static/img/favicon.ico',
+    buttonLabel: '查看官网',
+    sortOrder: 70
+  },
+  {
+    seedId: 'default-global-rolaproxy',
+    name: 'RolaProxy',
+    region: 'global',
+    summary: '全球动态住宅与静态 ISP 代理服务。',
+    purchaseUrl: 'https://www.rolaproxy.com/',
+    logoUrl: 'https://www.rolaproxy.com/favicon.ico?v=2',
+    buttonLabel: '查看官网',
+    sortOrder: 80
+  },
+  {
+    seedId: 'default-china-kuaidaili',
+    name: '快代理',
+    region: 'china',
+    summary: '国内 HTTP、SOCKS、隧道与独享代理服务。',
+    purchaseUrl: 'https://www.kuaidaili.com/',
+    logoUrl: '',
+    buttonLabel: '查看官网',
+    sortOrder: 30
+  },
+  {
+    seedId: 'default-china-hshttp',
+    name: '花生 HTTP',
+    region: 'china',
+    summary: '国内 HTTP、HTTPS 与 SOCKS5 动态代理服务。',
+    purchaseUrl: 'https://www.hshttp.com/',
+    logoUrl: 'https://www.hshttp.com/favicon.ico',
+    buttonLabel: '查看官网',
+    sortOrder: 40
+  }
+]
+
 export function isProxyVendorRegion(value: unknown): value is ProxyVendorRegion {
   return typeof value === 'string' && (PROXY_VENDOR_REGIONS as readonly string[]).includes(value)
 }
@@ -110,6 +183,28 @@ export class ProxyVendorRepo {
       this.db.insert(proxyVendors).values({
         tenant,
         id: `default-${input.region}-${index + 1}`,
+        name: input.name,
+        region: input.region,
+        summary: input.summary ?? '',
+        purchaseUrl: input.purchaseUrl,
+        logoUrl: input.logoUrl ?? '',
+        badge: input.badge ?? '',
+        buttonLabel: input.buttonLabel ?? '立即访问',
+        enabled: input.enabled === false ? 0 : 1,
+        recommended: input.recommended ? 1 : 0,
+        sortOrder: input.sortOrder ?? 0,
+        createdAt: now,
+        updatedAt: now
+      }).onConflictDoNothing().run()
+    }
+  }
+
+  seedDefaultsV2(tenant: string): void {
+    for (const [index, input] of DEFAULT_PROXY_VENDORS_V2.entries()) {
+      const now = Date.now() + index
+      this.db.insert(proxyVendors).values({
+        tenant,
+        id: input.seedId,
         name: input.name,
         region: input.region,
         summary: input.summary ?? '',

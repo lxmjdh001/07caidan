@@ -67,6 +67,10 @@ describe('代理供应商目录', () => {
     assert.ok(china.json.vendors.length > 0)
     assert.ok(global.json.vendors.every((vendor: { region: string; enabled: boolean }) => vendor.region === 'global' && vendor.enabled))
     assert.ok(china.json.vendors.every((vendor: { region: string; enabled: boolean }) => vendor.region === 'china' && vendor.enabled))
+    assert.ok(global.json.vendors.some((vendor: { name: string }) => vendor.name === '1024proxy'))
+    assert.ok(global.json.vendors.some((vendor: { name: string }) => vendor.name === 'ZooProxy'))
+    assert.ok(china.json.vendors.some((vendor: { name: string }) => vendor.name === '快代理'))
+    assert.ok(china.json.vendors.some((vendor: { name: string }) => vendor.name === '花生 HTTP'))
   })
 
   test('后台可新增、编辑、排序、上下架与删除', async () => {

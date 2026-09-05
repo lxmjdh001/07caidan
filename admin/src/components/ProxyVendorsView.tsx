@@ -154,8 +154,8 @@ export function ProxyVendorsView({ client }: Props): React.JSX.Element {
     <div className="view proxy-vendors-view">
       <header className="view-header proxy-vendors-header">
         <div>
-          <h1>代理平台</h1>
-          <p>管理客户端采购页的供应商、跳转链接、排序与上下架。</p>
+          <h1>第三方代理平台</h1>
+          <p>配置客户端采购页的平台资料、官网链接、排序、推荐标记与上下架。</p>
         </div>
         <div className="proxy-vendors-stats">
           <span><b>{vendors.length}</b> 全部</span>

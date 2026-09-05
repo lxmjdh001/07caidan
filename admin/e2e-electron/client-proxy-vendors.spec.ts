@@ -38,15 +38,17 @@ test('客户端代理平台目录：按全球和中国分类展示后台配置',
 
     await win.getByRole('tab', { name: '全球代理' }).click()
     await expect(win.getByRole('heading', { name: '全球代理平台' })).toBeVisible()
-    await expect(win.locator('.proxy-market-card')).toHaveCount(4)
+    await expect(win.locator('.proxy-market-card')).toHaveCount(8)
     await expect(win.locator('.proxy-market-card', { hasText: 'NovProxy' })).toBeVisible()
+    await expect(win.locator('.proxy-market-card', { hasText: '1024proxy' })).toBeVisible()
     await expect(win.locator('.proxy-market-card', { hasText: 'IPIPD' }).locator('a')).toHaveAttribute('target', '_blank')
 
     await win.getByRole('tab', { name: '中国代理' }).click()
     await expect(win.getByRole('heading', { name: '中国代理平台' })).toBeVisible()
-    await expect(win.locator('.proxy-market-card')).toHaveCount(2)
+    await expect(win.locator('.proxy-market-card')).toHaveCount(4)
     await expect(win.locator('.proxy-market-card', { hasText: '闪臣 HTTP' })).toBeVisible()
     await expect(win.locator('.proxy-market-card', { hasText: '星空代理' })).toBeVisible()
+    await expect(win.locator('.proxy-market-card', { hasText: '花生 HTTP' })).toBeVisible()
 
     await win.screenshot({ path: `${SHOT_DIR}/client-proxy-vendors.png` })
   } finally {

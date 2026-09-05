@@ -734,7 +734,10 @@ export function ProxyPage({
           <section className="proxy-marketplace-panel">
             <div className="proxy-marketplace-toolbar">
               <div>
-                <h2>{activeTab === 'global' ? '全球代理平台' : '中国代理平台'}</h2>
+                <div className="proxy-marketplace-title-line">
+                  <h2>{activeTab === 'global' ? '全球代理平台' : '中国代理平台'}</h2>
+                  {!vendorLoading && !vendorError && <span>{visibleVendors.length} 个平台</span>}
+                </div>
                 <p>选择供应商后将打开其官网或购买页面。</p>
               </div>
               <label className="proxy-marketplace-search">
