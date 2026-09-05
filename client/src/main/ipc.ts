@@ -83,6 +83,7 @@ const BILLING_METHODS: Record<string, true> = {
   listChannels: true,
   listOrders: true,
   listLedger: true,
+  listProxyVendors: true,
   createOrder: true,
   subscribe: true,
   setAutoRenew: true,

@@ -89,6 +89,33 @@ export const tenantSettings = sqliteTable('tenant_settings', {
   updatedAt: integer('updated_at').notNull(),
 }, (t) => [primaryKey({ columns: [t.tenant, t.key] })])
 
+/** 客户端代理商城目录。后台统一配置，桌面端只读取已上架条目。 */
+export const proxyVendors = sqliteTable(
+  'proxy_vendors',
+  {
+    tenant: text('tenant').notNull(),
+    id: text('id').notNull(),
+    name: text('name').notNull(),
+    /** global / china */
+    region: text('region').notNull(),
+    summary: text('summary').notNull().default(''),
+    /** 可以填写官网、购买页或渠道推广链接。 */
+    purchaseUrl: text('purchase_url').notNull(),
+    logoUrl: text('logo_url').notNull().default(''),
+    badge: text('badge').notNull().default(''),
+    buttonLabel: text('button_label').notNull().default('立即访问'),
+    enabled: integer('enabled').notNull().default(1),
+    recommended: integer('recommended').notNull().default(0),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull()
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenant, t.id] }),
+    index('idx_proxy_vendors_list').on(t.tenant, t.enabled, t.region, t.sortOrder, t.createdAt)
+  ]
+)
+
 export const messages = sqliteTable(
   'messages',
   {

@@ -191,6 +191,27 @@ export interface ReminderSettingsRow {
   emailBody: string
 }
 
+export type ProxyVendorRegion = 'global' | 'china'
+
+/** 客户端代理采购页的供应商卡片，由管理后台统一维护。 */
+export interface ProxyVendor {
+  id: string
+  name: string
+  region: ProxyVendorRegion
+  summary: string
+  purchaseUrl: string
+  logoUrl: string
+  badge: string
+  buttonLabel: string
+  enabled: boolean
+  recommended: boolean
+  sortOrder: number
+  createdAt: number
+  updatedAt: number
+}
+
+export type ProxyVendorInput = Omit<ProxyVendor, 'id' | 'createdAt' | 'updatedAt'>
+
 export interface Me {
   username: string
   role: string
@@ -487,6 +508,26 @@ export class ApiClient {
 
   deleteAiModel(id: string): Promise<{ ok: boolean }> {
     return this.req(`/api/admin/ai/models/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  }
+
+  // ── 客户端代理采购目录（需 billing:manage）──
+  listProxyVendors(): Promise<{ vendors: ProxyVendor[] }> {
+    return this.req('/api/admin/proxy-vendors')
+  }
+
+  createProxyVendor(body: ProxyVendorInput): Promise<{ vendor: ProxyVendor }> {
+    return this.req('/api/admin/proxy-vendors', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  updateProxyVendor(id: string, body: Partial<ProxyVendorInput>): Promise<{ ok: boolean }> {
+    return this.req(`/api/admin/proxy-vendors/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body)
+    })
+  }
+
+  deleteProxyVendor(id: string): Promise<{ ok: boolean }> {
+    return this.req(`/api/admin/proxy-vendors/${encodeURIComponent(id)}`, { method: 'DELETE' })
   }
 
   billingSettings(): Promise<{ settings: { creditsPerUsd: number; autoTopUpCredits: boolean } }> {

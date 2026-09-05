@@ -1,9 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ArrowUpRight,
   CircleAlert,
+  ClipboardList,
+  ExternalLink,
+  Globe2,
   Link2,
   LockKeyhole,
+  MapPin,
   MoreHorizontal,
   Network,
   PencilLine,
@@ -12,12 +16,14 @@ import {
   Search,
   ShieldCheck,
   ShieldX,
+  ShoppingCart,
   Trash2,
   X
 } from 'lucide-react'
 import type { ChannelState } from '@shared/domain'
 import type { AccountNetworkState, AccountNetworkStatus } from '@shared/network'
 import type { AccountConfig, AppSettings, ProxyAsset } from '@shared/settings'
+import type { ProxyVendor, ProxyVendorRegion } from '@shared/proxy-vendor'
 import {
   composeProxyUrl,
   PROXY_PROTOCOL_OPTIONS,
@@ -100,6 +106,7 @@ interface ProxyActionMenuState {
 }
 
 type StatusFilter = 'all' | 'ready' | 'blocked' | 'checking'
+type ProxyPageTab = 'list' | ProxyVendorRegion
 
 const PLATFORM_META: Record<string, PlatformMeta> = {
   whatsapp: { label: 'WhatsApp', color: '#25d366', logo: whatsappLogo },
@@ -192,6 +199,22 @@ function matchesStatus(status: AccountNetworkStatus, filter: StatusFilter): bool
   return status === filter
 }
 
+function vendorInitials(name: string): string {
+  return name.trim().slice(0, 2).toUpperCase() || 'IP'
+}
+
+function VendorLogo({ vendor }: { vendor: ProxyVendor }): React.JSX.Element {
+  const [failed, setFailed] = useState(false)
+  useEffect(() => setFailed(false), [vendor.logoUrl])
+  return (
+    <span className="proxy-market-logo" aria-hidden>
+      {vendor.logoUrl && !failed
+        ? <img src={vendor.logoUrl} alt="" onError={() => setFailed(true)} />
+        : vendorInitials(vendor.name)}
+    </span>
+  )
+}
+
 export function ProxyPage({
   settings,
   channels,
@@ -212,6 +235,28 @@ export function ProxyPage({
   const [editorError, setEditorError] = useState('')
   const [bindingError, setBindingError] = useState('')
   const [editorProbe, setEditorProbe] = useState<{ exitIp?: string; latencyMs: number } | null>(null)
+  const [activeTab, setActiveTab] = useState<ProxyPageTab>('list')
+  const [vendors, setVendors] = useState<ProxyVendor[]>([])
+  const [vendorQuery, setVendorQuery] = useState('')
+  const [vendorLoading, setVendorLoading] = useState(true)
+  const [vendorError, setVendorError] = useState('')
+
+  const loadVendors = useCallback(async (): Promise<void> => {
+    setVendorLoading(true)
+    setVendorError('')
+    try {
+      const result = await api.billing<{ vendors: ProxyVendor[] }>('listProxyVendors')
+      setVendors(result.vendors)
+    } catch (error) {
+      setVendorError(errText(error))
+    } finally {
+      setVendorLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadVendors()
+  }, [loadVendors])
 
   const rows = useMemo<ProxyRow[]>(() => {
     const assets = Object.values(settings.proxyAssets)
@@ -291,6 +336,16 @@ export function ProxyPage({
   const readyCount = rows.filter((row) => row.status === 'ready').length
   const blockedCount = rows.filter((row) => row.status === 'blocked' || row.status === 'unconfigured').length
   const unconfiguredKeys = keys.filter((key) => !settings.accounts[key]?.proxyId)
+  const visibleVendors = useMemo(() => {
+    if (activeTab === 'list') return []
+    const needle = vendorQuery.trim().toLocaleLowerCase()
+    return vendors.filter((vendor) => vendor.region === activeTab && (
+      !needle || [vendor.name, vendor.summary, vendor.badge]
+        .join(' ')
+        .toLocaleLowerCase()
+        .includes(needle)
+    ))
+  }, [activeTab, vendorQuery, vendors])
 
   const openCreate = (): void => {
     setEditor({ mode: 'create', protocol: 'socks5', address: '', note: '' })
@@ -492,7 +547,37 @@ export function ProxyPage({
       </header>
 
       <div className="page-body proxy-body">
-        <section className="proxy-table-panel">
+        <nav className="proxy-page-tabs" role="tablist" aria-label="代理页面">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'list'}
+            className={activeTab === 'list' ? 'is-active' : ''}
+            onClick={() => setActiveTab('list')}
+          >
+            <ClipboardList size={16} /> 代理列表
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'global'}
+            className={activeTab === 'global' ? 'is-active' : ''}
+            onClick={() => setActiveTab('global')}
+          >
+            <Globe2 size={16} /> 全球代理
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'china'}
+            className={activeTab === 'china' ? 'is-active' : ''}
+            onClick={() => setActiveTab('china')}
+          >
+            <MapPin size={16} /> 中国代理
+          </button>
+        </nav>
+
+        {activeTab === 'list' && <section className="proxy-table-panel">
           <div className="proxy-table-toolbar">
             <label className="proxy-table-search">
               <Search size={17} />
@@ -643,7 +728,71 @@ export function ProxyPage({
               <span>{unconfiguredKeys.length} 个账号尚未关联代理</span>
             </footer>
           )}
-        </section>
+        </section>}
+
+        {activeTab !== 'list' && (
+          <section className="proxy-marketplace-panel">
+            <div className="proxy-marketplace-toolbar">
+              <div>
+                <h2>{activeTab === 'global' ? '全球代理平台' : '中国代理平台'}</h2>
+                <p>选择供应商后将打开其官网或购买页面。</p>
+              </div>
+              <label className="proxy-marketplace-search">
+                <Search size={16} />
+                <input
+                  value={vendorQuery}
+                  placeholder="搜索代理平台"
+                  onChange={(event) => setVendorQuery(event.target.value)}
+                />
+                {vendorQuery && <button type="button" aria-label="清空搜索" onClick={() => setVendorQuery('')}><X size={14} /></button>}
+              </label>
+            </div>
+
+            {vendorError && (
+              <div className="proxy-marketplace-error" role="alert">
+                <CircleAlert size={17} />
+                <span>代理平台加载失败</span>
+                <button type="button" onClick={() => void loadVendors()}>重试</button>
+              </div>
+            )}
+
+            {vendorLoading ? (
+              <div className="proxy-marketplace-empty"><RefreshCw size={25} className="is-spinning" /><span>正在加载代理平台…</span></div>
+            ) : visibleVendors.length > 0 ? (
+              <div className="proxy-marketplace-grid">
+                {visibleVendors.map((vendor) => (
+                  <article key={vendor.id} className={`proxy-market-card ${vendor.recommended ? 'is-recommended' : ''}`}>
+                    {(vendor.badge || vendor.recommended) && (
+                      <span className="proxy-market-badge">{vendor.badge || '推荐'}</span>
+                    )}
+                    <div className="proxy-market-card-main">
+                      <VendorLogo vendor={vendor} />
+                      <div>
+                        <h3>{vendor.name}</h3>
+                        <p>{vendor.summary || '点击查看该代理平台提供的产品与套餐。'}</p>
+                      </div>
+                    </div>
+                    <a href={vendor.purchaseUrl} target="_blank" rel="noreferrer">
+                      <ShoppingCart size={16} />
+                      {vendor.buttonLabel || '立即访问'}
+                      <ExternalLink size={14} />
+                    </a>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="proxy-marketplace-empty">
+                <ShoppingCart size={28} />
+                <strong>{vendorQuery ? '没有符合条件的平台' : '暂未上架代理平台'}</strong>
+                <span>{vendorQuery ? '换一个关键词试试。' : '管理员可在后台“代理平台”中添加。'}</span>
+              </div>
+            )}
+
+            <footer className="proxy-marketplace-notice">
+              第三方服务由供应商独立提供，购买前请自行核对套餐、地区与合规要求。
+            </footer>
+          </section>
+        )}
       </div>
 
       {actionMenu && actionMenuRow && (

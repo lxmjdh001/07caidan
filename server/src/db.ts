@@ -36,6 +36,19 @@ export function openDb(dbPath: string): Db {
       updated_at INTEGER NOT NULL, PRIMARY KEY (tenant, key)
     );
 
+    CREATE TABLE IF NOT EXISTS proxy_vendors (
+      tenant TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL,
+      region TEXT NOT NULL, summary TEXT NOT NULL DEFAULT '',
+      purchase_url TEXT NOT NULL, logo_url TEXT NOT NULL DEFAULT '',
+      badge TEXT NOT NULL DEFAULT '', button_label TEXT NOT NULL DEFAULT '立即访问',
+      enabled INTEGER NOT NULL DEFAULT 1, recommended INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_proxy_vendors_list
+      ON proxy_vendors (tenant, enabled, region, sort_order, created_at);
+
     CREATE TABLE IF NOT EXISTS messages (
       tenant TEXT NOT NULL, external_id TEXT NOT NULL, conversation_id TEXT NOT NULL,
       channel TEXT NOT NULL, account_id TEXT NOT NULL, direction TEXT NOT NULL,

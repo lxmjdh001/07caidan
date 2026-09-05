@@ -8,6 +8,7 @@ import { UsersView } from './components/UsersView'
 import { RegisteredUsersView } from './components/RegisteredUsersView'
 import { AnnouncementsView } from './components/AnnouncementsView'
 import { BillingView } from './components/BillingView'
+import { ProxyVendorsView } from './components/ProxyVendorsView'
 import { CampaignsView } from './components/CampaignsView'
 import { SupportView } from './components/SupportView'
 import { LogsView } from './components/LogsView'
@@ -18,7 +19,7 @@ export function App(): React.JSX.Element {
   const { t, locale, setLocale } = useI18n()
   const [client, setClient] = useState<ApiClient | null>(null)
   const [me, setMe] = useState<Me | null>(null)
-  const [view, setView] = useState<'chats' | 'campaigns' | 'billing' | 'announcements' | 'support' | 'logs' | 'users' | 'registeredUsers'>('chats')
+  const [view, setView] = useState<'chats' | 'campaigns' | 'billing' | 'proxyVendors' | 'announcements' | 'support' | 'logs' | 'users' | 'registeredUsers'>('chats')
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
 
@@ -91,6 +92,12 @@ export function App(): React.JSX.Element {
               {t('nav.billing')}
             </button>
           )}
+          {canBilling && (
+            <button className={view === 'proxyVendors' ? 'on' : ''} onClick={() => setView('proxyVendors')}>
+              <StoreIcon />
+              {t('nav.proxyVendors')}
+            </button>
+          )}
           {canAnnounce && (
             <button
               className={view === 'announcements' ? 'on' : ''}
@@ -156,6 +163,8 @@ export function App(): React.JSX.Element {
           <CampaignsView client={client} />
         ) : view === 'billing' && canBilling ? (
           <BillingView client={client} />
+        ) : view === 'proxyVendors' && canBilling ? (
+          <ProxyVendorsView client={client} />
         ) : view === 'announcements' && canAnnounce ? (
           <AnnouncementsView client={client} />
         ) : view === 'support' && canSupport ? (
@@ -228,6 +237,15 @@ function CardIcon(): React.JSX.Element {
     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
       <rect x="2" y="5" width="20" height="14" rx="2" />
       <path d="M2 10h20" />
+    </svg>
+  )
+}
+function StoreIcon(): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
+      <path d="M3 9h18l-2-5H5L3 9Z" />
+      <path d="M5 9v11h14V9M9 20v-6h6v6" />
+      <path d="M3 9a3 3 0 0 0 6 0 3 3 0 0 0 6 0 3 3 0 0 0 6 0" />
     </svg>
   )
 }

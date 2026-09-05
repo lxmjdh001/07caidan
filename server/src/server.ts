@@ -56,6 +56,11 @@ import type { SyncPayload } from './types.ts'
 import { brand } from './branding.ts'
 import { regionAllowed } from './geoip/geoip.ts'
 import { WorkspaceAccountRepo } from './workspace-account-repo.ts'
+import {
+  isProxyVendorRegion,
+  ProxyVendorRepo,
+  type ProxyVendorInput
+} from './proxy-vendor-repo.ts'
 
 /** 请求上下文：要么是同步客户端（仅 tenant），要么是登录的管理员（含权限） */
 interface ReqCtx {
@@ -94,6 +99,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   const clientAuth = new ClientAuthRepo(db)
   const clientConfig = new ClientConfigRepo(db)
   const workspaceAccounts = new WorkspaceAccountRepo(db)
+  const proxyVendors = new ProxyVendorRepo(db)
   const lineRelay = new LineRelay(db)
   const metaService = new MetaService(db, config, overrides.metaFetch)
   const tiktokService = new TikTokService(db, config, overrides.tiktokFetch)
@@ -112,6 +118,10 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   const aiClient = overrides.aiClient ?? new AiClient()
   const mailer = createEmailSender(config)
   auth.bootstrap(config.adminTenant, config.adminUser, config.adminPassword)
+  if (repo.getTenantSetting(config.clientTenant, 'proxyVendorDefaultsV1') !== '1') {
+    proxyVendors.seedDefaults(config.clientTenant)
+    repo.setTenantSetting(config.clientTenant, 'proxyVendorDefaultsV1', '1')
+  }
   mkdirSync(config.mediaDir, { recursive: true })
   const analyzer = config.anthropicApiKey
     ? new IntentAnalyzer(config.anthropicApiKey, config.analysisModel)
@@ -379,6 +389,20 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     x: xService.available(),
     snapchat: snapchatService.available()
   }))
+
+  /** 客户端代理采购目录：只下发已上架项目，不包含任何代理账号或密钥。 */
+  app.get('/api/proxy-vendors', async (req, reply) => {
+    const { region } = (req.query ?? {}) as { region?: string }
+    if (region !== undefined && !isProxyVendorRegion(region)) {
+      return reply.code(400).send({ error: 'region 必须是 global 或 china' })
+    }
+    return {
+      vendors: proxyVendors.list(config.clientTenant, {
+        enabledOnly: true,
+        ...(region ? { region } : {})
+      })
+    }
+  })
 
   app.post('/api/client/send-code', async (req, reply) => {
     if (!config.requireEmailVerify) return reply.code(400).send({ error: '后台未开启邮箱验证' })
@@ -2235,6 +2259,47 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     return reply.type('text/html; charset=utf-8').send(await readDashboardHtml())
   })
 
+  // ── 代理供应商目录（需 billing:manage）──
+  // 商业链接由后台统一维护，客户端只能读取已上架项目，便于随时换官网或渠道链接。
+  app.get('/api/admin/proxy-vendors', async (req, reply) => {
+    if (!requirePerm(req, reply, 'billing:manage')) return
+    return { vendors: proxyVendors.list(config.clientTenant) }
+  })
+
+  app.post('/api/admin/proxy-vendors', async (req, reply) => {
+    if (!requirePerm(req, reply, 'billing:manage')) return
+    try {
+      return {
+        vendor: proxyVendors.create(
+          config.clientTenant,
+          parseProxyVendorInput(req.body, false) as ProxyVendorInput
+        )
+      }
+    } catch (error) {
+      return reply.code(400).send({ error: validationMessage(error) })
+    }
+  })
+
+  app.patch('/api/admin/proxy-vendors/:id', async (req, reply) => {
+    if (!requirePerm(req, reply, 'billing:manage')) return
+    try {
+      const ok = proxyVendors.update(
+        config.clientTenant,
+        (req.params as { id: string }).id,
+        parseProxyVendorInput(req.body, true)
+      )
+      return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
+    } catch (error) {
+      return reply.code(400).send({ error: validationMessage(error) })
+    }
+  })
+
+  app.delete('/api/admin/proxy-vendors/:id', async (req, reply) => {
+    if (!requirePerm(req, reply, 'billing:manage')) return
+    const ok = proxyVendors.delete(config.clientTenant, (req.params as { id: string }).id)
+    return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
+  })
+
   // ── 运营公告（需 announcements:manage）──
   const AUDIENCES: Audience[] = ['all', 'plan', 'new_users', 'expiring']
 
@@ -2487,6 +2552,76 @@ function cleanOptionalText(value: unknown, max: number): string | undefined {
   if (typeof value !== 'string') return undefined
   const cleaned = value.trim().slice(0, max)
   return cleaned || undefined
+}
+
+function parseProxyVendorInput(body: unknown, partial: boolean): Partial<ProxyVendorInput> {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new Error('请求内容格式错误')
+  const source = body as Record<string, unknown>
+  const result: Partial<ProxyVendorInput> = {}
+  const has = (key: string): boolean => Object.prototype.hasOwnProperty.call(source, key)
+
+  if (!partial || has('name')) {
+    if (typeof source.name !== 'string' || !source.name.trim()) throw new Error('供应商名称必填')
+    if (source.name.trim().length > 80) throw new Error('供应商名称不能超过 80 个字符')
+    result.name = source.name.trim()
+  }
+  if (!partial || has('region')) {
+    if (!isProxyVendorRegion(source.region)) throw new Error('地区分类必须是 global 或 china')
+    result.region = source.region
+  }
+  if (!partial || has('purchaseUrl')) {
+    result.purchaseUrl = normalizeCatalogUrl(source.purchaseUrl, true)
+  }
+  if (has('logoUrl')) result.logoUrl = normalizeCatalogUrl(source.logoUrl, false)
+  if (has('summary') || !partial) result.summary = cleanCatalogText(source.summary, 240)
+  if (has('badge') || !partial) result.badge = cleanCatalogText(source.badge, 24)
+  if (has('buttonLabel') || !partial) {
+    const label = cleanCatalogText(source.buttonLabel, 20)
+    result.buttonLabel = label || '立即访问'
+  }
+  if (has('enabled')) {
+    if (typeof source.enabled !== 'boolean') throw new Error('上架状态格式错误')
+    result.enabled = source.enabled
+  } else if (!partial) result.enabled = true
+  if (has('recommended')) {
+    if (typeof source.recommended !== 'boolean') throw new Error('推荐状态格式错误')
+    result.recommended = source.recommended
+  } else if (!partial) result.recommended = false
+  if (has('sortOrder')) {
+    const order = Number(source.sortOrder)
+    if (!Number.isFinite(order)) throw new Error('排序必须是数字')
+    result.sortOrder = Math.max(-100_000, Math.min(100_000, Math.round(order)))
+  } else if (!partial) result.sortOrder = 0
+  return result
+}
+
+function normalizeCatalogUrl(value: unknown, required: boolean): string {
+  const raw = typeof value === 'string' ? value.trim() : ''
+  if (!raw) {
+    if (required) throw new Error('购买链接必填')
+    return ''
+  }
+  if (raw.length > 2_048) throw new Error('链接过长')
+  let parsed: URL
+  try {
+    parsed = new URL(raw)
+  } catch {
+    throw new Error('链接必须是完整的 http(s) URL')
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error('链接必须是 http(s) URL')
+  }
+  return parsed.toString()
+}
+
+function cleanCatalogText(value: unknown, max: number): string {
+  if (value === undefined || value === null) return ''
+  if (typeof value !== 'string') throw new Error('文本字段格式错误')
+  return value.trim().slice(0, max)
+}
+
+function validationMessage(error: unknown): string {
+  return error instanceof Error ? error.message : '参数错误'
 }
 
 /** 极简、无脚本的 OAuth 完成页。选择项只带随机 state 和资产 ID，不携带任何访问令牌。 */

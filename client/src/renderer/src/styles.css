@@ -3925,6 +3925,39 @@ body {
 .proxy-summary .is-ready strong { color: var(--accent); }
 .proxy-summary .is-pending strong { color: var(--warn); }
 .proxy-body { width: 100%; max-width: none; padding: 11px 15px 21px; }
+.proxy-page-tabs { min-height: 42px; display: flex; align-items: flex-end; gap: 4px; margin-bottom: 10px; padding: 0 8px; overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); box-shadow: 0 4px 14px rgb(16 24 40 / .03); scrollbar-width: none; }
+.proxy-page-tabs::-webkit-scrollbar { display: none; }
+.proxy-page-tabs button { height: 41px; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border: 0; border-bottom: 2px solid transparent; color: var(--text-secondary); background: transparent; font: 650 11.5px inherit; cursor: pointer; }
+.proxy-page-tabs button:hover { color: var(--text); }
+.proxy-page-tabs button.is-active { border-bottom-color: var(--accent); color: var(--accent); }
+
+/* 代理供应商采购页 */
+.proxy-marketplace-panel { min-height: 260px; overflow: hidden; border: 1px solid var(--border); border-radius: 11px; background: var(--panel); box-shadow: 0 6px 18px rgb(16 24 40 / .035); }
+.proxy-marketplace-toolbar { min-height: 61px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 13px; border-bottom: 1px solid var(--border); }
+.proxy-marketplace-toolbar h2 { margin: 0; color: var(--text); font-size: 14px; }
+.proxy-marketplace-toolbar p { margin-top: 3px; color: var(--muted); font-size: 10px; }
+.proxy-marketplace-search { width: min(260px, 30vw); height: 32px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border: 1px solid var(--border); border-radius: 8px; color: var(--muted); background: var(--panel-alt); }
+.proxy-marketplace-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 9%, transparent); }
+.proxy-marketplace-search input { min-width: 0; height: 100%; flex: 1; border: 0; outline: 0; color: var(--text); background: transparent; font-size: 10.5px; }
+.proxy-marketplace-search button { width: 20px; height: 20px; display: grid; place-items: center; border: 0; border-radius: 5px; color: var(--muted); background: transparent; cursor: pointer; }
+.proxy-marketplace-error { display: flex; align-items: center; gap: 7px; margin: 12px 13px 0; padding: 9px 10px; border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border)); border-radius: 8px; color: var(--danger); background: color-mix(in srgb, var(--danger) 7%, var(--panel)); font-size: 10.5px; }
+.proxy-marketplace-error button { margin-left: auto; padding: 4px 8px; border: 1px solid currentColor; border-radius: 6px; color: inherit; background: transparent; font-size: 9.5px; cursor: pointer; }
+.proxy-marketplace-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(245px, 1fr)); gap: 11px; padding: 13px; }
+.proxy-market-card { position: relative; min-width: 0; min-height: 151px; display: flex; flex-direction: column; padding: 14px; overflow: hidden; border: 1px solid var(--border); border-radius: 11px; background: linear-gradient(150deg, var(--panel), color-mix(in srgb, var(--panel-alt) 78%, var(--panel))); transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease; }
+.proxy-market-card:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); box-shadow: 0 8px 22px rgb(16 24 40 / .07); }
+.proxy-market-card.is-recommended { border-color: color-mix(in srgb, var(--accent) 46%, var(--border)); }
+.proxy-market-badge { position: absolute; top: 0; right: 0; max-width: 90px; padding: 4px 9px; overflow: hidden; border-radius: 0 10px 0 9px; color: #fff; background: linear-gradient(135deg, var(--warn), #f26b54); font-size: 9px; font-weight: 750; text-overflow: ellipsis; white-space: nowrap; }
+.proxy-market-card-main { min-width: 0; display: grid; grid-template-columns: 51px minmax(0, 1fr); gap: 11px; padding-right: 8px; }
+.proxy-market-logo { width: 51px; height: 51px; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; color: var(--accent); background: var(--accent-soft); font: 800 15px inherit; letter-spacing: -.03em; }
+.proxy-market-logo img { width: 100%; height: 100%; padding: 5px; object-fit: contain; background: #fff; }
+.proxy-market-card h3 { margin: 2px 0 0; overflow: hidden; color: var(--text); font-size: 13.5px; text-overflow: ellipsis; white-space: nowrap; }
+.proxy-market-card p { display: -webkit-box; margin-top: 5px; overflow: hidden; color: var(--text-secondary); font-size: 10px; line-height: 1.5; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.proxy-market-card > a { min-height: 32px; display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: auto; padding: 0 10px; border-radius: 8px; color: #fff; background: var(--accent); font-size: 10.5px; font-weight: 700; text-decoration: none; }
+.proxy-market-card > a svg:last-child { margin-left: 1px; opacity: .72; }
+.proxy-market-card > a:hover { filter: brightness(1.06); }
+.proxy-marketplace-empty { min-height: 230px; display: grid; place-content: center; justify-items: center; gap: 7px; color: var(--muted); font-size: 10.5px; text-align: center; }
+.proxy-marketplace-empty strong { color: var(--text); font-size: 12px; }
+.proxy-marketplace-notice { margin: 0 13px 12px; padding: 8px 10px; border-radius: 8px; color: var(--muted); background: var(--panel-alt); font-size: 9.5px; text-align: center; }
 .proxy-table-panel { overflow: hidden; border: 1px solid var(--border); border-radius: 11px; background: var(--panel); box-shadow: 0 6px 18px rgb(16 24 40 / .035); }
 .proxy-table-toolbar { min-height: 47px; display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-bottom: 1px solid var(--border); }
 .proxy-table-toolbar > select { width: 120px; height: 29px; flex: none; padding: 0 26px 0 9px; border: 1px solid var(--border); border-radius: 7px; outline: 0; color: var(--text-secondary); background: var(--panel-alt); font: 10.5px inherit; cursor: pointer; }

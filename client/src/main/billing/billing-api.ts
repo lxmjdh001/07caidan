@@ -36,6 +36,12 @@ export class BillingApi {
     return this.request('GET', '/api/billing/ledger')
   }
 
+  /** 客户端代理采购目录（服务器后台可配置，只返回已上架项目）。 */
+  listProxyVendors(region?: 'global' | 'china'): Promise<unknown> {
+    const query = region ? `?region=${encodeURIComponent(region)}` : ''
+    return this.request('GET', `/api/proxy-vendors${query}`)
+  }
+
   createOrder(body: {
     kind: 'topup' | 'plan'
     amountCents?: number
