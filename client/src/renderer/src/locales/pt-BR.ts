@@ -2,6 +2,7 @@ import type { MessageKey } from './zh-CN'
 
 /** Português (Brasil) */
 export const ptBR: Partial<Record<MessageKey, string>> = {
+  'account.proxyConfig': 'Configurações de proxy',
   // ── Complemento (~209 chaves, português do Brasil) ──
   'chat.intentHigh': 'Intenção alta',
   'chat.intentMedium': 'Intenção média',
@@ -233,7 +234,7 @@ export const ptBR: Partial<Record<MessageKey, string>> = {
   'chat.previewLabel': 'Prévia do envio',
   'chat.confirmSend': 'Confirmar e enviar',
   'channel.whatsapp': 'WhatsApp',
-  'channel.telegram': 'Telegram (em breve)',
+  'channel.telegram': 'Telegram',
   'channel.line': 'LINE (em breve)',
   'rail.allChats': 'Todas as mensagens',
   'rail.accounts': 'Contas',
@@ -248,6 +249,8 @@ export const ptBR: Partial<Record<MessageKey, string>> = {
   'account.deviceAuto': 'Automático (diferente por conta)',
   'account.deviceHint': 'Nome exibido em "Aparelhos conectados", isolado por conta. Entre novamente para aplicar.',
   'account.saveConnect': 'Salvar e conectar',
+  'account.oauthConnect': 'Autorizar e conectar',
+  'account.oauthHint': 'Autorize na página oficial de login. A senha e o token de acesso não ficam armazenados neste dispositivo.',
   'account.advanced': 'Avançado (raramente necessário)',
   'campaign.title': 'Campanhas',
   'campaign.tabCampaigns': 'Campanhas',
@@ -336,6 +339,7 @@ export const ptBR: Partial<Record<MessageKey, string>> = {
   'picker.title': 'Escolha uma plataforma para adicionar',
   'picker.qr': 'Entrar com QR',
   'picker.credentials': 'Entrar com credenciais',
+  'picker.oauth': 'Autorização web',
   'status.need_credentials': 'Credenciais necessárias',
   'status.waiting_phone': 'Aguardando o número de telefone',
   'status.waiting_code': 'Aguardando o código de verificação',
@@ -422,8 +426,8 @@ export const ptBR: Partial<Record<MessageKey, string>> = {
   'settings.customKey': 'API Key (opcional)',
   'settings.customHint': 'Contrato: POST JSON {"text","target_lang"} → {"text","source_lang"?}',
   'settings.account': 'Contas',
-  'settings.proxy': 'Proxy (socks5:// ou http://, vazio = conexão direta)',
-  'settings.proxyHint': 'Aplica-se na próxima reconexão',
+  'settings.proxy': 'Proxy exclusivo da conta (obrigatório antes do login)',
+  'settings.proxyHint': 'A saída é verificada ao salvar; se falhar, a conta é isolada sem conexão direta',
   'settings.logout': 'Sair',
   'settings.logoutConfirm': 'Sair? As credenciais locais serão apagadas.',
   'settings.removeAccount': 'Remover conta',

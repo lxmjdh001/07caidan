@@ -54,11 +54,13 @@ describe('ConfigSync.pull（跨设备漫游·后写为准）', () => {
     expect(f).toHaveBeenCalled() // 确实拉了、只是没应用
   })
 
-  it('cloudSync 关闭 → 根本不发请求', async () => {
+  it('cloudSync 关闭 → 不拉个人偏好，但仍检查必须同步的账号目录', async () => {
     await enableSync(50, false)
     const f = mockFetch({ blob: { theme: 'dark' }, updatedAt: 100 })
     await new ConfigSync(settings).pull()
-    expect(f).not.toHaveBeenCalled()
+    expect(f).toHaveBeenCalledTimes(1)
+    expect(String(f.mock.calls[0]?.[0])).toContain('/api/client/accounts')
+    expect(settings.get().theme).not.toBe('dark')
   })
 
   it('云端 updatedAt 非法(0) → 跳过、不推进水位', async () => {
@@ -133,6 +135,7 @@ describe('ConfigSync.pushDebounced（1.5s 防抖）', () => {
       cs.pushDebounced()
       expect(f).not.toHaveBeenCalled() // 还没到 1.5s，一次都没推
       await vi.advanceTimersByTimeAsync(1500)
+      await cs.flush()
       expect(f).toHaveBeenCalledTimes(1) // 三次合并成一次
     } finally {
       vi.useRealTimers()
@@ -151,9 +154,76 @@ describe('ConfigSync.pushDebounced（1.5s 防抖）', () => {
       await vi.advanceTimersByTimeAsync(1000) // 距最后一次改动才 1s → 不该推
       expect(f).not.toHaveBeenCalled()
       await vi.advanceTimersByTimeAsync(500) // 满 1.5s
+      await cs.flush()
       expect(f).toHaveBeenCalledTimes(1)
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('ConfigSync 账号目录（跨设备且不复制敏感环境）', () => {
+  it('即使关闭个人偏好漫游，账号目录仍会恢复', async () => {
+    await enableSync(0, false)
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        accounts: [{
+          accountKey: 'whatsapp:wa123', channel: 'whatsapp', accountId: 'wa123',
+          label: '售后号', deleted: false, updatedAt: 10
+        }]
+      })
+    }) as unknown as Response))
+    await new ConfigSync(settings).pull()
+    expect(settings.get().accounts['whatsapp:wa123']?.label).toBe('售后号')
+  })
+
+  it('新电脑拉到账号壳后生成本机独立指纹，不带另一台电脑的代理和会话', async () => {
+    await enableSync(0)
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      if (url.endsWith('/api/client/accounts')) {
+        return {
+          ok: true,
+          json: async () => ({
+            accounts: [{
+              accountKey: 'line:line123', channel: 'line', accountId: 'line123',
+              label: 'LINE 客服', defaultLang: 'ko', deleted: false, updatedAt: 10
+            }]
+          })
+        } as unknown as Response
+      }
+      return { ok: true, json: async () => ({ blob: {}, updatedAt: 0 }) } as unknown as Response
+    }))
+    await new ConfigSync(settings).pull()
+    const restored = settings.get().accounts['line:line123']
+    expect(restored?.label).toBe('LINE 客服')
+    expect(restored?.defaultLang).toBe('ko')
+    expect(restored?.fingerprint?.id).toMatch(/^FP-/)
+    expect(restored?.proxyUrl).toBeUndefined()
+    expect(restored?.credentials).toBeUndefined()
+  })
+
+  it('本机新增账号逐条上云时请求体只有安全摘要', async () => {
+    await enableSync(0)
+    const cs = new ConfigSync(settings)
+    await settings.update({
+      accounts: {
+        'telegram:tg123': {
+          label: 'TG', defaultLang: 'zh-CN', proxyUrl: 'socks5://secret',
+          credentials: { session: 'SESSION-SECRET' }
+        }
+      }
+    })
+    const requests: Array<{ url: string; method?: string; body?: string }> = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      requests.push({ url, method: init?.method, body: init?.body as string | undefined })
+      return { ok: true, json: async () => ({ updatedAt: 99 }) } as unknown as Response
+    }))
+    await cs.push()
+    const accountPut = requests.find((r) => r.url.includes('/api/client/accounts/'))
+    expect(accountPut?.method).toBe('PUT')
+    expect(accountPut?.body).toContain('telegram:tg123')
+    expect(accountPut?.body).not.toContain('socks5')
+    expect(accountPut?.body).not.toContain('SESSION-SECRET')
   })
 })

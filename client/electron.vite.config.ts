@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import react from '@vitejs/plugin-react'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
+import { loadEnv } from 'vite'
 
 /**
  * 白牌：构建时通过 BRAND=<name> 选择 branding/<name>.json，
@@ -12,30 +13,51 @@ const brandName = process.env.BRAND || 'default'
 const brand = JSON.parse(
   readFileSync(resolve(__dirname, '..', 'branding', `${brandName}.json`), 'utf8')
 )
-const define = { __BRAND__: JSON.stringify(brand) }
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, __dirname, '')
+  const define = { __BRAND__: JSON.stringify(brand) }
 
-export default defineConfig({
-  main: {
-    plugins: [externalizeDepsPlugin()],
-    define,
-    resolve: {
-      alias: { '@shared': resolve('src/shared') }
-    }
-  },
-  preload: {
-    plugins: [externalizeDepsPlugin()],
-    define,
-    resolve: {
-      alias: { '@shared': resolve('src/shared') }
-    }
-  },
-  renderer: {
-    plugins: [react()],
-    define,
-    resolve: {
-      alias: {
-        '@shared': resolve('src/shared'),
-        '@renderer': resolve('src/renderer/src')
+  /**
+   * Telegram 的 api_id/api_hash 是“发布应用”的凭证，而不是终端客户的账号凭证。
+   * Electron 打包后的主进程不会继承构建机环境变量，因此必须在 Vite 编译阶段替换为
+   * 字面量；否则源码看似支持 OMNI_TG_API_*，安装到客户电脑后实际仍会读到空值。
+   *
+   * 只注入 main bundle，避免无意义地把它复制到 preload / renderer。发布机可把值保存在
+   * 已被 git 忽略的 client/.env.production.local，避免后续版本漏传环境变量。
+   */
+  const mainDefine = {
+    ...define,
+    __OMNI_TG_API_ID__: JSON.stringify(
+      (process.env.OMNI_TG_API_ID ?? env.OMNI_TG_API_ID ?? '').trim()
+    ),
+    __OMNI_TG_API_HASH__: JSON.stringify(
+      (process.env.OMNI_TG_API_HASH ?? env.OMNI_TG_API_HASH ?? '').trim()
+    )
+  }
+
+  return {
+    main: {
+      plugins: [externalizeDepsPlugin()],
+      define: mainDefine,
+      resolve: {
+        alias: { '@shared': resolve('src/shared') }
+      }
+    },
+    preload: {
+      plugins: [externalizeDepsPlugin()],
+      define,
+      resolve: {
+        alias: { '@shared': resolve('src/shared') }
+      }
+    },
+    renderer: {
+      plugins: [react()],
+      define,
+      resolve: {
+        alias: {
+          '@shared': resolve('src/shared'),
+          '@renderer': resolve('src/renderer/src')
+        }
       }
     }
   }

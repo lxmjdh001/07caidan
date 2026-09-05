@@ -49,7 +49,9 @@ export function isLineGroup(src: LineSource): boolean {
  * 群聊（C/R 开头）不代表自然人，不产生标识。
  */
 export function lineContactId(externalChatId: string, scope: string): string | undefined {
-  if (!externalChatId.startsWith('U')) return undefined
+  // linejs receives protocol MIDs in lower case, while the Official Account
+  // webhook API documents the same identifiers in upper case.
+  if (!/^[Uu]/.test(externalChatId)) return undefined
   return `line:${scope}:${externalChatId}`
 }
 

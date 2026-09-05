@@ -54,6 +54,10 @@ export function ConversationList({
   const [groupBusy, setGroupBusy] = useState(false)
   const [menuId, setMenuId] = useState<string | null>(null)
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
+  const supportsGroups = !!accountKey && (
+    accountKey.startsWith('whatsapp:') || accountKey.startsWith('telegram:')
+  )
+  const supportsAddContact = !!accountKey && accountKey.startsWith('whatsapp:')
 
   useEffect(() => {
     if (!menuId) return
@@ -86,9 +90,13 @@ export function ConversationList({
     })
   }, [conversations, filter, query])
 
-  const groupContacts = conversations.filter((conversation) =>
-    !conversation.isGroup && (!accountKey || `${conversation.channel}:${conversation.accountId}` === accountKey)
-  )
+  const groupContacts = conversations.filter((conversation) => {
+    if (conversation.isGroup) return false
+    if (accountKey && `${conversation.channel}:${conversation.accountId}` !== accountKey) return false
+    // Telegram 的广播频道同样以 g<id> 保存，但不能作为建群成员。
+    if (conversation.channel === 'telegram' && conversation.externalChatId.startsWith('g')) return false
+    return true
+  })
 
   const unreadCount = useMemo(
     () => conversations.reduce((sum, conversation) => sum + (conversation.unreadCount || 0), 0),
@@ -112,18 +120,18 @@ export function ConversationList({
           type="button"
           className="sidebar-add-btn"
           title={t('groups.new')}
-          disabled={!accountKey || !accountKey.startsWith('whatsapp:')}
+          disabled={!supportsGroups}
           onClick={() => setShowCreateMenu((visible) => !visible)}
         >
           <Plus size={20} />
         </button>
         {showCreateMenu && (
           <div className="sidebar-create-menu" role="menu">
-            <button type="button" role="menuitem" disabled={!accountKey || !accountKey.startsWith('whatsapp:')} onClick={() => { setShowCreateMenu(false); setShowGroupModal(true) }}>
+            <button type="button" role="menuitem" disabled={!supportsGroups} onClick={() => { setShowCreateMenu(false); setShowGroupModal(true) }}>
               <UsersRound size={17} />
               {t('groups.new')}
             </button>
-            <button type="button" role="menuitem" disabled={!accountKey || !accountKey.startsWith('whatsapp:')} onClick={() => { setShowCreateMenu(false); setShowAddContactInfo(true) }}>
+            <button type="button" role="menuitem" disabled={!supportsAddContact} onClick={() => { setShowCreateMenu(false); setShowAddContactInfo(true) }}>
               <UserRoundPlus size={17} />
               {t('contacts.add')}
             </button>
@@ -160,7 +168,7 @@ export function ConversationList({
           <button
             type="button"
             className={filter === 'groups' ? 'on' : ''}
-            disabled={!accountKey || !accountKey.startsWith('whatsapp:')}
+            disabled={!supportsGroups}
             onClick={() => {
               setFilter('groups')
               void onRefreshGroups()

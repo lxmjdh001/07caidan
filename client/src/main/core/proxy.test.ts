@@ -2,7 +2,19 @@ import { HttpsProxyAgent } from 'https-proxy-agent'
 import { SocksProxyAgent } from 'socks-proxy-agent'
 import { Agent as UndiciAgent, ProxyAgent } from 'undici'
 import { describe, expect, it } from 'vitest'
-import { createDispatcher, createProxyAgent, createSocksProxyConfig, withDispatcher } from './proxy'
+import {
+  createDispatcher,
+  createProxyAgent,
+  createRequiredDispatcher,
+  createRequiredProxyAgent,
+  createRequiredSocksProxyConfig,
+  createSocksProxyConfig,
+  normalizeProxyForAccount,
+  normalizeProxyUrl,
+  proxyHash,
+  redactProxyUrl,
+  withDispatcher
+} from './proxy'
 
 describe('createProxyAgent', () => {
   it('空值/空串/空白 → 不使用代理', () => {
@@ -15,6 +27,11 @@ describe('createProxyAgent', () => {
     expect(createProxyAgent('socks5://127.0.0.1:1080')).toBeInstanceOf(SocksProxyAgent)
     expect(createProxyAgent('socks4://127.0.0.1:1080')).toBeInstanceOf(SocksProxyAgent)
     expect(createProxyAgent('socks5://user:pass@10.0.0.1:7890')).toBeInstanceOf(SocksProxyAgent)
+  })
+
+  it('SOCKS 目标域名始终交给代理端解析，避免本机 DNS 泄漏', () => {
+    expect((createProxyAgent('socks5://127.0.0.1:1080') as SocksProxyAgent).shouldLookup).toBe(false)
+    expect((createProxyAgent('socks4://127.0.0.1:1080') as SocksProxyAgent).shouldLookup).toBe(false)
   })
 
   it('http/https → HttpsProxyAgent', () => {
@@ -86,11 +103,11 @@ describe('createSocksProxyConfig（Telegram MTProto SOCKS）', () => {
   })
 
   it('提取账号密码与端口', () => {
-    expect(createSocksProxyConfig('socks5://u:p@10.0.0.1:7890')).toMatchObject({
+    expect(createSocksProxyConfig('socks5://u:p%40ss@10.0.0.1:7890')).toMatchObject({
       ip: '10.0.0.1',
       port: 7890,
       username: 'u',
-      password: 'p'
+      password: 'p@ss'
     })
   })
 
@@ -102,5 +119,51 @@ describe('createSocksProxyConfig（Telegram MTProto SOCKS）', () => {
   it('非法 URL 抛错；socks 缺端口抛错', () => {
     expect(() => createSocksProxyConfig('not a url')).toThrow('格式非法')
     expect(() => createSocksProxyConfig('socks5://1.2.3.4')).toThrow('缺少主机或端口')
+  })
+})
+
+describe('严格账号代理策略', () => {
+  it('规范化代理并保留认证信息', () => {
+    expect(normalizeProxyUrl(' socks5://user:p%40ss@127.0.0.1:1080 ')).toBe(
+      'socks5://user:p%40ss@127.0.0.1:1080'
+    )
+    expect(normalizeProxyUrl('https://proxy.example.com:443')).toBe(
+      'https://proxy.example.com:443'
+    )
+    expect(normalizeProxyUrl('104.253.219.116:6525')).toBe(
+      'socks5://104.253.219.116:6525'
+    )
+    expect(normalizeProxyUrl('104.253.219.116:6525:mrwkbezq:dqigh7rc61dg')).toBe(
+      'socks5://mrwkbezq:dqigh7rc61dg@104.253.219.116:6525'
+    )
+  })
+
+  it('空值、路径和不支持协议一律拒绝', () => {
+    expect(() => normalizeProxyUrl('')).toThrow('不会回落')
+    expect(() => normalizeProxyUrl('ftp://127.0.0.1:21')).toThrow('不支持')
+    expect(() => normalizeProxyUrl('http://127.0.0.1:8080/path')).toThrow('不能包含路径')
+  })
+
+  it('Telegram 普通账号只允许 SOCKS，避免 HTTP 配置被 GramJS 忽略后直连', () => {
+    expect(() => normalizeProxyForAccount('telegram:a1', 'http://127.0.0.1:8080')).toThrow('仅支持')
+    expect(normalizeProxyForAccount('telegram:a1', 'socks5://127.0.0.1:1080')).toBe(
+      'socks5://127.0.0.1:1080'
+    )
+    expect(normalizeProxyForAccount('telegram_bot:a1', 'http://127.0.0.1:8080')).toBe(
+      'http://127.0.0.1:8080'
+    )
+  })
+
+  it('required 工厂缺代理时 fail-closed', () => {
+    expect(() => createRequiredProxyAgent(undefined)).toThrow('阻止直连')
+    expect(() => createRequiredDispatcher('')).toThrow('阻止直连')
+    expect(() => createRequiredSocksProxyConfig('http://127.0.0.1:8080')).toThrow('仅支持')
+  })
+
+  it('摘要稳定且日志脱敏', () => {
+    expect(proxyHash('http://user:pass@127.0.0.1:8080')).toBe(
+      proxyHash(' http://user:pass@127.0.0.1:8080 ')
+    )
+    expect(redactProxyUrl('http://user:pass@127.0.0.1:8080')).toBe('http://***@127.0.0.1:8080')
   })
 })

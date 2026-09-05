@@ -13,8 +13,17 @@ export const conversations = sqliteTable(
     channel: text('channel').notNull(),
     accountId: text('account_id').notNull(),
     contactId: text('contact_id'),
+    publicId: text('public_id'),
+    avatarMediaId: text('avatar_media_id'),
     title: text('title').notNull(),
     isGroup: integer('is_group').notNull().default(0),
+    detectedLang: text('detected_lang'),
+    langOverride: text('lang_override'),
+    autoReply: integer('auto_reply').notNull().default(0),
+    pinned: integer('pinned').notNull().default(0),
+    muted: integer('muted').notNull().default(0),
+    customerNote: text('customer_note').notNull().default(''),
+    lastMessagePreview: text('last_message_preview').notNull().default(''),
     /** 投放来源标识（广告 id 或追踪码），客户端归因后同步上来 */
     leadSourceCode: text('lead_source_code'),
     /** 归因方式：ad = 平台广告上下文，code = 预填文案追踪码 */
@@ -23,6 +32,53 @@ export const conversations = sqliteTable(
     updatedAt: integer('updated_at').notNull()
   },
   (t) => [primaryKey({ columns: [t.tenant, t.id] }), index('idx_conv_contact').on(t.tenant, t.contactId)]
+)
+
+/** 同一坐席账号在多台电脑之间共享已读位置；不同客服仍保留各自未读状态。 */
+export const conversationReads = sqliteTable(
+  'conversation_reads',
+  {
+    tenant: text('tenant').notNull(),
+    userId: integer('user_id').notNull(),
+    conversationId: text('conversation_id').notNull(),
+    readAt: integer('read_at').notNull(),
+    updatedAt: integer('updated_at').notNull()
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenant, t.userId, t.conversationId] }),
+    index('idx_conversation_reads_sync').on(t.tenant, t.userId, t.updatedAt, t.conversationId)
+  ]
+)
+
+/**
+ * 客户工作区账号目录。只存可漫游的账号壳，不存代理、指纹、平台凭证或登录会话。
+ * deleted 是墓碑，防止离线旧电脑把已删除账号重新创建出来。
+ */
+export const workspaceAccounts = sqliteTable(
+  'workspace_accounts',
+  {
+    tenant: text('tenant').notNull(),
+    accountKey: text('account_key').notNull(),
+    channel: text('channel').notNull(),
+    accountId: text('account_id').notNull(),
+    label: text('label'),
+    defaultLang: text('default_lang'),
+    deleted: integer('deleted').notNull().default(0),
+    updatedAt: integer('updated_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.accountKey] })]
+)
+
+/** 多设备并发副作用的幂等占位（目前用于保证一条来信只触发一次 AI 自动回复）。 */
+export const syncClaims = sqliteTable(
+  'sync_claims',
+  {
+    tenant: text('tenant').notNull(),
+    purpose: text('purpose').notNull(),
+    claimKey: text('claim_key').notNull(),
+    createdAt: integer('created_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.purpose, t.claimKey] })]
 )
 
 /** 租户级后台配置（如工单分享域名） */
@@ -53,11 +109,14 @@ export const messages = sqliteTable(
     durationSec: integer('duration_sec'),
     translationText: text('translation_text'),
     translationLang: text('translation_lang'),
-    timestamp: integer('timestamp').notNull()
+    timestamp: integer('timestamp').notNull(),
+    /** 服务端写入/补全译文的时间，用于桌面端增量回填。 */
+    updatedAt: integer('updated_at').notNull()
   },
   (t) => [
     primaryKey({ columns: [t.tenant, t.externalId] }),
-    index('idx_messages_conv').on(t.tenant, t.conversationId, t.timestamp)
+    index('idx_messages_conv').on(t.tenant, t.conversationId, t.timestamp),
+    index('idx_messages_sync').on(t.tenant, t.updatedAt, t.externalId)
   ]
 )
 
@@ -191,6 +250,188 @@ export const lineEvents = sqliteTable('line_events', {
 }, (t) => [index('idx_line_events').on(t.tenant, t.accountId)])
 
 /**
+ * Meta 授权后的业务资产。accessToken 是 AES-256-GCM 密文，桌面端永不读取。
+ * ownerId 让同一租户下不同老板/团队不能互相操作对方的 Page 或 IG 账号。
+ */
+export const metaAccounts = sqliteTable('meta_accounts', {
+  tenant: text('tenant').notNull(),
+  ownerId: integer('owner_id').notNull().default(0),
+  channel: text('channel').notNull(),
+  accountId: text('account_id').notNull(),
+  assetId: text('asset_id').notNull(),
+  pageId: text('page_id').notNull(),
+  displayName: text('display_name').notNull(),
+  handle: text('handle'),
+  avatarUrl: text('avatar_url'),
+  accessToken: text('access_token').notNull(),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull()
+}, (t) => [
+  primaryKey({ columns: [t.tenant, t.ownerId, t.channel, t.accountId] }),
+  index('idx_meta_accounts_asset').on(t.channel, t.assetId),
+  index('idx_meta_accounts_page').on(t.channel, t.pageId)
+])
+
+/** Meta OAuth 临时状态；授权完成或 15 分钟过期后删除。data 同样是密文。 */
+export const metaOauthStates = sqliteTable('meta_oauth_states', {
+  state: text('state').primaryKey(),
+  tenant: text('tenant').notNull(),
+  ownerId: integer('owner_id').notNull().default(0),
+  channel: text('channel').notNull(),
+  accountId: text('account_id').notNull(),
+  status: text('status').notNull().default('authorizing'),
+  error: text('error'),
+  data: text('data').notNull().default(''),
+  expiresAt: integer('expires_at').notNull(),
+  createdAt: integer('created_at').notNull()
+}, (t) => [index('idx_meta_oauth_account').on(t.tenant, t.ownerId, t.channel, t.accountId)])
+
+/** Meta Webhook 原始事件队列；桌面适配器拉取后删除，离线期间仍可保留消息。 */
+export const metaEvents = sqliteTable('meta_events', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  tenant: text('tenant').notNull(),
+  ownerId: integer('owner_id').notNull().default(0),
+  channel: text('channel').notNull(),
+  accountId: text('account_id').notNull(),
+  payload: text('payload').notNull(),
+  createdAt: integer('created_at').notNull()
+}, (t) => [index('idx_meta_events').on(t.tenant, t.ownerId, t.channel, t.accountId)])
+
+/** TikTok Business Messaging 授权账号；两种令牌都只以 AES-256-GCM 密文落服务器。 */
+export const tiktokAccounts = sqliteTable('tiktok_accounts', {
+  tenant: text('tenant').notNull(),
+  ownerId: integer('owner_id').notNull().default(0),
+  accountId: text('account_id').notNull(),
+  businessId: text('business_id').notNull(),
+  displayName: text('display_name').notNull(),
+  handle: text('handle'),
+  avatarUrl: text('avatar_url'),
+  accessToken: text('access_token').notNull(),
+  refreshToken: text('refresh_token').notNull(),
+  accessTokenExpiresAt: integer('access_token_expires_at').notNull(),
+  refreshTokenExpiresAt: integer('refresh_token_expires_at').notNull(),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull()
+}, (t) => [
+  primaryKey({ columns: [t.tenant, t.ownerId, t.accountId] }),
+  index('idx_tiktok_accounts_business').on(t.businessId)
+])
+
+/** TikTok OAuth 一次性 state，15 分钟过期。 */
+export const tiktokOauthStates = sqliteTable('tiktok_oauth_states', {
+  state: text('state').primaryKey(),
+  tenant: text('tenant').notNull(),
+  ownerId: integer('owner_id').notNull().default(0),
+  accountId: text('account_id').notNull(),
+  status: text('status').notNull().default('authorizing'),
+  error: text('error'),
+  expiresAt: integer('expires_at').notNull(),
+  createdAt: integer('created_at').notNull()
+}, (t) => [index('idx_tiktok_oauth_account').on(t.tenant, t.ownerId, t.accountId)])
+
+/** TikTok Webhook 事件队列；客户端离线时先留在主库，成功拉取后删除。 */
+export const tiktokEvents = sqliteTable('tiktok_events', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  tenant: text('tenant').notNull(),
+  ownerId: integer('owner_id').notNull().default(0),
+  accountId: text('account_id').notNull(),
+  payload: text('payload').notNull(),
+  createdAt: integer('created_at').notNull()
+}, (t) => [index('idx_tiktok_events').on(t.tenant, t.ownerId, t.accountId)])
+
+/** X OAuth 2.0 授权账号；令牌只以 AES-256-GCM 密文留在主库。 */
+export const xAccounts = sqliteTable('x_accounts', {
+  tenant: text('tenant').notNull(),
+  ownerId: integer('owner_id').notNull().default(0),
+  accountId: text('account_id').notNull(),
+  userId: text('user_id').notNull(),
+  displayName: text('display_name').notNull(),
+  handle: text('handle'),
+  avatarUrl: text('avatar_url'),
+  accessToken: text('access_token').notNull(),
+  refreshToken: text('refresh_token').notNull(),
+  accessTokenExpiresAt: integer('access_token_expires_at').notNull(),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull()
+}, (t) => [
+  primaryKey({ columns: [t.tenant, t.ownerId, t.accountId] }),
+  index('idx_x_accounts_user').on(t.userId)
+])
+
+/** X PKCE OAuth 一次性状态。 */
+export const xOauthStates = sqliteTable('x_oauth_states', {
+  state: text('state').primaryKey(),
+  tenant: text('tenant').notNull(),
+  ownerId: integer('owner_id').notNull().default(0),
+  accountId: text('account_id').notNull(),
+  codeVerifier: text('code_verifier').notNull(),
+  status: text('status').notNull().default('authorizing'),
+  error: text('error'),
+  expiresAt: integer('expires_at').notNull(),
+  createdAt: integer('created_at').notNull()
+}, (t) => [index('idx_x_oauth_account').on(t.tenant, t.ownerId, t.accountId)])
+
+/** Snapchat 品牌 Public Profile 授权账号。 */
+export const snapchatAccounts = sqliteTable('snapchat_accounts', {
+  tenant: text('tenant').notNull(),
+  ownerId: integer('owner_id').notNull().default(0),
+  accountId: text('account_id').notNull(),
+  profileId: text('profile_id').notNull(),
+  displayName: text('display_name').notNull(),
+  handle: text('handle'),
+  avatarUrl: text('avatar_url'),
+  accessToken: text('access_token').notNull(),
+  refreshToken: text('refresh_token').notNull(),
+  accessTokenExpiresAt: integer('access_token_expires_at').notNull(),
+  createdAt: integer('created_at').notNull(),
+  updatedAt: integer('updated_at').notNull()
+}, (t) => [
+  primaryKey({ columns: [t.tenant, t.ownerId, t.accountId] }),
+  index('idx_snapchat_accounts_profile').on(t.profileId)
+])
+
+/** Snapchat OAuth 一次性状态。 */
+export const snapchatOauthStates = sqliteTable('snapchat_oauth_states', {
+  state: text('state').primaryKey(),
+  tenant: text('tenant').notNull(),
+  ownerId: integer('owner_id').notNull().default(0),
+  accountId: text('account_id').notNull(),
+  status: text('status').notNull().default('authorizing'),
+  error: text('error'),
+  expiresAt: integer('expires_at').notNull(),
+  createdAt: integer('created_at').notNull()
+}, (t) => [index('idx_snapchat_oauth_account').on(t.tenant, t.ownerId, t.accountId)])
+
+/** Snapchat 官方接口不提供会话列表，已指定的创作者会话需由服务器持久化。 */
+export const snapchatConversations = sqliteTable('snapchat_conversations', {
+  tenant: text('tenant').notNull(),
+  ownerId: integer('owner_id').notNull().default(0),
+  accountId: text('account_id').notNull(),
+  conversationId: text('conversation_id').notNull(),
+  conversationToken: text('conversation_token').notNull(),
+  creatorProfileId: text('creator_profile_id').notNull(),
+  creatorName: text('creator_name').notNull(),
+  creatorHandle: text('creator_handle'),
+  avatarUrl: text('avatar_url'),
+  updatedAt: integer('updated_at').notNull()
+}, (t) => [
+  primaryKey({ columns: [t.tenant, t.ownerId, t.accountId, t.conversationId] }),
+  index('idx_snapchat_conversations_creator').on(t.tenant, t.ownerId, t.accountId, t.creatorProfileId)
+])
+
+/** 记录本系统发出的 Snapchat 消息，供轮询历史时可靠判定方向。 */
+export const snapchatSentMessages = sqliteTable('snapchat_sent_messages', {
+  tenant: text('tenant').notNull(),
+  ownerId: integer('owner_id').notNull().default(0),
+  accountId: text('account_id').notNull(),
+  messageId: text('message_id').notNull(),
+  createdAt: integer('created_at').notNull()
+}, (t) => [
+  primaryKey({ columns: [t.tenant, t.ownerId, t.accountId, t.messageId] }),
+  index('idx_snapchat_sent_created').on(t.createdAt)
+])
+
+/**
  * 工单（引流任务）：一组账号 + 起止时间 + 判重规则。
  * 统计结果不落库，按需从 conversations/messages 现算（见 CampaignRepo）。
  */
@@ -211,6 +452,8 @@ export const campaigns = sqliteTable(
     /** 公开分享页访问密码开关；密码本身只保存哈希 */
     accessPasswordEnabled: integer('access_password_enabled').notNull().default(0),
     accessPasswordHash: text('access_password_hash'),
+    /** 是否允许分享页查看粉丝详情与进粉趋势；旧工单默认保持允许。 */
+    allowFanData: integer('allow_fan_data').notNull().default(1),
     /** JSON 字符串：accountId → 该账号目标数 */
     accountTargets: text('account_targets').notNull().default('{}'),
     accountTargetsManual: integer('account_targets_manual').notNull().default(0),
@@ -269,7 +512,7 @@ export const fanLibraries = sqliteTable(
     tenant: text('tenant').notNull(),
     id: text('id').notNull(),
     name: text('name').notNull(),
-    /** whatsapp / telegram / telegram_bot / line */
+    /** whatsapp / telegram / telegram_bot / line / kakaotalk / facebook / instagram / tiktok / x / snapchat */
     channel: text('channel').notNull(),
     /** export=从系统历史数据导出，import=外部导入 */
     source: text('source').notNull(),

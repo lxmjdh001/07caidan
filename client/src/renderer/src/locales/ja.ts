@@ -2,6 +2,7 @@ import type { MessageKey } from './zh-CN'
 
 /** 日本語 */
 export const ja: Partial<Record<MessageKey, string>> = {
+  'account.proxyConfig': 'プロキシ設定',
   'chat.intentHigh': '意欲 高',
   'chat.intentMedium': '意欲 中',
   // ── 補完（約200件、ビジネス日本語）──
@@ -233,7 +234,7 @@ export const ja: Partial<Record<MessageKey, string>> = {
   'chat.previewLabel': '送信プレビュー',
   'chat.confirmSend': '確認して送信',
   'channel.whatsapp': 'WhatsApp',
-  'channel.telegram': 'Telegram（近日対応）',
+  'channel.telegram': 'Telegram',
   'channel.line': 'LINE（近日対応）',
   'rail.allChats': 'すべてのメッセージ',
   'rail.accounts': 'アカウント',
@@ -248,6 +249,8 @@ export const ja: Partial<Record<MessageKey, string>> = {
   'account.deviceAuto': '自動（アカウントごとに異なる）',
   'account.deviceHint': '「リンク済みデバイス」に表示される名前。アカウントごとに分離されます。変更は再ログイン後に反映。',
   'account.saveConnect': '保存して接続',
+  'account.oauthConnect': 'ウェブ認証して接続',
+  'account.oauthHint': '下のボタンから公式ログインページで認証します。パスワードとアクセストークンはこの端末に保存されません。',
   'account.advanced': '詳細設定（通常は変更不要）',
   'campaign.title': '集客タスク',
   'campaign.tabCampaigns': 'タスク',
@@ -336,6 +339,7 @@ export const ja: Partial<Record<MessageKey, string>> = {
   'picker.title': '追加するプラットフォームを選択',
   'picker.qr': 'QR ログイン',
   'picker.credentials': '認証情報',
+  'picker.oauth': 'ウェブ認証',
   'status.need_credentials': '認証情報が必要です',
   'status.waiting_phone': '電話番号の入力待ち',
   'status.waiting_code': '認証コードの入力待ち',
@@ -422,8 +426,8 @@ export const ja: Partial<Record<MessageKey, string>> = {
   'settings.customKey': 'API Key（任意）',
   'settings.customHint': '仕様：POST JSON {"text","target_lang"} → {"text","source_lang"?}',
   'settings.account': 'アカウント',
-  'settings.proxy': 'プロキシ（socks5:// または http://、空欄で直接接続）',
-  'settings.proxyHint': '次回の再接続時に適用されます',
+  'settings.proxy': 'アカウント専用プロキシ（ログイン前に必須）',
+  'settings.proxyHint': '保存時に出口を確認し、切断時は直結せず直ちに隔離します',
   'settings.logout': 'ログアウト',
   'settings.logoutConfirm': 'ログアウトしますか？ローカルの認証情報は削除されます。',
   'settings.removeAccount': 'アカウントを削除',

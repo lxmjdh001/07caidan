@@ -13,6 +13,7 @@ export const whatsAppPlugin: ChannelPlugin = {
       logger: ctx.logger,
       getProxyUrl: () => ctx.getAccountConfig().proxyUrl,
       getDeviceLabel: () => ctx.getAccountConfig().deviceLabel,
+      getFingerprintSeed: () => ctx.getAccountConfig().fingerprint?.seed,
       saveMedia: ctx.saveMedia
     })
   }

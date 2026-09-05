@@ -1,58 +1,80 @@
-# 部署到生产服务器
+# 生产部署
 
-目标：`www.wzzapp.cloud`（官网首页）、`wzzapp.cloud`（API + 公开引流看板）、`admin.wzzapp.cloud`（管理后台）。
-后端只绑回环 `127.0.0.1:8787`，外网经 Caddy 反代终止 TLS。
+唯一代码仓库：`git@github.com:lxmjdh001/07caidan.git`。
 
-> **不必等我解封也能上线**：我的公网 IP 被服务器 fail2ban 挡在 SSH 握手前（端口通、握手被拒），
-> 但**你自己的机器不受影响**。在你本地按下面两步即可完成部署，无需先给我放行。
+- 本地开发使用 SSH `origin` 提交、拉取和推送。
+- 服务器使用同一仓库的只读 HTTPS 地址，工作树固定为 `/opt/omnichat/repo`。
+- 生产分支为 `main`，更新只允许 `fast-forward`，服务器不会覆盖未提交改动。
+- 数据库、媒体、更新包位于 `/var/lib/omnichat`，生产密钥位于
+  `/etc/omnichat/omnichat.env`；这些内容不进入 Git。
 
-## 首次准备（一次性）
+## 日常更新
 
-只需放好环境变量；**Node/编译工具/Caddy 的安装已并入 deploy.sh 自动完成**（首次自动 bootstrap）。
+先在本地提交并推送：
 
 ```bash
-# 放好环境变量（照模板填强密码/令牌）
-scp deploy/omnichat.env.example root@187.77.129.250:/etc/omnichat/omnichat.env
-#   然后编辑该文件，填 OMNI_ADMIN_PASSWORD / OMNI_TOKENS（其余按需）
+git add -A
+git commit -m "描述本次修改"
+git push origin main
 ```
 
-> 若 SSH 完全连不上（如 fail2ban 封了你的 IP），先把 `deploy/bootstrap.sh` 内容贴进
-> 服务器厂商的 VNC/控制台跑一次，再从能连的机器跑 deploy.sh。
-
-## 部署 / 更新（本地仓库根运行，幂等）
+再从仓库根目录部署：
 
 ```bash
 deploy/deploy.sh
-# 覆盖默认 SSH 目标：OMNI_SSH=root@1.2.3.4 deploy/deploy.sh
 ```
 
-脚本做：检查前置 → rsync 后端到 `/opt/omnichat/server` → `npm install --omit=dev` →
-本地 `BRAND=prod` 构建 admin 并同步到 `/var/www/omnichat-admin` → 同步 `website/` 到 `/var/www/omnichat-site` → 装 systemd 单元与 Caddyfile →
-重启 `omnichat` 与 `caddy` → 健康检查 `/health`。
+脚本会先确认本地 `HEAD` 已经推送，然后只建立一次 SSH 连接。服务器将：
 
-官网的下载按钮会根据访问者系统自动选择 Windows x64、macOS Apple 芯片或 macOS Intel 版本，同时保留其他版本入口。下载文件位于 `/downloads/`。部署前可在 macOS 上构建客户端：
+1. 首次自动安装 Git/Node 22/编译工具/Caddy，并克隆仓库；
+2. 后续从 `origin/main` 执行 `pull --ff-only`；
+3. 安装后端生产依赖并在服务器构建管理后台；
+4. 从该提交发布官网、systemd 服务和 Caddy 配置；
+5. 重启服务并检查 `/health`。
+
+可覆盖默认目标：
+
+```bash
+OMNI_SSH=root@1.2.3.4 deploy/deploy.sh
+OMNI_GIT_BRANCH=staging deploy/deploy.sh
+```
+
+## 首次环境配置
+
+真实配置只放服务器：
+
+```bash
+scp deploy/omnichat.env.example root@187.77.129.250:/etc/omnichat/omnichat.env
+ssh root@187.77.129.250 'chmod 600 /etc/omnichat/omnichat.env'
+```
+
+然后编辑 `/etc/omnichat/omnichat.env`，至少替换管理员密码和同步令牌。
+
+## 域名与目录
+
+- `https://wzzapp.cloud`：API 与公开分享页
+- `https://www.wzzapp.cloud`：官网与安装包下载
+- `https://admin.wzzapp.cloud`：管理后台
+- `/opt/omnichat/repo`：GitHub 生产工作树
+- `/var/lib/omnichat`：数据库、媒体与更新包
+- `/var/www/omnichat-admin`：管理后台构建产物
+- `/var/www/omnichat-site`：官网静态文件（部署时保留 `downloads/`）
+
+## 客户端安装包
+
+客户端仍需在对应操作系统打包；安装包是构建产物，不提交 Git：
 
 ```bash
 cd client
-BRAND=default npm run dist
-cd ..
-deploy/deploy.sh
+BRAND=prod UPDATE_URL=https://wzzapp.cloud/updates npm run dist
 ```
 
-脚本会自动把 `OmniChat-*.dmg`、`OmniChat Setup *.exe` 及更新元数据同步到 `https://www.wzzapp.cloud/downloads/`。
+`OMNI_TG_API_ID` 与 `OMNI_TG_API_HASH` 放在被 Git 忽略的
+`client/.env.production.local`，不要写入源码或提交仓库。
 
-## 客户端打包（对接生产域名）
+## 安全约束
 
-`branding/prod.json` 的 `apiUrl` 已指向 `https://wzzapp.cloud`：
-
-```bash
-cd client && BRAND=prod npm run build      # 产物 out/ 内已烘入 https://wzzapp.cloud
-# 再按平台走 electron-builder 出安装包
-```
-
-## 安全须知（务必）
-
-- **改 root 密码 + 换 SSH 密钥登录**（密码此前明文传过）。
-- `OMNI_TRUST_PROXY=true` 仅在后端绑回环 + 只有 Caddy 能连时才安全——本配置即如此。
-  若把后端直接暴露公网，须关掉，否则地区限制的 `X-Forwarded-For` 可被伪造。
-- `omnichat.env` 含密码/令牌，**不要提交进仓库**（仓库只放 `.example`）。
+- 优先使用 SSH 密钥登录服务器，并更换曾明文传递过的密码。
+- 不提交 `.env`、会话文件、代理密码、数据库、媒体或安装包。
+- 后端只监听 `127.0.0.1:8787`，公网统一经 Caddy 终止 TLS。
+- 若以后把 GitHub 仓库改为私有仓库，应给服务器配置只读 Deploy Key，不能放个人令牌。

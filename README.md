@@ -3,9 +3,9 @@
 多平台聚合聊天 + 双向自动翻译，面向跨境客服场景的一整套系统。前后端分离，三个独立包：
 
 ```
-ai-chat/
+07caidan/
 ├── client/   桌面客户端（Electron + React 19，Win/Mac）
-│             聚合 WhatsApp/Telegram/LINE 会话，双向自动翻译，多账号+代理隔离
+│             聚合 WhatsApp/Telegram/LINE/KakaoTalk/Messenger/Instagram/TikTok/X/Snapchat，会话双向翻译
 ├── server/   后台 API 服务（Fastify 5 + Drizzle ORM + SQLite）
 │             聊天记录归档、查询、按需 AI 客户意向分析（Claude）
 └── admin/    管理后台前端（React 19 + Vite，前后端分离）
@@ -14,8 +14,13 @@ ai-chat/
 
 ## 核心架构原则
 
-**平台连接跑在客户端本地。** 每个用户用自己的电脑、自己的 IP（或自定义代理）连接聊天平台，
-避免所有账号从同一服务端 IP 出口导致的批量封号；加密设备身份与代理按账号隔离。
+WhatsApp、Telegram、LINE、KakaoTalk 的个人账号连接跑在客户端本地，并按账号隔离设备身份与代理。
+Facebook Messenger 与 Instagram 采用 Meta 官方 OAuth + Graph API：应用凭证和加密访问令牌只在服务器，
+客户只需在官方网页授权，桌面端不会接触 App Secret 或 Page/Instagram Token。
+TikTok 采用官方 API for Business：企业号网页授权、自动续期、私信 Webhook 与消息 API 都由服务器托管，
+access/refresh token 加密入主库，换电脑后自动恢复账号与历史。
+X 采用官方 OAuth 2.0 PKCE 与 Direct Messages API；Snapchat 采用官方 Public Profile Messaging，
+仅支持获准入品牌公共主页与创作者之间的合作消息，两者的令牌和会话同样保存在服务器主库。
 
 聊天记录由客户端**批量定时同步**到后台（含译文、可选媒体），后台按客户唯一标识（手机号）
 跨账号聚合，供查询与按需 AI 意向分析。
@@ -41,6 +46,10 @@ cd admin && npm install && npm run dev                       # :5180
 - 客户端：见 [client/README.md](./client/README.md)
 - 后台服务：见 [server/README.md](./server/README.md)
 - 路线图：见 [TODO.md](./TODO.md)
+- Meta Messenger / Instagram 部署：见 [docs/meta-integration.md](./docs/meta-integration.md)
+- TikTok Business Messaging 部署：见 [docs/tiktok-integration.md](./docs/tiktok-integration.md)
+- X / Snapchat 部署与能力边界：见 [docs/x-snapchat-integration.md](./docs/x-snapchat-integration.md)
+- GitHub 与生产部署：见 [deploy/README.md](./deploy/README.md)
 
 ## 技术栈
 
@@ -52,5 +61,5 @@ cd admin && npm install && npm run dev                       # :5180
 
 ## 风险声明
 
-WhatsApp 等通道基于非官方协议，违反平台服务条款，存在封号风险。使用专用号码、控制频率，
-商用场景建议评估官方 API。
+WhatsApp 与 KakaoTalk 通道基于非官方协议，存在兼容性与账号限制风险。Messenger、Instagram、
+TikTok、X 与 Snapchat 使用官方接口，但必须通过对应平台的应用审核、付费层级和账号资格检查。

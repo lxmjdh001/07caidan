@@ -60,11 +60,38 @@ describe('Repo', () => {
     assert.equal(repo.listMessages('t1', 'whatsapp:main:42@lid').length, 1)
   })
 
+  test('公开账号 ID 写入并随会话读取', () => {
+    repo.ingest('t1', payload({
+      conversations: [{
+        id: 'line:main:u123',
+        channel: 'line',
+        accountId: 'main',
+        title: 'LINE',
+        publicId: '@line',
+        isGroup: false,
+        lastMessageAt: 1000
+      }]
+    }))
+    assert.equal(repo.listConversations('t1')[0]?.publicId, '@line')
+  })
+
   test('相同 externalId 幂等去重，重复上传不增加消息', () => {
     repo.ingest('t1', payload({ messages: [msg({ externalId: 'DUP', text: 'a' })] }))
     const r = repo.ingest('t1', payload({ messages: [msg({ externalId: 'DUP', text: 'a' })] }))
     assert.equal(r.messages, 0)
     assert.equal(repo.listMessages('t1', 'whatsapp:main:42@lid').length, 1)
+  })
+
+  test('服务端消息流用复合游标分页，不会漏掉同一批写入的消息', () => {
+    repo.ingest('t1', payload({ messages: [msg({ externalId: 'P1' }), msg({ externalId: 'P2' })] }))
+    const first = repo.pullMessages('t1', 0, '', 1)
+    assert.equal(first.length, 1)
+    assert.ok(first[0]!.syncUpdatedAt > 0)
+    const second = repo.pullMessages('t1', first[0]!.syncUpdatedAt, first[0]!.externalId, 10)
+    assert.equal(second.length, 1)
+    assert.notEqual(second[0]!.externalId, first[0]!.externalId)
+    const conversations = repo.conversationsForMessages('t1', [...first, ...second])
+    assert.deepEqual(conversations.map((c) => c.id), ['whatsapp:main:42@lid'])
   })
 
   test('租户隔离：t2 看不到 t1 的数据', () => {

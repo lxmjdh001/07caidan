@@ -129,6 +129,20 @@ describe('冷却与并发', () => {
     expect(calls).toBe(2)
   })
 
+  it('服务器抢占失败时不生成：同一来信在另一台电脑已经处理', async () => {
+    let generated = 0
+    const { svc, sent } = makeService({
+      claim: async () => false,
+      generate: async () => {
+        generated++
+        return { text: '不应发送' }
+      }
+    })
+    await svc.onInbound(msg({ externalId: 'same-message' }), conv())
+    expect(generated).toBe(0)
+    expect(sent).toEqual([])
+  })
+
   it('最后一条不是客户消息时不回（客服刚说完话，别抢话）', async () => {
     const { svc, sent } = makeService({
       getMessages: async () => [msg(), msg({ direction: 'out', body: { type: 'text', text: '你好' } })]

@@ -2,6 +2,7 @@ import type { MessageKey } from './zh-CN'
 
 /** Bahasa Melayu */
 export const ms: Partial<Record<MessageKey, string>> = {
+  'account.proxyConfig': 'Tetapan proksi',
   // ── Pelengkap (~209 kunci, Bahasa Melayu) ──
   'chat.intentHigh': 'Niat tinggi',
   'chat.intentMedium': 'Niat sederhana',
@@ -233,7 +234,7 @@ export const ms: Partial<Record<MessageKey, string>> = {
   'chat.previewLabel': 'Pratonton hantaran',
   'chat.confirmSend': 'Sahkan & hantar',
   'channel.whatsapp': 'WhatsApp',
-  'channel.telegram': 'Telegram (akan datang)',
+  'channel.telegram': 'Telegram',
   'channel.line': 'LINE (akan datang)',
   'rail.allChats': 'Semua mesej',
   'rail.accounts': 'Akaun',
@@ -248,6 +249,8 @@ export const ms: Partial<Record<MessageKey, string>> = {
   'account.deviceAuto': 'Automatik (berbeza bagi setiap akaun)',
   'account.deviceHint': 'Nama yang dipaparkan dalam "Peranti Terpaut", diasingkan bagi setiap akaun. Log masuk semula untuk berkuat kuasa.',
   'account.saveConnect': 'Simpan & sambung',
+  'account.oauthConnect': 'Benarkan melalui web & sambung',
+  'account.oauthHint': 'Berikan kebenaran pada halaman log masuk rasmi. Kata laluan dan token akses tidak disimpan pada peranti ini.',
   'account.advanced': 'Tetapan lanjutan (jarang perlu diubah)',
   'campaign.title': 'Kempen',
   'campaign.tabCampaigns': 'Kempen',
@@ -336,6 +339,7 @@ export const ms: Partial<Record<MessageKey, string>> = {
   'picker.title': 'Pilih platform untuk ditambah',
   'picker.qr': 'Log masuk QR',
   'picker.credentials': 'Log masuk kunci',
+  'picker.oauth': 'Kebenaran web',
   'status.need_credentials': 'Perlu maklumat kelayakan',
   'status.waiting_phone': 'Menunggu nombor telefon',
   'status.waiting_code': 'Menunggu kod pengesahan',
@@ -422,8 +426,8 @@ export const ms: Partial<Record<MessageKey, string>> = {
   'settings.customKey': 'API Key (pilihan)',
   'settings.customHint': 'Kontrak: POST JSON {"text","target_lang"} → {"text","source_lang"?}',
   'settings.account': 'Akaun',
-  'settings.proxy': 'Proksi (socks5:// atau http://, kosong = sambungan terus)',
-  'settings.proxyHint': 'Berkuat kuasa pada sambungan semula berikutnya',
+  'settings.proxy': 'Proksi khusus akaun (wajib sebelum log masuk)',
+  'settings.proxyHint': 'Laluan keluar diuji semasa simpan; jika terputus akaun diasingkan tanpa sambungan terus',
   'settings.logout': 'Log keluar',
   'settings.logoutConfirm': 'Log keluar? Maklumat kelayakan setempat akan dipadam.',
   'settings.removeAccount': 'Buang akaun',

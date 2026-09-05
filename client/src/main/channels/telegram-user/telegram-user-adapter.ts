@@ -5,10 +5,16 @@ import { Api, TelegramClient } from 'telegram'
 import { NewMessage, type NewMessageEvent } from 'telegram/events/index.js'
 import { StringSession } from 'telegram/sessions/index.js'
 import type { ChannelStatus, UnifiedMessage } from '@shared/domain'
-import { ChannelAdapter, type OutboundMedia, type OutboundResult } from '../../core/channel-adapter'
+import {
+  ChannelAdapter,
+  type GroupSummary,
+  type OutboundMedia,
+  type OutboundResult
+} from '../../core/channel-adapter'
 import { noopLogger, type Logger } from '../../core/logger'
 import { extFromMime } from '../../core/mime'
-import { createSocksProxyConfig } from '../../core/proxy'
+import { createRequiredSocksProxyConfig } from '../../core/proxy'
+import { telegramAuthRecovery } from './auth-error'
 import {
   chatIdToContactId,
   mapTgUserMessage,
@@ -45,6 +51,15 @@ interface PendingInput {
 }
 
 const MAX_MEDIA_BYTES = 100 * 1024 * 1024
+const RECENT_DIALOG_LIMIT = 200
+const ACTIVE_STATUSES = new Set<ChannelStatus>([
+  'connecting',
+  'waiting_qr',
+  'waiting_phone',
+  'waiting_code',
+  'waiting_password',
+  'connected'
+])
 
 /**
  * Telegram 普通账号适配器（MTProto / GramJS）。
@@ -74,6 +89,19 @@ export class TelegramUserAdapter extends ChannelAdapter {
   private phone = ''
   /** 登录方式；与官方客户端一致，默认扫码 */
   private loginMode: TgLoginMode = 'qr'
+  /**
+   * Telegram 只凭十进制 user id 不能向 API 换取完整用户资料，必须同时持有
+   * dialogs/update 返回的 access_hash。把最近会话实体缓存下来，昵称、公开用户名、
+   * 头像和发送消息都复用同一个真实实体，不能拿内部数字 ID 冒充资料。
+   */
+  private readonly entities = new Map<string, TgEntity>()
+  private readonly entityLookups = new Map<string, Promise<TgEntity | undefined>>()
+  private profileLoad: Promise<void> | undefined
+  /**
+   * 每次 start/stop 都推进代次。异步登录任务结束时必须仍是当前代次，
+   * 否则它属于已经断开的旧连接，不得覆盖新登录流程的状态。
+   */
+  private loginRun = 0
 
   constructor(opts: TelegramUserAdapterOptions) {
     super()
@@ -83,7 +111,11 @@ export class TelegramUserAdapter extends ChannelAdapter {
   }
 
   async start(): Promise<void> {
+    // startAll、账号点击和手动刷新可能几乎同时触发；同一登录流程只允许一个实例。
+    if (ACTIVE_STATUSES.has(this.status)) return
+    const run = ++this.loginRun
     this.stopping = false
+    const isCurrentRun = (): boolean => run === this.loginRun && !this.stopping
     const { apiId, apiHash } = this.opts.getApiCredentials()
     if (!apiId || !apiHash) {
       // 正常情况下走内置凭证，不该到这里；说明这个版本打包时没注入 OMNI_TG_API_ID
@@ -94,37 +126,75 @@ export class TelegramUserAdapter extends ChannelAdapter {
     }
 
     this.setState('connecting')
+    let client: TelegramClient | undefined
+    let authError: Error | undefined
+    let nextPromptDetail: string | undefined
     try {
+      // error 状态重试时先清理上一次失败留下的客户端，避免复用断开的 sender。
+      const previousClient = this.client
+      this.client = undefined
+      if (previousClient) {
+        try {
+          await previousClient.disconnect()
+        } catch {
+          // 旧连接本来就可能已经断开
+        }
+      }
+      if (!isCurrentRun()) return
+
       const session = new StringSession(this.opts.getSession() ?? '')
-      const proxy = createSocksProxyConfig(this.opts.getProxyUrl?.())
+      const proxy = createRequiredSocksProxyConfig(this.opts.getProxyUrl?.())
       const fp = this.opts.getDeviceFingerprint?.()
       if (proxy) this.log.info('使用代理连接', { ip: proxy.ip, port: proxy.port })
 
-      const client = new TelegramClient(session, apiId, apiHash, {
+      client = new TelegramClient(session, apiId, apiHash, {
         connectionRetries: 5,
         autoReconnect: true,
         // 多账号防关联：各账号上报不同设备标识
         deviceModel: fp?.deviceModel,
         systemVersion: fp?.systemVersion,
         appVersion: fp?.appVersion,
-        ...(proxy ? { proxy } : {})
+        proxy
       })
       this.client = client
 
       const password = async (hint?: string): Promise<string> => {
+        if (!isCurrentRun()) throw new Error('登录流程已更新')
+        const retryDetail = nextPromptDetail
+        nextPromptDetail = undefined
         this.setState('waiting_password', {
-          detail: hint ? `两步验证密码（提示：${hint}）` : '请输入两步验证密码'
+          detail: retryDetail || (this.loginMode === 'qr'
+            ? hint
+              ? `二维码已确认。请输入 Telegram 两步验证密码（提示：${hint}）`
+              : '二维码已确认。Telegram 要求此账号继续完成两步验证。'
+            : hint
+              ? `两步验证密码（提示：${hint}）`
+              : '请输入两步验证密码')
         })
         return this.awaitInput()
       }
       const onError = async (err: Error): Promise<boolean> => {
+        if (!isCurrentRun()) return true
+        const recovery = telegramAuthRecovery(err)
+        if (recovery.retry) {
+          authError = undefined
+          nextPromptDetail = recovery.detail
+          if (recovery.step === 'phone') this.phone = ''
+          this.log.warn('登录输入未通过验证，等待重新输入', {
+            step: recovery.step,
+            error: (err as Error & { errorMessage?: string }).errorMessage || err.message
+          })
+          return false
+        }
+        authError = err
+        if (recovery.detail) authError = new Error(recovery.detail)
         this.log.error('登录失败', err)
-        this.setState('error', { detail: err.message })
         // 返回 true 终止登录流程，避免 GramJS 无限重试
         return true
       }
 
       await client.connect()
+      if (!isCurrentRun()) return
       if (await client.checkAuthorization()) {
         this.log.info('已有会话，免登录')
       } else if (this.loginMode === 'qr') {
@@ -133,6 +203,7 @@ export class TelegramUserAdapter extends ChannelAdapter {
           { apiId, apiHash },
           {
             qrCode: async (qr) => {
+              if (!isCurrentRun()) return
               const dataUrl = await QRCode.toDataURL(qrLoginUrl(qr.token), {
                 margin: 1,
                 width: 320
@@ -149,20 +220,38 @@ export class TelegramUserAdapter extends ChannelAdapter {
       } else {
         await client.start({
           phoneNumber: async () => {
+            if (!isCurrentRun()) throw new Error('登录流程已更新')
             if (this.phone) return this.phone
-            this.setState('waiting_phone', { detail: '请输入该账号的手机号（含国家码）' })
+            const retryDetail = nextPromptDetail
+            nextPromptDetail = undefined
+            this.setState('waiting_phone', {
+              detail: retryDetail || '请输入该账号的手机号（含国家码）'
+            })
             this.phone = await this.awaitInput()
             return this.phone
           },
           phoneCode: async (isCodeViaApp?: boolean) => {
+            if (!isCurrentRun()) throw new Error('登录流程已更新')
+            const retryDetail = nextPromptDetail
+            nextPromptDetail = undefined
             this.setState('waiting_code', {
-              detail: isCodeViaApp ? '验证码已发送到 Telegram 应用内' : '验证码已发短信'
+              detail: retryDetail || (isCodeViaApp
+                ? '验证码已发送到 Telegram 应用内'
+                : '验证码已通过 Telegram 指定方式发送')
             })
             return this.awaitInput()
           },
           password,
           onError
         })
+      }
+
+      if (!isCurrentRun()) return
+
+      // GramJS 返回后再向 Telegram 查询一次真实授权态。只有服务端确认授权完成，
+      // 才保存会话并向 UI 发布 connected，避免任何中间步骤被误报为登录成功。
+      if (!(await client.checkAuthorization())) {
+        throw new Error('Telegram 授权尚未完成，请继续完成手机确认或两步验证')
       }
 
       // 登录成功：持久化会话串，下次免验证码
@@ -182,12 +271,28 @@ export class TelegramUserAdapter extends ChannelAdapter {
 
       // 优先用户名（t.me/xxx 链接要用它），没有设置用户名时退回手机号
       const selfHandle = (me as Api.User).username || this.phone || undefined
+      if (!isCurrentRun()) return
+      // 新 StringSession 的实体缓存是空的。先启动 dialogs 预取，再发布 connected；
+      // ChannelManager 随后的资料补全会等待同一个 Promise，不会因 access_hash 缺失而失败。
+      this.entities.clear()
+      this.entityLookups.clear()
+      this.profileLoad = this.loadRecentDialogProfiles(client)
       this.setState('connected', { selfName, selfHandle })
+      void this.profileLoad.catch((err) => {
+        if (this.client === client) this.log.debug('预取 Telegram 会话资料失败', { err: String(err) })
+      })
       this.log.info('连接成功', { user: this.selfId })
     } catch (err) {
-      if (this.stopping) return
-      this.log.error('启动失败', err)
-      this.setState('error', { detail: err instanceof Error ? err.message : String(err) })
+      if (!isCurrentRun()) return
+      const failure = authError ?? (err instanceof Error ? err : new Error(String(err)))
+      this.log.error('启动失败', failure)
+      if (this.client === client) this.client = undefined
+      try {
+        await client?.disconnect()
+      } catch {
+        // 失败连接清理不应覆盖原始错误
+      }
+      this.setState('error', { detail: failure.message })
     }
   }
 
@@ -206,30 +311,40 @@ export class TelegramUserAdapter extends ChannelAdapter {
 
   async stop(): Promise<void> {
     this.stopping = true
+    ++this.loginRun
     this.rejectPending('已停止')
+    const client = this.client
     try {
-      await this.client?.disconnect()
+      await client?.disconnect()
     } catch {
       // 断开失败不影响停止
     }
-    this.client = undefined
+    if (this.client === client) this.client = undefined
+    this.profileLoad = undefined
+    this.entities.clear()
+    this.entityLookups.clear()
     this.setState('stopped')
   }
 
   async logout(): Promise<void> {
     this.stopping = true
+    ++this.loginRun
     this.rejectPending('已退出登录')
+    const client = this.client
     try {
-      await this.client?.invoke(new Api.auth.LogOut())
+      await client?.invoke(new Api.auth.LogOut())
     } catch (err) {
       this.log.warn('注销请求失败，仍清除本地会话', { err: String(err) })
     }
     try {
-      await this.client?.disconnect()
+      await client?.disconnect()
     } catch {
       // 忽略
     }
-    this.client = undefined
+    if (this.client === client) this.client = undefined
+    this.profileLoad = undefined
+    this.entities.clear()
+    this.entityLookups.clear()
     this.phone = ''
     await this.opts.saveSession('', undefined)
     this.setState('logged_out')
@@ -248,12 +363,16 @@ export class TelegramUserAdapter extends ChannelAdapter {
 
   async sendText(externalChatId: string, text: string): Promise<OutboundResult> {
     const client = this.requireClient()
-    const msg = await client.sendMessage(this.toEntity(externalChatId), { message: text })
+    const entity = await this.resolveEntity(externalChatId)
+    if (!entity) throw new Error('无法读取 Telegram 会话资料，请刷新账号后重试')
+    const msg = await client.sendMessage(entity, { message: text })
     return { externalId: String(msg.id) }
   }
 
   override async sendMedia(externalChatId: string, media: OutboundMedia): Promise<OutboundResult> {
     const client = this.requireClient()
+    const entity = await this.resolveEntity(externalChatId)
+    if (!entity) throw new Error('无法读取 Telegram 会话资料，请刷新账号后重试')
     const buf = await readFile(media.filePath)
     const file = new (await import('telegram/client/uploads')).CustomFile(
       media.fileName,
@@ -261,7 +380,7 @@ export class TelegramUserAdapter extends ChannelAdapter {
       media.filePath,
       buf
     )
-    const msg = await client.sendFile(this.toEntity(externalChatId), {
+    const msg = await client.sendFile(entity, {
       file,
       caption: media.caption,
       // 语音/视频以可播放形式发送，其余作为文件
@@ -277,20 +396,117 @@ export class TelegramUserAdapter extends ChannelAdapter {
   }
 
   override async fetchTitle(externalChatId: string): Promise<string | undefined> {
-    const client = this.client
-    if (!client || this.status !== 'connected') return undefined
-    try {
-      const entity = await client.getEntity(this.toEntity(externalChatId))
-      if (entity instanceof Api.User) {
-        return (
-          [entity.firstName, entity.lastName].filter(Boolean).join(' ') ||
-          entity.username ||
-          undefined
+    return displayNameOf(await this.resolveEntity(externalChatId))
+  }
+
+  override async fetchPublicId(externalChatId: string): Promise<string | undefined> {
+    return publicIdOf(await this.resolveEntity(externalChatId))
+  }
+
+  /**
+   * 读取当前账号真正加入的 Telegram 群组。
+   *
+   * Telegram 的超级群与广播频道都使用 PeerChannel，不能只看 peer 类型；必须读取
+   * Channel.megagroup / broadcast 才能避免把频道误标为群组。ignoreMigrated 则避免普通群
+   * 升级成超级群后在列表里出现两次。
+   */
+  override async listGroups(): Promise<GroupSummary[]> {
+    const client = this.requireClient()
+    const dialogs = await client.getDialogs({ limit: undefined, ignoreMigrated: true })
+    if (this.client !== client || this.status !== 'connected') {
+      throw new Error('Telegram 连接已断开，无法读取群组')
+    }
+
+    const groups: GroupSummary[] = []
+    for (const dialog of dialogs) {
+      const entity = this.rememberEntity(dialog.entity)
+      if (!entity || !isUsableTelegramGroup(entity)) continue
+      groups.push({
+        externalChatId: externalChatIdOf(entity),
+        title: displayNameOf(entity) || '未命名群组',
+        // 群组列表只需要摘要；逐群拉全体成员会在大群上产生大量请求和 FloodWait。
+        participantIds: []
+      })
+    }
+    return groups
+  }
+
+  /** 使用 Telegram 官方 messages.createChat 创建普通群组。 */
+  override async createGroup(subject: string, participantIds: string[]): Promise<GroupSummary> {
+    const client = this.requireClient()
+    const title = subject.trim()
+    if (!title) throw new Error('群组名称不能为空')
+
+    const uniqueIds = [...new Set(participantIds.map((id) => id.trim()).filter(Boolean))]
+    if (uniqueIds.length === 0) throw new Error('请至少选择一位成员')
+
+    const resolved = await Promise.all(uniqueIds.map((id) => this.resolveEntity(id)))
+    const users: Api.User[] = []
+    const missing: string[] = []
+    for (let index = 0; index < uniqueIds.length; index += 1) {
+      const entity = resolved[index]
+      if (entity instanceof Api.User && !entity.self && !entity.deleted) users.push(entity)
+      else missing.push(uniqueIds[index]!)
+    }
+    if (missing.length > 0) {
+      throw new Error(`无法读取 ${missing.length} 位成员的 Telegram 资料，请先打开对应私聊后重试`)
+    }
+    if (users.length === 0) throw new Error('请至少选择一位有效成员')
+
+    const knownGroupIds = new Set(
+      [...this.entities.values()]
+        .filter(isUsableTelegramGroup)
+        .map(externalChatIdOf)
+    )
+    const created = await client.invoke(new Api.messages.CreateChat({ users, title }))
+    if (this.client !== client || this.status !== 'connected') {
+      throw new Error('Telegram 连接已断开，群组创建结果无法确认')
+    }
+
+    const createdEntity = telegramUpdateChats(created.updates)
+      .map((entity) => this.rememberEntity(entity))
+      .find((entity): entity is TgEntity => !!entity && isUsableTelegramGroup(entity))
+    if (!createdEntity) {
+      // 正常响应会在 updates.chats 携带新群；若 SDK/协议层响应形态变化，则从真实
+      // dialogs 再确认一次，绝不在本地伪造一个无法收发消息的群。
+      const dialogs = await client.getDialogs({ limit: 100, ignoreMigrated: true })
+      const refreshed = dialogs.map((dialog) => this.rememberEntity(dialog.entity))
+      const fallback = refreshed
+        .find((entity): entity is TgEntity =>
+          !!entity &&
+          isUsableTelegramGroup(entity) &&
+          !knownGroupIds.has(externalChatIdOf(entity)) &&
+          displayNameOf(entity) === title
         )
+      if (!fallback) throw new Error('Telegram 已响应，但无法确认新群组，请刷新群组列表')
+      return {
+        externalChatId: externalChatIdOf(fallback),
+        title: displayNameOf(fallback) || title,
+        participantIds: uniqueIds
       }
-      if (entity instanceof Api.Chat || entity instanceof Api.Channel) return entity.title
-      return undefined
-    } catch {
+    }
+
+    return {
+      externalChatId: externalChatIdOf(createdEntity),
+      title: displayNameOf(createdEntity) || title,
+      participantIds: uniqueIds
+    }
+  }
+
+  override async fetchAvatar(externalChatId: string): Promise<string | undefined> {
+    const client = this.client
+    const saveMedia = this.opts.saveMedia
+    if (!client || this.status !== 'connected' || !saveMedia) return undefined
+    const entity = await this.resolveEntity(externalChatId)
+    if (!entity) return undefined
+    try {
+      const photo = await client.downloadProfilePhoto(entity, { isBig: false })
+      if (!photo) return undefined
+      const buffer = Buffer.isBuffer(photo) ? photo : await readFile(photo)
+      if (buffer.length === 0) return undefined
+      return await saveMedia(buffer, '.jpg')
+    } catch (err) {
+      this.log.debug('Telegram 会话头像拉取失败', { externalChatId, err: String(err) })
       return undefined
     }
   }
@@ -330,6 +546,62 @@ export class TelegramUserAdapter extends ChannelAdapter {
     return this.client
   }
 
+  /**
+   * 预取最近 dialogs 的完整实体。GramJS 会同时把 input entity/access_hash 写入自身缓存，
+   * 所以后续发送消息也能使用这些实体，而不是只有一个无法解析的裸 user id。
+   */
+  private async loadRecentDialogProfiles(client: TelegramClient): Promise<void> {
+    const dialogs = await client.getDialogs({ limit: RECENT_DIALOG_LIMIT })
+    if (this.client !== client) return
+    for (const dialog of dialogs) this.rememberEntity(dialog.entity)
+  }
+
+  private rememberEntity(value: unknown): TgEntity | undefined {
+    if (!isTgEntity(value)) return undefined
+    const externalChatId = externalChatIdOf(value)
+    if (!externalChatId) return undefined
+    this.entities.set(externalChatId, value)
+    return value
+  }
+
+  /**
+   * 根据会话 ID 取得带 access_hash 的实体。首次登录时等待统一 dialogs 预取；如果是预取后
+   * 才出现的新会话，再刷新一次 dialogs。相同会话的并发昵称/ID/头像请求只发一次网络请求。
+   */
+  private async resolveEntity(externalChatId: string): Promise<TgEntity | undefined> {
+    const cached = this.entities.get(externalChatId)
+    if (cached) return cached
+    if (!this.client || this.status !== 'connected') return undefined
+
+    const running = this.entityLookups.get(externalChatId)
+    if (running) return running
+    const client = this.client
+    const lookup = (async (): Promise<TgEntity | undefined> => {
+      try {
+        await this.profileLoad
+      } catch {
+        // 预取失败仍继续做一次针对当前新会话的刷新。
+      }
+      const loaded = this.entities.get(externalChatId)
+      if (loaded || this.client !== client) return loaded
+
+      try {
+        await this.loadRecentDialogProfiles(client)
+      } catch (err) {
+        this.log.debug('刷新 Telegram 会话资料失败', { externalChatId, err: String(err) })
+      }
+      return this.entities.get(externalChatId)
+    })()
+    this.entityLookups.set(externalChatId, lookup)
+    try {
+      return await lookup
+    } finally {
+      if (this.entityLookups.get(externalChatId) === lookup) {
+        this.entityLookups.delete(externalChatId)
+      }
+    }
+  }
+
   /** 外部会话 id → GramJS 实体标识（群带 g 前缀，需还原成负数/原 id） */
   private toEntity(externalChatId: string): string {
     return externalChatId.startsWith('g') ? externalChatId.slice(1) : externalChatId
@@ -337,15 +609,27 @@ export class TelegramUserAdapter extends ChannelAdapter {
 
   private async handleEvent(event: NewMessageEvent): Promise<void> {
     try {
-      const raw = this.toRawMessage(event)
+      // Updates/UpdatesCombined 会直接携带完整实体，优先收进缓存；UpdateShortMessage
+      // 没带实体时 resolveEntity 会从 dialogs 获取 access_hash 和资料。
+      for (const entity of event.originalUpdate?._entities?.values() ?? []) {
+        this.rememberEntity(entity)
+      }
+      const raw = await this.toRawMessage(event)
       if (!raw) return
+      const externalChatId = peerToChatId(raw.peer)
+      const entity = await this.resolveEntity(externalChatId)
+      if (!raw.senderName && raw.peer.type === 'user') raw.senderName = displayNameOf(entity)
       const mapped = mapTgUserMessage(raw, this.accountId)
       if (!mapped) return
 
       this.emit('message', mapped)
       this.emit('conversation', {
-        externalChatId: peerToChatId(raw.peer),
-        isGroup: raw.peer.type !== 'user'
+        externalChatId,
+        title: displayNameOf(entity),
+        publicId: publicIdOf(entity),
+        contactId: chatIdToContactId(externalChatId),
+        // PeerChannel 既可能是超级群也可能是单向广播频道，必须以实体属性为准。
+        isGroup: entity ? isTelegramGroup(entity) : raw.peer.type === 'chat'
       })
       if (raw.media && this.saveMediaEnabled() && mapped.body.type === 'media') {
         void this.downloadMedia(event, mapped)
@@ -360,13 +644,13 @@ export class TelegramUserAdapter extends ChannelAdapter {
   }
 
   /** GramJS 事件 → mapper 的结构化输入 */
-  private toRawMessage(event: NewMessageEvent): TgRawMessage | null {
+  private async toRawMessage(event: NewMessageEvent): Promise<TgRawMessage | null> {
     const m = event.message
     if (!m) return null
     const peer = toPeer(m.peerId)
     if (!peer) return null
 
-    const senderName = extractSenderName(event)
+    const senderName = await extractSenderName(event)
     return {
       id: m.id,
       text: m.message ?? '',
@@ -410,6 +694,59 @@ export class TelegramUserAdapter extends ChannelAdapter {
   }
 }
 
+type TgEntity =
+  | Api.User
+  | Api.Chat
+  | Api.ChatForbidden
+  | Api.Channel
+  | Api.ChannelForbidden
+
+function isTgEntity(value: unknown): value is TgEntity {
+  return (
+    value instanceof Api.User ||
+    value instanceof Api.Chat ||
+    value instanceof Api.ChatForbidden ||
+    value instanceof Api.Channel ||
+    value instanceof Api.ChannelForbidden
+  )
+}
+
+/** Telegram 普通群、超级群和 gigagroup；明确排除广播频道。 */
+export function isTelegramGroup(entity: TgEntity): boolean {
+  if (entity instanceof Api.Chat || entity instanceof Api.ChatForbidden) return true
+  if (entity instanceof Api.Channel) return !!(entity.megagroup || entity.gigagroup) && !entity.broadcast
+  if (entity instanceof Api.ChannelForbidden) return !!entity.megagroup && !entity.broadcast
+  return false
+}
+
+/** 仍可正常使用的已加入群组；被踢/离开/已停用的实体不进入群组列表。 */
+export function isUsableTelegramGroup(entity: TgEntity): boolean {
+  if (!isTelegramGroup(entity)) return false
+  if (entity instanceof Api.ChatForbidden || entity instanceof Api.ChannelForbidden) return false
+  if (entity instanceof Api.Chat) return !entity.left && !entity.deactivated && !entity.migratedTo
+  if (entity instanceof Api.Channel) return !entity.left
+  return false
+}
+
+function externalChatIdOf(entity: TgEntity): string {
+  const id = String(entity.id)
+  return entity instanceof Api.User ? id : `g${id}`
+}
+
+function displayNameOf(entity: TgEntity | undefined): string | undefined {
+  if (!entity) return undefined
+  if (entity instanceof Api.User) {
+    return [entity.firstName, entity.lastName].filter(Boolean).join(' ') || entity.username || undefined
+  }
+  return entity.title || undefined
+}
+
+function publicIdOf(entity: TgEntity | undefined): string | undefined {
+  if (!(entity instanceof Api.User) && !(entity instanceof Api.Channel)) return undefined
+  const username = entity.username || entity.usernames?.find((item) => item.active)?.username
+  return username ? `@${username}` : undefined
+}
+
 /** Api.Peer* → mapper 的 TgPeer */
 function toPeer(peerId: unknown): TgPeer | null {
   if (peerId instanceof Api.PeerUser) return { type: 'user', id: String(peerId.userId) }
@@ -418,14 +755,25 @@ function toPeer(peerId: unknown): TgPeer | null {
   return null
 }
 
-function extractSenderName(event: NewMessageEvent): string | undefined {
-  const sender = (event.message as { sender?: unknown }).sender
-  if (sender instanceof Api.User) {
-    return (
-      [sender.firstName, sender.lastName].filter(Boolean).join(' ') || sender.username || undefined
-    )
+async function extractSenderName(event: NewMessageEvent): Promise<string | undefined> {
+  const message = event.message as typeof event.message & {
+    sender?: unknown
+    getSender?: () => Promise<unknown>
   }
-  return undefined
+  let sender = message.sender
+  if (!isTgEntity(sender) && message.getSender) {
+    try {
+      sender = await message.getSender()
+    } catch {
+      // 匿名管理员或资料受限时 Telegram 可能不给 sender；消息本身仍应正常展示。
+    }
+  }
+  return isTgEntity(sender) ? displayNameOf(sender) : undefined
+}
+
+function telegramUpdateChats(updates: Api.TypeUpdates): unknown[] {
+  if ('chats' in updates && Array.isArray(updates.chats)) return updates.chats
+  return []
 }
 
 /** Api.MessageMedia* → mapper 的媒体描述 */

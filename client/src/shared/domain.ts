@@ -4,7 +4,17 @@
  */
 
 /** telegram = 普通账号（MTProto）；telegram_bot = Bot API */
-export type ChannelKind = 'whatsapp' | 'telegram' | 'telegram_bot' | 'line'
+export type ChannelKind =
+  | 'whatsapp'
+  | 'telegram'
+  | 'telegram_bot'
+  | 'line'
+  | 'kakaotalk'
+  | 'facebook'
+  | 'instagram'
+  | 'tiktok'
+  | 'x'
+  | 'snapchat'
 
 export type ChannelStatus =
   | 'stopped'
@@ -20,6 +30,10 @@ export type ChannelStatus =
   | 'waiting_password'
   /** 已生成配对码，等待用户在手机 App 内输入（WhatsApp 手机号登录） */
   | 'waiting_pairing_code'
+  /** 已生成子设备验证码，等待用户在主手机 KakaoTalk 内确认 */
+  | 'waiting_device_approval'
+  /** 已打开平台 OAuth 页面，等待客户在系统浏览器完成授权。 */
+  | 'waiting_oauth'
   | 'connected'
   | 'logged_out'
   | 'error'
@@ -32,6 +46,11 @@ export interface ChannelState {
   detail?: string
   /** 等待扫码时的二维码图片（data URL） */
   qrDataUrl?: string
+  /**
+   * 平台在扫码后要求在手机端输入的临时校验码。
+   * 目前用于 LINE 的二次确认；它不是账号密码，也不会持久化。
+   */
+  verificationCode?: string
   /** 手机号登录时生成的配对码，用户需在手机 App 内输入 */
   pairingCode?: string
   /** 登录后的账号显示名 */
@@ -126,6 +145,8 @@ export interface Conversation {
    * 群聊/机器人会话为空。用于识别"同一客户在不同账号找过我"。
    */
   contactId?: string
+  /** 平台公开账号标识（如 LINE 官方账号的 @line）；不存/不展示平台内部 MID。 */
+  publicId?: string
   /** 对方头像（MediaStore 内的文件 ID），未获取到则用首字母占位 */
   avatarMediaId?: string
   /** 自动检测到的客户语言（来自入站消息翻译时的源语言识别） */

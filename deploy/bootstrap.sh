@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 一次性服务器初始化：装 Node 22、编译工具（better-sqlite3 原生模块要）、Caddy，
+# 一次性服务器初始化：装 Git、Node 22、编译工具（better-sqlite3 原生模块要）、Caddy，
 # 并建好 /etc/omnichat。幂等，可重复跑。
 #
 # 用法（二选一）：
@@ -17,6 +17,16 @@ elif command -v yum     >/dev/null; then PM=yum
 else echo "未知包管理器（非 apt/dnf/yum），请手动装 Node22+编译工具+Caddy"; exit 1
 fi
 echo "    包管理器：$PM"
+
+echo "==> 安装 Git 与 rsync（服务器从统一仓库更新）"
+if command -v git >/dev/null && command -v rsync >/dev/null; then
+  echo "    已安装，跳过"
+else
+  case "$PM" in
+    apt) apt-get update && apt-get install -y git rsync ;;
+    dnf|yum) "$PM" install -y git rsync ;;
+  esac
+fi
 
 install_node_apt() {
   curl -fsSL https://deb.nodesource.com/setup_22.x | bash -

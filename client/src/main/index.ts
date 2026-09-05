@@ -1,12 +1,15 @@
 import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 import { app, BrowserWindow, net, protocol } from 'electron'
 import { OMNI_EVENT_CHANNEL, type OmniEvent } from '@shared/ipc'
+import type { AccountConfig } from '@shared/settings'
 import { JsonContactStore } from './core/contact-store'
 import { MediaStore } from './core/media-store'
 import { mimeFromPath } from './core/mime'
 import { SyncClient } from './sync/sync-client'
 import { ClientAuth } from './auth/client-auth'
+import { packagedBackendMigration } from './auth/backend-url'
 import { BillingApi } from './billing/billing-api'
 import { CampaignApi } from './campaigns/campaign-api'
 import { AutoReplyService } from './core/auto-reply'
@@ -16,6 +19,11 @@ import { whatsAppPlugin } from './channels/whatsapp'
 import { telegramBotPlugin } from './channels/telegram'
 import { telegramUserPlugin } from './channels/telegram-user'
 import { linePlugin } from './channels/line'
+import { kakaoTalkPlugin } from './channels/kakaotalk'
+import { facebookPlugin, instagramPlugin } from './channels/meta'
+import { tiktokPlugin } from './channels/tiktok'
+import { xPlugin } from './channels/x'
+import { snapchatPlugin } from './channels/snapchat'
 import { ChannelRegistry } from './channels/registry'
 import { channelKey } from '@shared/domain'
 import { ChannelManager } from './core/channel-manager'
@@ -34,11 +42,25 @@ import { AppTray } from './core/tray'
 import { AppUpdater, type UpdateState } from './core/updater'
 import { createMainWindow } from './window'
 import { brand } from '@shared/branding'
+import {
+  createAccountFingerprint,
+  ensureAccountFingerprint
+} from './core/account-fingerprint'
+import { AccountNetworkIsolation } from './core/network-isolation'
+import {
+  closeIsolatedOAuthWindows,
+  openIsolatedOAuthWindow
+} from './core/isolated-oauth-window'
 
 // 本地媒体协议：omni-media://local/<mediaId>（必须在 ready 前注册特权）
 protocol.registerSchemesAsPrivileged([
   { scheme: 'omni-media', privileges: { stream: true, supportFetchAPI: true } }
 ])
+
+// 账号登录窗口只能走 fixed proxy；关闭 QUIC/非代理 UDP，避免代理断线后出现旁路流量。
+app.commandLine.appendSwitch('disable-quic')
+app.commandLine.appendSwitch('force-webrtc-ip-handling-policy', 'disable_non_proxied_udp')
+app.commandLine.appendSwitch('webrtc-hide-local-ips-with-mdns')
 
 /**
  * 按 mediaId 扩展名推断 Content-Type —— 缺了它 <video>/<img> 会黑屏/不显示。
@@ -84,6 +106,28 @@ async function bootstrap(): Promise<void> {
   const settings = new SettingsStore(userData)
   await settings.init()
 
+  // 升级旧账号：把此前由 accountId 隐式派生的身份写成显式配置，保持旧设备标识稳定。
+  const fingerprintPatch: Record<string, ReturnType<typeof settings.accountConfig>> = {}
+  for (const [key, config] of Object.entries(settings.get().accounts)) {
+    if (!config.fingerprint) fingerprintPatch[key] = ensureAccountFingerprint(key, config)
+  }
+  if (Object.keys(fingerprintPatch).length > 0) {
+    await settings.update({ accounts: fingerprintPatch })
+  }
+
+  // 用户曾运行本地开发版后再安装正式包时，不能继续把工单、同步和计费请求发往
+  // localhost。保留原令牌并切到品牌主库；若令牌确已失效，ClientAuth 的 401 流程
+  // 会安全退出并要求重新登录。
+  const currentSync = settings.get().sync
+  const migratedBackend = packagedBackendMigration(
+    currentSync.serverUrl,
+    brand.apiUrl,
+    app.isPackaged
+  )
+  if (migratedBackend) {
+    await settings.update({ sync: { ...currentSync, serverUrl: migratedBackend } })
+  }
+
   // 日志上报（M19）：本地 pino 之外的第二条通路。登录前也上报（游客日志，
   // 设备指纹归拢）；门槛默认 warn，管理后台可按用户调整。
   const logUploader = new LogUploader({
@@ -102,6 +146,9 @@ async function bootstrap(): Promise<void> {
   })
   const logger = teeLogger(baseLogger, logUploader)
   logger.info(`${brand.appName} 启动`, { version: app.getVersion(), userData })
+  if (migratedBackend) {
+    logger.info('已把开发后台地址迁移到正式品牌后台', { serverUrl: migratedBackend })
+  }
 
   const store = new JsonMessageStore(join(userData, 'data'))
   await store.init()
@@ -151,9 +198,14 @@ async function bootstrap(): Promise<void> {
   }
   configurePipeline(pipeline, translatorRegistry, settings.get().translation, pipelineExtras)
 
+  let requestCloudSync = (): void => {}
+  let markConversationForSync = (_conversationId: string): void => {}
   const broadcast = (evt: OmniEvent): void => {
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send(OMNI_EVENT_CHANNEL, evt)
+    }
+    if (evt.type === 'message:new' || evt.type === 'message:updated' || evt.type === 'conversation:updated') {
+      requestCloudSync()
     }
   }
 
@@ -176,10 +228,17 @@ async function bootstrap(): Promise<void> {
         'autoreply'
       )
     },
+    claim: async (message) => {
+      const stableId = message.externalId ?? message.id
+      return syncClient.claim('auto-reply', `${message.conversationId}:${stableId}`)
+    },
     // 客户喊人工：关掉该会话的自动回复并广播，界面开关同步熄灭
     pauseConversation: async (conversationId) => {
       const updated = await store.patchConversation({ id: conversationId, autoReply: false })
-      if (updated) broadcast({ type: 'conversation:updated', conversation: updated })
+      if (updated) {
+        markConversationForSync(conversationId)
+        broadcast({ type: 'conversation:updated', conversation: updated })
+      }
     },
     notifyHandoff: (conversation) => {
       notifier.notifyInbound(
@@ -211,6 +270,7 @@ async function bootstrap(): Promise<void> {
     store,
     pipeline,
     (evt) => {
+      if (evt.type === 'conversation:updated') markConversationForSync(evt.conversation.id)
       broadcast(evt)
       notifyOnInbound(evt)
     },
@@ -224,12 +284,35 @@ async function bootstrap(): Promise<void> {
     globalDefault: settings.get().translation.targetLangDefault
   })
 
+  const networkIsolation = new AccountNetworkIsolation({
+    getAccountConfig: (key) => settings.get().accounts[key],
+    getBackend: () => {
+      const sync = settings.get().sync
+      return { url: sync.serverUrl, token: sync.token }
+    },
+    onState: (state) => broadcast({ type: 'network:state', state }),
+    logger
+  })
+  manager.setNetworkPolicy({
+    assertReady: (key) => networkIsolation.assertReady(key),
+    isUsable: (key) => networkIsolation.isUsable(key),
+    startMonitoring: (key, onUnavailable) =>
+      networkIsolation.startMonitoring(key, onUnavailable),
+    stopMonitoring: (key) => networkIsolation.stopMonitoring(key)
+  })
+
   // ── 渠道插件装配。新增平台：注册插件即可（下面按 kind 通用创建适配器）──
   const channels = new ChannelRegistry()
   channels.register(whatsAppPlugin)
   channels.register(telegramUserPlugin)
   channels.register(telegramBotPlugin)
   channels.register(linePlugin)
+  channels.register(kakaoTalkPlugin)
+  channels.register(facebookPlugin)
+  channels.register(instagramPlugin)
+  channels.register(tiktokPlugin)
+  channels.register(xPlugin)
+  channels.register(snapchatPlugin)
 
   const registerAccount = (kind: string, accountId: string): void => {
     const plugin = channels.get(kind as never)
@@ -240,7 +323,12 @@ async function bootstrap(): Promise<void> {
         logger,
         getAccountConfig: () => {
           const cfg = settings.accountConfig(key)
-          return { proxyUrl: cfg.proxyUrl, deviceLabel: cfg.deviceLabel, credentials: cfg.credentials }
+          return {
+            proxyUrl: cfg.proxyUrl,
+            deviceLabel: cfg.deviceLabel,
+            fingerprint: cfg.fingerprint,
+            credentials: cfg.credentials
+          }
         },
         saveMedia: (data, ext) => media.save(data, ext),
         getBackend: () => {
@@ -248,12 +336,23 @@ async function bootstrap(): Promise<void> {
           return { url: s.serverUrl, token: s.token }
         },
         saveCredentials: async (credentials) => {
-          const cfg = settings.accountConfig(key)
-          await settings.update({ accounts: { [key]: { ...cfg, credentials } } })
+          await settings.replaceAccountCredentials(key, credentials)
         },
         getDefaults: () => {
           const p = settings.get().platform
           return { telegramApiId: p.telegramApiId, telegramApiHash: p.telegramApiHash }
+        },
+        openOAuth: async (url) => {
+          const config = settings.accountConfig(key)
+          if (!config.proxyUrl || !config.fingerprint) {
+            throw new Error('必须先配置代理与设备指纹，才能打开网页登录')
+          }
+          await openIsolatedOAuthWindow({
+            accountKey: key,
+            url,
+            proxyUrl: config.proxyUrl,
+            fingerprint: config.fingerprint
+          })
         }
       })
     )
@@ -269,6 +368,195 @@ async function bootstrap(): Promise<void> {
     if (accountId && channels.has(kind as never)) {
       registerAccount(kind, accountId)
       if (accountConfigs[key]?.disabled) manager.setDisabled(key, true)
+    }
+  }
+
+  /**
+   * Meta 令牌在服务器，因此同一老板/团队换电脑登录后可恢复账号注册表。
+   * 接口只返回 Page / Instagram 的公开摘要，不会把 token 或 App Secret 下发到桌面端。
+   */
+  const restoreServerMetaAccounts = async (): Promise<void> => {
+    const sync = settings.get().sync
+    if (!sync.serverUrl || !sync.token) return
+    try {
+      const response = await fetch(`${sync.serverUrl.replace(/\/$/, '')}/api/meta/accounts`, {
+        headers: { authorization: `Bearer ${sync.token}` },
+        signal: AbortSignal.timeout(10_000)
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      const data = (await response.json()) as {
+        accounts?: Array<{ channel?: string; accountId?: string; displayName?: string }>
+      }
+      const remote = (data.accounts ?? []).flatMap((account) => {
+        if (
+          account.channel !== 'facebook' && account.channel !== 'instagram' ||
+          typeof account.accountId !== 'string' ||
+          !/^[a-zA-Z0-9_-]{1,128}$/.test(account.accountId)
+        ) return []
+        return [{
+          channel: account.channel,
+          accountId: account.accountId,
+          displayName: account.displayName
+        }]
+      })
+
+      const current = settings.get().accounts
+      const missing: Record<string, AccountConfig> = {}
+      for (const account of remote) {
+        const key = `${account.channel}:${account.accountId}`
+        if (!current[key]) {
+          missing[key] = {
+            label: account.displayName || undefined,
+            fingerprint: createAccountFingerprint(key)
+          }
+        }
+      }
+      if (Object.keys(missing).length > 0) await settings.update({ accounts: missing })
+
+      const registered = new Set(manager.listChannels().map((state) => `${state.kind}:${state.accountId}`))
+      const latest = settings.get().accounts
+      for (const account of remote) {
+        const key = `${account.channel}:${account.accountId}`
+        if (!registered.has(key)) {
+          registerAccount(account.channel, account.accountId)
+          registered.add(key)
+        }
+        if (!latest[key]?.disabled) await manager.start(key)
+      }
+      if (remote.length > 0) logger.info('已恢复服务器 Meta 账号', { count: remote.length })
+    } catch (error) {
+      logger.warn('恢复服务器 Meta 账号失败，将在下次登录或启动时重试', { error: String(error) })
+    }
+  }
+
+  /** TikTok 令牌同样归服务器保管；登录同一团队时恢复企业号注册表。 */
+  const restoreServerTikTokAccounts = async (): Promise<void> => {
+    const sync = settings.get().sync
+    if (!sync.serverUrl || !sync.token) return
+    try {
+      const response = await fetch(`${sync.serverUrl.replace(/\/$/, '')}/api/tiktok/accounts`, {
+        headers: { authorization: `Bearer ${sync.token}` },
+        signal: AbortSignal.timeout(10_000)
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      const data = (await response.json()) as {
+        accounts?: Array<{ channel?: string; accountId?: string; displayName?: string }>
+      }
+      const remote = (data.accounts ?? []).flatMap((account) => {
+        if (
+          account.channel !== 'tiktok' ||
+          typeof account.accountId !== 'string' ||
+          !/^[a-zA-Z0-9_-]{1,128}$/.test(account.accountId)
+        ) return []
+        return [{ accountId: account.accountId, displayName: account.displayName }]
+      })
+
+      const current = settings.get().accounts
+      const missing: Record<string, AccountConfig> = {}
+      for (const account of remote) {
+        const key = `tiktok:${account.accountId}`
+        if (!current[key]) {
+          missing[key] = {
+            label: account.displayName || undefined,
+            fingerprint: createAccountFingerprint(key)
+          }
+        }
+      }
+      if (Object.keys(missing).length > 0) await settings.update({ accounts: missing })
+
+      const registered = new Set(manager.listChannels().map((state) => `${state.kind}:${state.accountId}`))
+      const latest = settings.get().accounts
+      for (const account of remote) {
+        const key = `tiktok:${account.accountId}`
+        if (!registered.has(key)) {
+          registerAccount('tiktok', account.accountId)
+          registered.add(key)
+        }
+        if (!latest[key]?.disabled) await manager.start(key)
+      }
+      if (remote.length > 0) logger.info('已恢复服务器 TikTok 账号', { count: remote.length })
+    } catch (error) {
+      logger.warn('恢复服务器 TikTok 账号失败，将在下次登录或启动时重试', { error: String(error) })
+    }
+  }
+
+  /** X / Snapchat 令牌与会话都由服务器托管，换电脑登录同一团队后自动恢复。 */
+  const restoreServerManagedAccounts = async (channel: 'x' | 'snapchat'): Promise<void> => {
+    const sync = settings.get().sync
+    if (!sync.serverUrl || !sync.token) return
+    try {
+      const response = await fetch(`${sync.serverUrl.replace(/\/$/, '')}/api/${channel}/accounts`, {
+        headers: { authorization: `Bearer ${sync.token}` },
+        signal: AbortSignal.timeout(10_000)
+      })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      const data = (await response.json()) as {
+        accounts?: Array<{ channel?: string; accountId?: string; displayName?: string }>
+      }
+      const remote = (data.accounts ?? []).flatMap((account) => {
+        if (
+          account.channel !== channel || typeof account.accountId !== 'string' ||
+          !/^[a-zA-Z0-9_-]{1,128}$/.test(account.accountId)
+        ) return []
+        return [{ accountId: account.accountId, displayName: account.displayName }]
+      })
+      const current = settings.get().accounts
+      const missing: Record<string, AccountConfig> = {}
+      for (const account of remote) {
+        const key = `${channel}:${account.accountId}`
+        if (!current[key]) {
+          missing[key] = {
+            label: account.displayName || undefined,
+            fingerprint: createAccountFingerprint(key)
+          }
+        }
+      }
+      if (Object.keys(missing).length > 0) await settings.update({ accounts: missing })
+
+      const registered = new Set(manager.listChannels().map((state) => `${state.kind}:${state.accountId}`))
+      const latest = settings.get().accounts
+      for (const account of remote) {
+        const key = `${channel}:${account.accountId}`
+        if (!registered.has(key)) {
+          registerAccount(channel, account.accountId)
+          registered.add(key)
+        }
+        if (!latest[key]?.disabled) await manager.start(key)
+      }
+      if (remote.length > 0) logger.info(`已恢复服务器 ${channel} 账号`, { count: remote.length })
+    } catch (error) {
+      logger.warn(`恢复服务器 ${channel} 账号失败，将在下次登录或启动时重试`, { error: String(error) })
+    }
+  }
+
+  const restoreServerOauthAccounts = async (): Promise<void> => {
+    await Promise.all([
+      restoreServerMetaAccounts(),
+      restoreServerTikTokAccounts(),
+      restoreServerManagedAccounts('x'),
+      restoreServerManagedAccounts('snapchat')
+    ])
+  }
+
+  /** 云端账号目录发生变化后，让运行中的适配器集合与本机注册表一致。 */
+  const reconcileAccountRegistry = async (updated = settings.get()): Promise<void> => {
+    const configured = new Set(Object.keys(updated.accounts))
+    const states = manager.listChannels()
+    for (const state of states) {
+      const key = `${state.kind}:${state.accountId}`
+      if (!configured.has(key)) await manager.unregister(key)
+    }
+    const registered = new Set(manager.listChannels().map((state) => `${state.kind}:${state.accountId}`))
+    for (const [key, account] of Object.entries(updated.accounts)) {
+      if (!registered.has(key)) {
+        const separator = key.indexOf(':')
+        const kind = key.slice(0, separator)
+        const accountId = key.slice(separator + 1)
+        if (separator <= 0 || !accountId || !channels.has(kind as never)) continue
+        registerAccount(kind, accountId)
+        registered.add(key)
+      }
+      manager.setDisabled(key, account.disabled === true)
     }
   }
 
@@ -304,17 +592,27 @@ async function bootstrap(): Promise<void> {
       await mkdir(join(userData, 'data'), { recursive: true })
       await writeFile(syncRecordPath, JSON.stringify(r), 'utf8')
     },
+    // 服务端历史恢复只刷新界面，不走 ChannelManager，避免把旧消息当新消息弹通知或触发 AI 自动回复。
+    onRemoteConversation: (conversation) => broadcast({ type: 'conversation:updated', conversation }),
+    onRemoteMessage: (message, conversation) => broadcast({ type: 'message:new', message, conversation }),
     logger
   })
+  requestCloudSync = () => syncClient.requestSoon()
+  markConversationForSync = (conversationId) => {
+    void syncClient.markConversationDirty(conversationId)
+  }
   syncClient.start()
 
   const auth = new ClientAuth(settings, logger)
   // 配置云同步：登录/启动 pull，偏好变更 push（只搬非敏感白名单）
   const configSync = new ConfigSync(settings, {
     logger,
-    onApplied: (updated) =>
+    onApplied: (updated) => {
       configurePipeline(pipeline, translatorRegistry, updated.translation, pipelineExtras)
+      void reconcileAccountRegistry(updated)
+    }
   })
+  configSync.start()
   // 工单数据落后台（看板要能被团队公开访问），复用同步配置里的地址与登录令牌
   const campaignApi = new CampaignApi(() => settings.get().sync, logger)
   const billingApi = new BillingApi(() => settings.get().sync, logger)
@@ -357,6 +655,8 @@ async function bootstrap(): Promise<void> {
     notifier,
     updater,
     configSync,
+    syncClient,
+    networkIsolation,
     version: app.getVersion(),
     broadcast,
     onSettingsChanged: (updated) => {
@@ -365,14 +665,15 @@ async function bootstrap(): Promise<void> {
     },
     onAddAccount: async (channel) => {
       if (!channels.has(channel as never)) throw new Error(`暂不支持添加 ${channel} 账号`)
-      const accountId = `${channel.slice(0, 2)}${Date.now().toString(36)}`
+      const accountId = `${channel.slice(0, 2)}${randomUUID().replaceAll('-', '').slice(0, 16)}`
       const key = channelKey(channel as never, accountId)
-      await settings.update({ accounts: { [key]: {} } })
+      await settings.update({
+        accounts: { [key]: { fingerprint: createAccountFingerprint(key) } }
+      })
       registerAccount(channel, accountId)
-      // 扫码类立即启动（显示二维码）；填凭证类等用户填完凭证再连
-      const plugin = channels.get(channel as never)
-      if (plugin.authType === 'qr') await manager.start(key)
+      // 任何平台都必须先由账号设置完成代理检测，不能在无隔离环境下提前发起登录。
       logger.info('新增账号', { key })
+      configSync.pushDebounced()
       return key
     },
     onRemoveAccount: async (key) => {
@@ -385,8 +686,10 @@ async function bootstrap(): Promise<void> {
       await manager.logout(key).catch(() => undefined)
       await manager.unregister(key)
       await settings.removeAccount(key)
+      configSync.pushDebounced()
       logger.info('已删除账号', { key })
     },
+    onAuthReady: restoreServerOauthAccounts,
     onQuit: () => {
       tray.quitting = true
       app.quit()
@@ -396,6 +699,7 @@ async function bootstrap(): Promise<void> {
   installAppMenu()
   // 启动时若已登录，拉取云端偏好（登录路径的 pull 在 authLogin/authRegister 处）
   void configSync.pull()
+  void restoreServerOauthAccounts()
   const win = createMainWindow()
   // 关窗进托盘而不是退出：客服工具要保持后台在线收消息。
   // 从托盘选"退出"或 app 正在退出时放行。
@@ -439,6 +743,9 @@ async function bootstrap(): Promise<void> {
     updater.stop()
     tray.destroy()
     syncClient.stop()
+    networkIsolation.stopAll()
+    closeIsolatedOAuthWindows()
+    void configSync.flush()
     void manager.stopAll()
     void store.flush()
   })

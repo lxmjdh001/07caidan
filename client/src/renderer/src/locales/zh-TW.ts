@@ -2,6 +2,7 @@ import type { MessageKey } from './zh-CN'
 
 /** 繁體中文（台灣 / 香港）。用詞依當地習慣，非簡轉繁直譯。 */
 export const zhTW: Partial<Record<MessageKey, string>> = {
+  'account.proxyConfig': '代理設定',
   'chat.intentHigh': '高意向',
   'chat.intentMedium': '中意向',
   // ── 補齊（原缺約 200 條，依台灣用詞）──
@@ -233,7 +234,7 @@ export const zhTW: Partial<Record<MessageKey, string>> = {
   'chat.previewLabel': '送出預覽',
   'chat.confirmSend': '確認送出',
   'channel.whatsapp': 'WhatsApp',
-  'channel.telegram': 'Telegram（即將支援）',
+  'channel.telegram': 'Telegram',
   'channel.line': 'LINE（即將支援）',
   'rail.allChats': '全部訊息',
   'rail.accounts': '帳號',
@@ -248,6 +249,8 @@ export const zhTW: Partial<Record<MessageKey, string>> = {
   'account.deviceAuto': '自動（各帳號不同）',
   'account.deviceHint': '「已連結的裝置」中顯示的名稱，各帳號自動隔離；修改後需重新登入才會生效',
   'account.saveConnect': '儲存並連線',
+  'account.oauthConnect': '網頁授權並連線',
+  'account.oauthHint': '點擊下方按鈕，在官方登入頁面授權。帳號密碼和存取權杖不會儲存在本機。',
   'account.advanced': '進階設定（一般不用改）',
   'campaign.title': '引流工單',
   'campaign.tabCampaigns': '工單',
@@ -336,6 +339,7 @@ export const zhTW: Partial<Record<MessageKey, string>> = {
   'picker.title': '選擇要新增的平台',
   'picker.qr': '掃碼登入',
   'picker.credentials': '憑證登入',
+  'picker.oauth': '網頁授權',
   'status.need_credentials': '需要填寫憑證',
   'status.waiting_phone': '等待輸入手機號',
   'status.waiting_code': '等待輸入驗證碼',
@@ -421,8 +425,8 @@ export const zhTW: Partial<Record<MessageKey, string>> = {
   'settings.customKey': 'API Key（選填）',
   'settings.customHint': '規格：POST JSON {"text","target_lang"} → {"text","source_lang"?}',
   'settings.account': '帳號',
-  'settings.proxy': '代理伺服器（socks5:// 或 http://，留空為直連）',
-  'settings.proxyHint': '下次重新連線時生效',
+  'settings.proxy': '帳號獨立代理（socks5:// 或 http://，登入前必填）',
+  'settings.proxyHint': '儲存時檢測出口；代理中斷後立即隔離，不會改用直連',
   'settings.logout': '登出',
   'settings.logoutConfirm': '確定登出？本機憑證會被清除。',
   'settings.removeAccount': '刪除帳號',

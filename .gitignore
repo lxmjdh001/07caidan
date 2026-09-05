@@ -15,3 +15,14 @@ coverage/
 .local-data/
 ._*
 *.tsbuildinfo
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.session
+*.pem
+*.p12
+*.pfx
+.secrets/
+credentials/

@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -40,6 +40,43 @@ describe('SettingsStore init 容错', () => {
     expect(s.get().accounts).toEqual({})
     await rm(dir, { recursive: true, force: true })
   })
+
+  it('旧版平台顺序保持原排列并补上 KakaoTalk', async () => {
+    const { dir, store: s } = await loadWith(JSON.stringify({
+      platformOrder: ['line', 'whatsapp', 'telegram', 'telegram_bot']
+    }))
+    expect(s.get().platformOrder).toEqual([
+      'line', 'whatsapp', 'telegram', 'telegram_bot', 'kakaotalk', 'facebook', 'instagram', 'tiktok', 'x', 'snapchat'
+    ])
+    await rm(dir, { recursive: true, force: true })
+  })
+
+  it('旧版账号代理自动迁移为独立代理资产并保留关联', async () => {
+    const { dir, store: s } = await loadWith(JSON.stringify({
+      accounts: {
+        'line:main': {
+          proxyUrl: 'socks5://user:pass@127.0.0.1:1080',
+          proxyNote: '旧代理',
+          proxyCreatedAt: 123
+        }
+      }
+    }))
+    const migrated = s.get()
+    const id = migrated.accounts['line:main']?.proxyId
+    expect(id).toMatch(/^legacy-/)
+    expect(migrated.proxyAssets[id!]).toMatchObject({
+      id,
+      proxyUrl: 'socks5://user:pass@127.0.0.1:1080',
+      note: '旧代理',
+      createdAt: 123
+    })
+
+    const reloaded = new SettingsStore(dir)
+    await reloaded.init()
+    expect(reloaded.get().accounts['line:main']?.proxyId).toBe(id)
+    expect(Object.keys(reloaded.get().proxyAssets)).toEqual([id])
+    await rm(dir, { recursive: true, force: true })
+  })
 })
 
 describe('SettingsStore', () => {
@@ -68,6 +105,33 @@ describe('SettingsStore', () => {
     expect(store.accountConfig('whatsapp:main')).toEqual({})
     await store.update({ accounts: { 'whatsapp:main': { proxyUrl: 'socks5://127.0.0.1:1080' } } })
     expect(store.accountConfig('whatsapp:main').proxyUrl).toBe('socks5://127.0.0.1:1080')
+    if (process.platform !== 'win32') {
+      expect((await stat(join(dir, 'settings.json'))).mode & 0o777).toBe(0o600)
+    }
+  })
+
+  it('整体替换账号凭证，登录成功后不残留一次性密码', async () => {
+    await store.update({
+      accounts: {
+        'kakaotalk:main': {
+          proxyUrl: 'socks5://127.0.0.1:1080',
+          credentials: { email: 'owner@example.com', password: 'one-time-password' }
+        }
+      }
+    })
+
+    await store.replaceAccountCredentials('kakaotalk:main', {
+      email: 'owner@example.com',
+      accessToken: 'session-token'
+    })
+
+    expect(store.accountConfig('kakaotalk:main')).toEqual({
+      proxyUrl: 'socks5://127.0.0.1:1080',
+      credentials: { email: 'owner@example.com', accessToken: 'session-token' }
+    })
+
+    await store.replaceAccountCredentials('kakaotalk:main', {})
+    expect(store.accountConfig('kakaotalk:main').credentials).toEqual({})
   })
 
   it('账号注册表默认为空；包括原主账号在内的账号均可删除并持久化', async () => {
@@ -84,9 +148,39 @@ describe('SettingsStore', () => {
     expect(reloaded.get().accounts).toEqual({})
   })
 
+  it('原子替换网络配置可真正解除账号关联并删除代理资产', async () => {
+    await store.update({
+      proxyAssets: {
+        p1: { id: 'p1', proxyUrl: 'socks5://127.0.0.1:1080', createdAt: 1, updatedAt: 1 }
+      },
+      accounts: {
+        'whatsapp:main': { proxyId: 'p1', proxyUrl: 'socks5://127.0.0.1:1080' }
+      }
+    })
+    await store.replaceNetworkConfig({ 'whatsapp:main': {} }, {})
+    expect(store.get().accounts['whatsapp:main']).toEqual({})
+    expect(store.get().proxyAssets).toEqual({})
+  })
+
   it('get 返回副本，外部修改不污染内部状态', () => {
     const s = store.get()
     s.locale = 'hacked'
     expect(store.get().locale).toBe('auto')
+  })
+
+  it('并发更新串行写盘，最后状态完整持久化', async () => {
+    await expect(Promise.all([
+      store.update({ locale: 'en' }),
+      store.update({ theme: 'dark' }),
+      store.update({ notifications: { ...store.get().notifications, sound: false } })
+    ])).resolves.toHaveLength(3)
+
+    const reloaded = new SettingsStore(dir)
+    await reloaded.init()
+    expect(reloaded.get()).toMatchObject({
+      locale: 'en',
+      theme: 'dark',
+      notifications: { sound: false }
+    })
   })
 })

@@ -137,6 +137,7 @@ describe('工单接口', () => {
     const list = await api('GET', '/api/campaigns')
     assert.equal(list.json.campaigns.length, 1)
     assert.equal(list.json.campaigns[0].accountLabels.a1, '主号')
+    assert.equal(list.json.campaigns[0].allowFanData, true, '旧客户端未传开关时保持原有可查看行为')
 
     assert.equal((await api('DELETE', `/api/campaigns/${id}`)).status, 200)
     assert.equal((await api('GET', '/api/campaigns')).json.campaigns.length, 0)
@@ -246,6 +247,46 @@ describe('分享链接与公开看板', () => {
     assert.equal(pub.status, 200)
     assert.equal(pub.json.campaign.name, '八月推广')
     assert.equal(pub.json.stats.total, 1)
+  })
+
+  test('“允许查看粉丝数据”统一控制粉丝详情与进粉趋势', async () => {
+    await seed('a1', 'wa:+8613800138000', T0 + 3600_000)
+    const created = await api('POST', '/api/campaigns', {
+      name: '隐藏粉丝数据',
+      accountIds: ['a1'],
+      startAt: T0,
+      allowFanData: false
+    })
+    assert.equal(created.status, 200)
+    assert.equal(created.json.campaign.allowFanData, false)
+    const id = created.json.campaign.id
+    const link = (await api('POST', `/api/campaigns/${id}/links`)).json.link
+
+    const dashboard = await api('GET', `/public/campaign/${link.token}`, undefined, null)
+    assert.equal(dashboard.status, 200)
+    assert.equal(dashboard.json.campaign.allowFanData, false)
+    for (const endpoint of ['fans', 'trend']) {
+      const blocked = await api(
+        'GET',
+        `/public/campaign/${link.token}/account/a1/${endpoint}`,
+        undefined,
+        null
+      )
+      assert.equal(blocked.status, 403)
+      assert.equal(blocked.json.error, 'fan_data_disabled')
+    }
+
+    const enabled = await api('PATCH', `/api/campaigns/${id}`, { allowFanData: true })
+    assert.equal(enabled.status, 200)
+    assert.equal(enabled.json.campaign.allowFanData, true)
+    assert.equal(
+      (await api('GET', `/public/campaign/${link.token}/account/a1/fans`, undefined, null)).status,
+      200
+    )
+    assert.equal(
+      (await api('GET', `/public/campaign/${link.token}/account/a1/trend`, undefined, null)).status,
+      200
+    )
   })
 
   test('公开统计返回账号联系方式与头像地址', async () => {

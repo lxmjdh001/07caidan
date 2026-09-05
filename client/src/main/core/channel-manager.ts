@@ -12,6 +12,25 @@ import type { MediaStore } from './media-store'
 import type { MessageStore } from './message-store'
 import { mediaTypeFromMime, mimeFromPath } from './mime'
 
+export interface ChannelNetworkPolicy {
+  assertReady: (key: string) => Promise<unknown>
+  isUsable: (key: string) => boolean
+  startMonitoring: (key: string, onUnavailable: (detail: string) => void) => void
+  stopMonitoring: (key: string) => void
+}
+
+const NETWORK_ACTIVE_STATUSES = new Set<ChannelState['status']>([
+  'connecting',
+  'waiting_qr',
+  'waiting_phone',
+  'waiting_code',
+  'waiting_password',
+  'waiting_pairing_code',
+  'waiting_device_approval',
+  'waiting_oauth',
+  'connected'
+])
+
 /**
  * 渠道管理器：持有所有适配器实例，把它们的事件汇入
  * 翻译管道 → 存储 → 推送给 UI 这条统一链路，并把 UI 的发送请求路由回对应适配器。
@@ -25,10 +44,13 @@ export class ChannelManager {
   private readonly selfAvatarAttempted = new Set<string>()
   /** 已尝试解析标题的会话 */
   private readonly titleAttempted = new Set<string>()
+  /** 已尝试解析公开账号 ID 的会话 */
+  private readonly publicIdAttempted = new Set<string>()
   /** 已尝试解析客户标识的会话 */
   private readonly contactAttempted = new Set<string>()
   /** 被用户禁用的账号；禁用时丢弃迟到的渠道事件，避免重新接收消息 */
   private readonly disabledAccounts = new Set<string>()
+  private networkPolicy: ChannelNetworkPolicy | undefined
 
   constructor(
     private readonly store: MessageStore,
@@ -38,6 +60,10 @@ export class ChannelManager {
     private readonly media?: MediaStore,
     private readonly contacts?: JsonContactStore
   ) {}
+
+  setNetworkPolicy(policy: ChannelNetworkPolicy): void {
+    this.networkPolicy = policy
+  }
 
   register(adapter: ChannelAdapter): void {
     if (this.adapters.has(adapter.key)) {
@@ -58,6 +84,9 @@ export class ChannelManager {
         : { ...state, avatarMediaId: previous.avatarMediaId }
       this.states.set(adapter.key, nextState)
       this.broadcast({ type: 'channel:state', state: nextState })
+      if (!NETWORK_ACTIVE_STATUSES.has(state.status)) {
+        this.networkPolicy?.stopMonitoring(adapter.key)
+      }
       // 连接就绪后为该渠道的历史会话补拉头像
       if (state.status === 'connected') {
         this.ensureSelfAvatar(adapter)
@@ -66,6 +95,7 @@ export class ChannelManager {
             if (conv.channel === adapter.kind && conv.accountId === adapter.accountId) {
               this.ensureAvatar(conv)
               this.ensureTitle(conv)
+              this.ensurePublicId(conv)
               this.ensureContactId(conv)
             }
           }
@@ -78,6 +108,12 @@ export class ChannelManager {
       void this.handleIncoming(msg)
     })
 
+    adapter.on('historyMessage', (msg) => {
+      if (this.disabledAccounts.has(adapter.key)) return
+      // 历史快照只补齐本地/服务器主库，不冒充新来信触发翻译、未读和系统通知。
+      void this.store.recordMessage(msg, { incrementUnread: false })
+    })
+
     adapter.on('messageUpdate', (msg) => {
       if (this.disabledAccounts.has(adapter.key)) return
       void this.store.updateMessage(msg).then((updated) => {
@@ -88,11 +124,36 @@ export class ChannelManager {
     adapter.on('conversation', (upsert) => {
       if (this.disabledAccounts.has(adapter.key)) return
       const id = conversationId(adapter.kind, adapter.accountId, upsert.externalChatId)
-      void this.store
-        .patchConversation({ id, title: upsert.title, isGroup: upsert.isGroup })
-        .then((conv) => {
-          if (conv) this.broadcast({ type: 'conversation:updated', conversation: conv })
-        })
+      void (async () => {
+        const patch = {
+          id,
+          title: upsert.title,
+          isGroup: upsert.isGroup,
+          contactId: upsert.contactId,
+          publicId: upsert.publicId,
+          lastMessageAt: upsert.lastMessageAt,
+          lastMessagePreview: upsert.lastMessagePreview,
+          unreadCount: upsert.unreadCount
+        }
+        let conv = await this.store.patchConversation(patch)
+        if (!conv) {
+          conv = await this.store.upsertConversation({
+            id,
+            channel: adapter.kind,
+            accountId: adapter.accountId,
+            externalChatId: upsert.externalChatId,
+            title: upsert.title || upsert.externalChatId,
+            contactId: upsert.contactId,
+            publicId: upsert.publicId,
+            isGroup: upsert.isGroup,
+            lastMessageAt: upsert.lastMessageAt ?? 0,
+            lastMessagePreview: upsert.lastMessagePreview ?? '',
+            unreadCount: upsert.unreadCount ?? 0
+          })
+        }
+        this.broadcast({ type: 'conversation:updated', conversation: conv })
+        this.ensurePublicId(conv)
+      })()
     })
   }
 
@@ -106,6 +167,7 @@ export class ChannelManager {
     const current = this.states.get(key)
     if (!current) throw new Error(`渠道状态不存在：${key}`)
     if (!adapter.fetchSelfAvatar || current.status !== 'connected') return current
+    this.assertNetworkUsable(key)
 
     const mediaId = await adapter.fetchSelfAvatar()
     if (this.adapters.get(key) !== adapter) return current
@@ -122,6 +184,7 @@ export class ChannelManager {
   async unregister(key: string): Promise<void> {
     const adapter = this.adapters.get(key)
     if (!adapter) return
+    this.networkPolicy?.stopMonitoring(key)
     try {
       await adapter.stop()
     } catch {
@@ -137,7 +200,25 @@ export class ChannelManager {
 
   async start(key: string): Promise<void> {
     if (this.disabledAccounts.has(key)) throw new Error('账号已禁用，请先启用接收消息')
-    await this.requireAdapter(key).start()
+    const current = this.states.get(key)
+    if (current && NETWORK_ACTIVE_STATUSES.has(current.status)) return
+    await this.prepareNetwork(key)
+    const adapter = this.requireAdapter(key)
+    this.networkPolicy?.startMonitoring(key, (detail) => {
+      void this.isolateNetwork(key, detail)
+    })
+    try {
+      await adapter.start()
+    } catch (error) {
+      this.networkPolicy?.stopMonitoring(key)
+      throw error
+    }
+  }
+
+  /** 停止账号连接但保留登录凭证与启用状态。 */
+  async stop(key: string): Promise<void> {
+    this.networkPolicy?.stopMonitoring(key)
+    await this.requireAdapter(key).stop()
   }
 
   /** 设置启动时的禁用状态；调用后再执行 startAll 即可跳过这些账号。 */
@@ -150,9 +231,10 @@ export class ChannelManager {
     const adapter = this.requireAdapter(key)
     if (enabled) {
       this.disabledAccounts.delete(key)
-      await adapter.start()
+      await this.start(key)
     } else {
       this.disabledAccounts.add(key)
+      this.networkPolicy?.stopMonitoring(key)
       await adapter.stop()
     }
   }
@@ -160,6 +242,7 @@ export class ChannelManager {
   async listGroups(key: string): Promise<Conversation[]> {
     const adapter = this.requireAdapter(key)
     if (!adapter.listGroups) throw new Error(`渠道 ${key} 暂不支持群组`)
+    this.assertNetworkUsable(key)
     const groups = await adapter.listGroups()
     const separator = key.indexOf(':')
     const channel = key.slice(0, separator) as Conversation['channel']
@@ -168,19 +251,25 @@ export class ChannelManager {
     for (const group of groups) {
       const id = conversationId(channel, accountId, group.externalChatId)
       const existing = await this.store.getConversation(id)
-      const conversation = await this.store.upsertConversation(existing ?? {
-        id,
-        channel,
-        accountId,
-        externalChatId: group.externalChatId,
-        title: group.title,
-        isGroup: true,
-        lastMessageAt: 0,
-        lastMessagePreview: '',
-        unreadCount: 0
-      })
+      const conversation = await this.store.upsertConversation(
+        existing
+          ? { ...existing, title: group.title, isGroup: true }
+          : {
+              id,
+              channel,
+              accountId,
+              externalChatId: group.externalChatId,
+              title: group.title,
+              isGroup: true,
+              lastMessageAt: 0,
+              lastMessagePreview: '',
+              unreadCount: 0
+            }
+      )
       result.push(conversation)
       this.broadcast({ type: 'conversation:updated', conversation })
+      this.ensureAvatar(conversation)
+      this.ensurePublicId(conversation)
     }
     return result
   }
@@ -188,6 +277,7 @@ export class ChannelManager {
   async createGroup(key: string, subject: string, participantIds: string[]): Promise<Conversation> {
     const adapter = this.requireAdapter(key)
     if (!adapter.createGroup) throw new Error(`渠道 ${key} 暂不支持创建群组`)
+    this.assertNetworkUsable(key)
     const group: GroupSummary = await adapter.createGroup(subject, participantIds)
     const separator = key.indexOf(':')
     const channel = key.slice(0, separator) as Conversation['channel']
@@ -212,30 +302,63 @@ export class ChannelManager {
     await Promise.allSettled(
       [...this.adapters.values()]
         .filter((adapter) => !this.disabledAccounts.has(adapter.key))
-        .map((adapter) => adapter.start())
+        .map((adapter) => this.start(adapter.key))
     )
   }
 
   async stopAll(): Promise<void> {
+    for (const key of this.adapters.keys()) this.networkPolicy?.stopMonitoring(key)
     await Promise.allSettled([...this.adapters.values()].map((a) => a.stop()))
   }
 
   async logout(key: string): Promise<void> {
-    await this.requireAdapter(key).logout()
+    try {
+      await this.requireAdapter(key).logout()
+    } finally {
+      this.networkPolicy?.stopMonitoring(key)
+    }
   }
 
   /** 切换某账号的登录方式（扫码 / 手机号），适配器会重启登录流程 */
   async setLoginMode(key: string, mode: string): Promise<void> {
     const adapter = this.requireAdapter(key)
     if (!adapter.setLoginMode) throw new Error(`渠道 ${key} 不支持切换登录方式`)
-    await adapter.setLoginMode(mode)
+    await this.prepareNetwork(key)
+    const switching = adapter.setLoginMode(mode)
+    // setLoginMode 内部会先 stop，state 监听器会结束旧监控；随后立即为新登录流程重建监控。
+    this.networkPolicy?.startMonitoring(key, (detail) => {
+      void this.isolateNetwork(key, detail)
+    })
+    try {
+      await switching
+    } catch (error) {
+      this.networkPolicy?.stopMonitoring(key)
+      throw error
+    }
   }
 
   /** 提交交互式登录输入（手机号/验证码/两步密码），仅 phone_code 类平台支持 */
   async submitAuthInput(key: string, value: string): Promise<void> {
     const adapter = this.requireAdapter(key)
     if (!adapter.submitAuthInput) throw new Error(`渠道 ${key} 不支持交互式登录`)
+    this.assertNetworkUsable(key)
     await adapter.submitAuthInput(value)
+  }
+
+  /** 发起服务器托管 OAuth；与 start 分开，避免应用冷启动时擅自弹系统浏览器。 */
+  async beginOAuth(key: string): Promise<void> {
+    const adapter = this.requireAdapter(key)
+    if (!adapter.beginOAuth) throw new Error(`渠道 ${key} 不支持网页登录授权`)
+    await this.prepareNetwork(key)
+    this.networkPolicy?.startMonitoring(key, (detail) => {
+      void this.isolateNetwork(key, detail)
+    })
+    try {
+      await adapter.beginOAuth()
+    } catch (error) {
+      this.networkPolicy?.stopMonitoring(key)
+      throw error
+    }
   }
 
   /**
@@ -274,6 +397,7 @@ export class ChannelManager {
     const { channel, accountId, externalChatId } = parseConversationId(convId)
     const adapter = this.requireAdapter(`${channel}:${accountId}`)
     if (this.disabledAccounts.has(adapter.key)) throw new Error('账号已禁用，无法发送消息')
+    this.assertNetworkUsable(adapter.key)
 
     const targetLang = prepared?.targetLang ?? (await this.resolveTargetLang(convId))
     const outbound = prepared ?? (await this.translation.processOutbound(text, targetLang))
@@ -324,6 +448,7 @@ export class ChannelManager {
     const { channel, accountId, externalChatId } = parseConversationId(convId)
     const adapter = this.requireAdapter(`${channel}:${accountId}`)
     if (this.disabledAccounts.has(adapter.key)) throw new Error('账号已禁用，无法发送消息')
+    this.assertNetworkUsable(adapter.key)
     if (!adapter.sendMedia) throw new Error(`渠道 ${adapter.key} 暂不支持发送媒体`)
 
     const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'm4a' : 'webm'
@@ -376,6 +501,7 @@ export class ChannelManager {
     const { channel, accountId, externalChatId } = parseConversationId(convId)
     const adapter = this.requireAdapter(`${channel}:${accountId}`)
     if (this.disabledAccounts.has(adapter.key)) throw new Error('账号已禁用，无法发送消息')
+    this.assertNetworkUsable(adapter.key)
     if (!adapter.sendMedia) throw new Error(`渠道 ${adapter.key} 暂不支持发送媒体`)
 
     const mimeType = mimeFromPath(filePath)
@@ -413,6 +539,7 @@ export class ChannelManager {
     this.broadcast({ type: 'message:new', message: msg, conversation })
     this.ensureAvatar(conversation)
     this.ensureTitle(conversation)
+    this.ensurePublicId(conversation)
     this.ensureContactId(conversation)
     return msg
   }
@@ -420,7 +547,11 @@ export class ChannelManager {
   private async handleIncoming(raw: UnifiedMessage): Promise<void> {
     if (this.disabledAccounts.has(`${raw.channel}:${raw.accountId}`)) return
     try {
-      const { message: msg, detectedLang } = await this.translation.processInbound(raw)
+      // 渠道也会上报手机端发出的消息。它们需要入库以保持完整会话历史，
+      // 但不能当作客户来信翻译或用于客户语言/投放来源识别。
+      const { message: msg, detectedLang } = raw.direction === 'in'
+        ? await this.translation.processInbound(raw)
+        : { message: raw, detectedLang: undefined }
       if (this.disabledAccounts.has(`${raw.channel}:${raw.accountId}`)) return
       const { conversation, duplicated } = await this.store.recordMessage(msg, {
         incrementUnread: msg.direction === 'in'
@@ -449,6 +580,7 @@ export class ChannelManager {
       }
       this.ensureAvatar(conversation)
       this.ensureTitle(conversation)
+      this.ensurePublicId(conversation)
       this.ensureContactId(conversation)
     } catch (err) {
       this.logger.error('入站消息处理失败', err)
@@ -464,6 +596,7 @@ export class ChannelManager {
       const adapter = this.adapters.get(`${channel}:${accountId}`)
       if (!adapter?.fetchAvatar) return
       try {
+        this.assertNetworkUsable(adapter.key)
         const mediaId = await adapter.fetchAvatar(externalChatId)
         if (!mediaId) return
         const updated = await this.store.patchConversation({ id: conv.id, avatarMediaId: mediaId })
@@ -481,6 +614,7 @@ export class ChannelManager {
     this.selfAvatarAttempted.add(adapter.key)
     void (async () => {
       try {
+        this.assertNetworkUsable(adapter.key)
         const mediaId = await adapter.fetchSelfAvatar!()
         if (!mediaId) return
         if (this.adapters.get(adapter.key) !== adapter) return
@@ -504,12 +638,33 @@ export class ChannelManager {
       const adapter = this.adapters.get(`${channel}:${accountId}`)
       if (!adapter?.fetchTitle) return
       try {
+        this.assertNetworkUsable(adapter.key)
         const title = await adapter.fetchTitle(externalChatId)
         if (!title) return
         const updated = await this.store.patchConversation({ id: conv.id, title })
         if (updated) this.broadcast({ type: 'conversation:updated', conversation: updated })
       } catch (err) {
         this.logger.debug(`解析会话标题失败 ${conv.id}`, err)
+      }
+    })()
+  }
+
+  /** 官方账号等平台有公开账号 ID 时异步补齐；内部平台 ID 绝不传到界面。 */
+  private ensurePublicId(conv: { id: string; publicId?: string }): void {
+    if (conv.publicId || this.publicIdAttempted.has(conv.id)) return
+    this.publicIdAttempted.add(conv.id)
+    void (async () => {
+      const { channel, accountId, externalChatId } = parseConversationId(conv.id)
+      const adapter = this.adapters.get(`${channel}:${accountId}`)
+      if (!adapter?.fetchPublicId) return
+      try {
+        this.assertNetworkUsable(adapter.key)
+        const publicId = await adapter.fetchPublicId(externalChatId)
+        if (!publicId) return
+        const updated = await this.store.patchConversation({ id: conv.id, publicId })
+        if (updated) this.broadcast({ type: 'conversation:updated', conversation: updated })
+      } catch (err) {
+        this.logger.debug(`解析公开账号 ID 失败 ${conv.id}`, err)
       }
     })()
   }
@@ -532,6 +687,7 @@ export class ChannelManager {
           const { channel, accountId, externalChatId } = parseConversationId(conv.id)
           const adapter = this.adapters.get(`${channel}:${accountId}`)
           if (!adapter?.resolveContactId) return
+          this.assertNetworkUsable(adapter.key)
           contactId = await adapter.resolveContactId(externalChatId)
           if (!contactId) return
           const updated = await this.store.patchConversation({ id: conv.id, contactId })
@@ -547,6 +703,53 @@ export class ChannelManager {
         this.logger.debug(`解析客户标识失败 ${conv.id}`, err)
       }
     })()
+  }
+
+  private async prepareNetwork(key: string): Promise<void> {
+    if (!this.networkPolicy) return
+    try {
+      await this.networkPolicy.assertReady(key)
+    } catch (error) {
+      this.networkPolicy.stopMonitoring(key)
+      const previous = this.states.get(key)
+      const next: ChannelState = {
+        kind: previous?.kind ?? this.requireAdapter(key).kind,
+        accountId: previous?.accountId ?? this.requireAdapter(key).accountId,
+        status: 'error',
+        detail: error instanceof Error ? error.message : String(error),
+        ...(previous?.avatarMediaId ? { avatarMediaId: previous.avatarMediaId } : {})
+      }
+      this.states.set(key, next)
+      this.broadcast({ type: 'channel:state', state: next })
+      throw error
+    }
+  }
+
+  private assertNetworkUsable(key: string): void {
+    if (this.networkPolicy && !this.networkPolicy.isUsable(key)) {
+      throw new Error('账号代理网络不可用，安全隔离已阻止平台请求')
+    }
+  }
+
+  private async isolateNetwork(key: string, detail: string): Promise<void> {
+    const adapter = this.adapters.get(key)
+    if (!adapter) return
+    this.networkPolicy?.stopMonitoring(key)
+    try {
+      await adapter.stop()
+    } catch (error) {
+      this.logger.warn(`[${key}] 代理断开后停止渠道失败`, error)
+    }
+    const previous = this.states.get(key)
+    const next: ChannelState = {
+      kind: adapter.kind,
+      accountId: adapter.accountId,
+      status: 'error',
+      detail: `代理网络已断开，账号已安全隔离：${detail}`,
+      ...(previous?.avatarMediaId ? { avatarMediaId: previous.avatarMediaId } : {})
+    }
+    this.states.set(key, next)
+    this.broadcast({ type: 'channel:state', state: next })
   }
 
   private requireAdapter(key: string): ChannelAdapter {

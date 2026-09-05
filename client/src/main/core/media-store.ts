@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { copyFile, mkdir, writeFile } from 'node:fs/promises'
+import { access, copyFile, mkdir, writeFile } from 'node:fs/promises'
 import { basename, extname, join, resolve } from 'node:path'
 
 /**
@@ -21,6 +21,24 @@ export class MediaStore {
     const mediaId = `${randomUUID()}${safeExt}`
     await writeFile(join(this.baseDir, mediaId), data)
     return mediaId
+  }
+
+  /** 服务端恢复时沿用原 mediaId，保证不同电脑引用同一个媒体对象。 */
+  async saveAs(mediaId: string, data: Buffer): Promise<void> {
+    const path = this.resolvePath(mediaId)
+    if (!path || !/^[\w.-]+$/.test(mediaId)) throw new Error('非法 mediaId')
+    await writeFile(path, data)
+  }
+
+  async has(mediaId: string): Promise<boolean> {
+    const path = this.resolvePath(mediaId)
+    if (!path) return false
+    try {
+      await access(path)
+      return true
+    } catch {
+      return false
+    }
   }
 
   /** 导入外部文件（发送前复制进库，保证消息记录里的媒体不随原文件移动失效） */

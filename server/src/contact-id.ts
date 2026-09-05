@@ -7,11 +7,19 @@
  *   whatsapp → wa:+8613800138000     手机号，全网唯一
  *   telegram → tg:123456789          全局用户 id
  *   line     → line:<provider>:U...  userId 只在 Provider 内稳定，必须带作用域
+ *   kakaotalk→ kakao:123456789       Kakao 全局数字用户 id
+ *   facebook → facebook:<page>:<psid> PSID 只在该主页下稳定
+ *   instagram→ instagram:<ig>:<igsid> IGSID 按业务账号作用域隔离
+ *   tiktok   → tiktok:<business>:<user> TikTok 用户标识按已授权企业号作用域保存
+ *   x        → x:<user> X 用户数字 ID 全局稳定
+ *   snapchat → snapchat:<brand>:<creator> Public Profile 会话按品牌作用域保存
  */
 
-export type LibraryChannel = 'whatsapp' | 'telegram' | 'line'
+export type LibraryChannel = 'whatsapp' | 'telegram' | 'line' | 'kakaotalk' | 'facebook' | 'instagram' | 'tiktok' | 'x' | 'snapchat'
 
-export const LIBRARY_CHANNELS: LibraryChannel[] = ['whatsapp', 'telegram', 'line']
+export const LIBRARY_CHANNELS: LibraryChannel[] = [
+  'whatsapp', 'telegram', 'line', 'kakaotalk', 'facebook', 'instagram', 'tiktok', 'x', 'snapchat'
+]
 
 export function isLibraryChannel(v: string): v is LibraryChannel {
   return (LIBRARY_CHANNELS as string[]).includes(v)
@@ -80,6 +88,42 @@ export function normalizeContactId(
       }
       return { ok: true, contactId: `line:${provider}:${value}` }
     }
+
+    case 'kakaotalk': {
+      const id = value.startsWith('kakao:') ? value.slice('kakao:'.length) : value
+      if (!/^\d+$/.test(id)) {
+        return { ok: false, reason: `不是有效的 KakaoTalk 用户 id：${value}` }
+      }
+      return { ok: true, contactId: `kakao:${id}` }
+    }
+
+    case 'facebook':
+    case 'instagram':
+    case 'tiktok': {
+      const pattern = new RegExp(`^${channel}:[A-Za-z0-9_-]{1,128}:[A-Za-z0-9_.-]{1,128}$`)
+      if (!pattern.test(value)) {
+        return {
+          ok: false,
+          reason: `${channel === 'facebook' ? 'Messenger' : channel === 'instagram' ? 'Instagram' : 'TikTok'} 标识必须使用系统导出的完整作用域 ID：${value}`
+        }
+      }
+      return { ok: true, contactId: value }
+    }
+
+    case 'x': {
+      const id = value.startsWith('x:') ? value.slice(2) : value
+      if (!/^\d{1,32}$/.test(id)) {
+        return { ok: false, reason: `不是有效的 X 用户数字 ID：${value}` }
+      }
+      return { ok: true, contactId: `x:${id}` }
+    }
+
+    case 'snapchat': {
+      if (!/^snapchat:[A-Za-z0-9_-]{8,128}:[A-Za-z0-9_-]{8,128}$/.test(value)) {
+        return { ok: false, reason: `Snapchat 标识必须使用系统导出的完整品牌作用域 ID：${value}` }
+      }
+      return { ok: true, contactId: value }
+    }
   }
 }
 
@@ -125,5 +169,11 @@ export function channelOfContactId(contactId: string): LibraryChannel | undefine
   if (contactId.startsWith('wa:')) return 'whatsapp'
   if (contactId.startsWith('tg:')) return 'telegram'
   if (contactId.startsWith('line:')) return 'line'
+  if (contactId.startsWith('kakao:')) return 'kakaotalk'
+  if (contactId.startsWith('facebook:')) return 'facebook'
+  if (contactId.startsWith('instagram:')) return 'instagram'
+  if (contactId.startsWith('tiktok:')) return 'tiktok'
+  if (contactId.startsWith('x:')) return 'x'
+  if (contactId.startsWith('snapchat:')) return 'snapchat'
   return undefined
 }

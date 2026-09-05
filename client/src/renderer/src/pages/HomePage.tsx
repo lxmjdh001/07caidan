@@ -14,6 +14,12 @@ import { useI18n } from '../i18n'
 import whatsappLogo from '../assets/platforms/whatsapp.svg'
 import telegramLogo from '../assets/platforms/telegram.svg'
 import lineLogo from '../assets/platforms/line.svg'
+import kakaoTalkLogo from '../assets/platforms/kakaotalk.svg'
+import facebookLogo from '../assets/platforms/facebook.svg'
+import instagramLogo from '../assets/platforms/instagram.svg'
+import tiktokLogo from '../assets/platforms/tiktok.svg'
+import xLogo from '../assets/platforms/x.svg'
+import snapchatLogo from '../assets/platforms/snapchat.svg'
 
 const api = window.omni
 
@@ -37,9 +43,12 @@ interface Props {
   plugins: ChannelPluginInfo[]
   onOpenApp: (kind: string) => void
   onOpenManagement: () => void
+  onOpenProxy: () => void
   onOpenSubaccounts: () => void
   onOpenWorkorders: () => void
+  onOpenQuickMessages: () => void
   canSubaccounts: boolean
+  canProxy: boolean
   canWorkorders: boolean
   onRefresh: () => void
 }
@@ -47,8 +56,17 @@ interface Props {
 const APP_META: Record<string, { name: string; logo: string }> = {
   whatsapp: { name: 'WhatsApp', logo: whatsappLogo },
   telegram: { name: 'Telegram', logo: telegramLogo },
-  line: { name: 'LINE', logo: lineLogo }
+  line: { name: 'LINE', logo: lineLogo },
+  kakaotalk: { name: 'KakaoTalk', logo: kakaoTalkLogo },
+  facebook: { name: 'Facebook Messenger', logo: facebookLogo },
+  instagram: { name: 'Instagram', logo: instagramLogo },
+  tiktok: { name: 'TikTok', logo: tiktokLogo },
+  x: { name: 'X', logo: xLogo },
+  snapchat: { name: 'Snapchat', logo: snapchatLogo }
 }
+
+/** 已进入正式可用阶段的平台；其他平台保留入口，供内部继续联调。 */
+const RELEASED_APPS = new Set(['whatsapp', 'telegram', 'line'])
 
 function money(cents = 0): string {
   return `$${(cents / 100).toFixed(2)}`
@@ -58,7 +76,7 @@ function dateText(ts?: number): string {
   return ts ? new Date(ts).toLocaleDateString() : '—'
 }
 
-export function HomePage({ settings, channels, plugins, onOpenApp, onOpenManagement, onOpenSubaccounts, onOpenWorkorders, canSubaccounts, canWorkorders, onRefresh }: Props): React.JSX.Element {
+export function HomePage({ settings, channels, plugins, onOpenApp, onOpenManagement, onOpenProxy, onOpenSubaccounts, onOpenWorkorders, onOpenQuickMessages, canSubaccounts, canProxy, canWorkorders, onRefresh }: Props): React.JSX.Element {
   const { t } = useI18n()
   const [billing, setBilling] = useState<BillingMe | null>(null)
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
@@ -76,11 +94,17 @@ export function HomePage({ settings, channels, plugins, onOpenApp, onOpenManagem
     kinds.add('whatsapp')
     kinds.add('telegram')
     kinds.add('line')
-    return ['whatsapp', 'telegram', 'line'].filter((kind) => kinds.has(kind))
+    kinds.add('kakaotalk')
+    kinds.add('facebook')
+    kinds.add('instagram')
+    kinds.add('tiktok')
+    kinds.add('x')
+    kinds.add('snapchat')
+    return ['whatsapp', 'telegram', 'line', 'kakaotalk', 'facebook', 'instagram', 'tiktok', 'x', 'snapchat']
+      .filter((kind) => kinds.has(kind))
   }, [plugins])
 
-  const whatsappAccounts = Object.values(channels).filter((s) => s.kind === 'whatsapp')
-  const connected = whatsappAccounts.filter((s) => s.status === 'connected').length
+  const connected = Object.values(channels).filter((s) => s.status === 'connected').length
 
   return (
     <div className="home-page">
@@ -116,32 +140,6 @@ export function HomePage({ settings, channels, plugins, onOpenApp, onOpenManagem
         </div>
       </section>
 
-      <section className="home-section app-section">
-        <div className="section-title-row">
-          <div className="section-title"><CreditCard size={20} /><h2>{t('home.apps')}</h2></div>
-          <span className="section-caption">{t('home.appsCaption').replace('{count}', String(connected))}</span>
-        </div>
-        <div className="home-app-grid">
-          {supportedKinds.map((kind) => {
-            const meta = APP_META[kind]!
-            const available = kind === 'whatsapp'
-            return (
-              <button
-                type="button"
-                key={kind}
-                className={`home-app-card ${available ? '' : 'is-disabled'}`}
-                disabled={!available}
-                onClick={() => available && onOpenApp(kind)}
-              >
-                <img className="home-app-logo" src={meta.logo} alt="" />
-                <span className="home-app-body"><strong>{meta.name}</strong></span>
-                <span className="home-app-status">{available ? <><BadgeCheck size={17} />{t('home.available')}</> : <><CircleAlert size={17} />{t('home.comingSoon')}</>}</span>
-              </button>
-            )
-          })}
-        </div>
-      </section>
-
       <section className="home-section management-section">
         <div className="section-title-row">
           <div className="section-title"><h2>{t('management.nav')}</h2></div>
@@ -150,16 +148,41 @@ export function HomePage({ settings, channels, plugins, onOpenApp, onOpenManagem
         <div className="home-management-grid">
           {[
             { id: 'subaccounts', title: t('management.subaccounts'), desc: t('management.subaccountsDesc'), available: canSubaccounts, action: onOpenSubaccounts },
-            { id: 'proxy', title: t('management.proxy'), desc: t('management.proxyDesc'), available: false },
+            { id: 'proxy', title: t('management.proxy'), desc: t('management.proxyDesc'), available: canProxy, action: onOpenProxy },
             { id: 'workorders', title: t('management.workorders'), desc: t('management.workordersDesc'), available: canWorkorders, action: onOpenWorkorders },
             { id: 'invites', title: t('management.invites'), desc: t('management.invitesDesc'), available: false },
-            { id: 'quick-messages', title: t('management.quickMessages'), desc: t('management.quickMessagesDesc'), available: false }
+            { id: 'quick-messages', title: t('management.quickMessages'), desc: t('management.quickMessagesDesc'), available: true, action: onOpenQuickMessages }
           ].map((item) => (
             <button key={item.id} type="button" className={`home-management-card ${item.available ? '' : 'is-pending'}`} disabled={!item.available} onClick={item.action}>
               <span className="home-management-copy"><strong>{item.title}</strong><span>{item.desc}</span></span>
               <span className="home-management-badge">{item.available ? t('management.available') : t('management.pending')}</span>
             </button>
           ))}
+        </div>
+      </section>
+
+      <section className="home-section app-section">
+        <div className="section-title-row">
+          <div className="section-title"><CreditCard size={20} /><h2>{t('home.apps')}</h2></div>
+          <span className="section-caption">{t('home.appsCaption').replace('{count}', String(connected))}</span>
+        </div>
+        <div className="home-app-grid">
+          {supportedKinds.map((kind) => {
+            const meta = APP_META[kind]!
+            const released = RELEASED_APPS.has(kind)
+            return (
+              <button
+                type="button"
+                key={kind}
+                className={`home-app-card ${released ? '' : 'is-development'}`}
+                onClick={() => onOpenApp(kind)}
+              >
+                <img className="home-app-logo" src={meta.logo} alt="" />
+                <span className="home-app-body"><strong>{meta.name}</strong></span>
+                <span className="home-app-status">{released ? <><BadgeCheck size={17} />{t('home.available')}</> : <><CircleAlert size={17} />{t('home.comingSoon')}</>}</span>
+              </button>
+            )
+          })}
         </div>
       </section>
 

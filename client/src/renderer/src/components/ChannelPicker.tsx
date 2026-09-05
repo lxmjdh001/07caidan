@@ -4,7 +4,13 @@ import { useI18n } from '../i18n'
 const ICON: Record<string, { color: string; letter: string }> = {
   whatsapp: { color: '#22a06b', letter: 'W' },
   telegram: { color: '#2aabee', letter: 'T' },
-  line: { color: '#06c755', letter: 'L' }
+  line: { color: '#06c755', letter: 'L' },
+  kakaotalk: { color: '#fee500', letter: 'K' },
+  facebook: { color: '#0866ff', letter: 'f' },
+  instagram: { color: '#c13584', letter: '◎' },
+  tiktok: { color: '#111111', letter: '♪' },
+  x: { color: '#000000', letter: 'X' },
+  snapchat: { color: '#fffc00', letter: 'S' }
 }
 
 interface Props {
@@ -30,7 +36,13 @@ export function ChannelPicker({ plugins, onPick, onClose }: Props): React.JSX.El
                 </span>
                 <span className="picker-name">{p.displayName}</span>
                 <span className="picker-auth">
-                  {p.authType === 'qr' ? t('picker.qr') : t('picker.credentials')}
+                  {p.authType === 'qr'
+                    ? t('picker.qr')
+                    : p.authType === 'phone_code'
+                      ? `${t('picker.qr')} / ${t('qr.tabPhone')}`
+                      : p.authType === 'oauth'
+                        ? t('picker.oauth')
+                        : t('picker.credentials')}
                 </span>
               </button>
             )

@@ -18,6 +18,8 @@ export interface ConversationPatch {
   isGroup?: boolean
   avatarMediaId?: string
   contactId?: string
+  /** 平台公开账号标识（例如 LINE 官方账号的 @id） */
+  publicId?: string
   detectedLang?: string
   /** 手动客户语言；null 表示清除（回到自动） */
   langOverride?: string | null
@@ -29,6 +31,10 @@ export interface ConversationPatch {
   pinned?: boolean
   muted?: boolean
   customerNote?: string
+  /** 平台登录快照里的最后消息摘要；仅在不早于本地记录时覆盖。 */
+  lastMessageAt?: number
+  lastMessagePreview?: string
+  unreadCount?: number
 }
 
 /**

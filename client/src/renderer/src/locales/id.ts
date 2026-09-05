@@ -2,6 +2,7 @@ import type { MessageKey } from './zh-CN'
 
 /** Bahasa Indonesia */
 export const id: Partial<Record<MessageKey, string>> = {
+  'account.proxyConfig': 'Pengaturan proxy',
   // ── Pelengkap (~209 kunci, Bahasa Indonesia) ──
   'chat.intentHigh': 'Minat tinggi',
   'chat.intentMedium': 'Minat sedang',
@@ -233,7 +234,7 @@ export const id: Partial<Record<MessageKey, string>> = {
   'chat.previewLabel': 'Pratinjau kirim',
   'chat.confirmSend': 'Konfirmasi & kirim',
   'channel.whatsapp': 'WhatsApp',
-  'channel.telegram': 'Telegram (segera hadir)',
+  'channel.telegram': 'Telegram',
   'channel.line': 'LINE (segera hadir)',
   'rail.allChats': 'Semua pesan',
   'rail.accounts': 'Akun',
@@ -248,6 +249,8 @@ export const id: Partial<Record<MessageKey, string>> = {
   'account.deviceAuto': 'Otomatis (berbeda tiap akun)',
   'account.deviceHint': 'Nama yang tampil di "Perangkat Tertaut", terpisah untuk tiap akun. Masuk ulang agar berlaku.',
   'account.saveConnect': 'Simpan & hubungkan',
+  'account.oauthConnect': 'Otorisasi web & hubungkan',
+  'account.oauthHint': 'Berikan izin di halaman login resmi. Kata sandi dan token akses tidak disimpan di perangkat ini.',
   'account.advanced': 'Pengaturan lanjutan (jarang perlu diubah)',
   'campaign.title': 'Kampanye',
   'campaign.tabCampaigns': 'Kampanye',
@@ -336,6 +339,7 @@ export const id: Partial<Record<MessageKey, string>> = {
   'picker.title': 'Pilih platform untuk ditambahkan',
   'picker.qr': 'Masuk dengan QR',
   'picker.credentials': 'Masuk dengan kunci',
+  'picker.oauth': 'Otorisasi web',
   'status.need_credentials': 'Perlu kredensial',
   'status.waiting_phone': 'Menunggu nomor telepon',
   'status.waiting_code': 'Menunggu kode verifikasi',
@@ -422,8 +426,8 @@ export const id: Partial<Record<MessageKey, string>> = {
   'settings.customKey': 'API Key (opsional)',
   'settings.customHint': 'Kontrak: POST JSON {"text","target_lang"} → {"text","source_lang"?}',
   'settings.account': 'Akun',
-  'settings.proxy': 'Proksi (socks5:// atau http://, kosong = koneksi langsung)',
-  'settings.proxyHint': 'Berlaku pada koneksi ulang berikutnya',
+  'settings.proxy': 'Proksi khusus akun (wajib sebelum masuk)',
+  'settings.proxyHint': 'Jalur keluar diperiksa saat disimpan; jika putus akun diisolasi tanpa koneksi langsung',
   'settings.logout': 'Keluar',
   'settings.logoutConfirm': 'Keluar? Kredensial lokal akan dihapus.',
   'settings.removeAccount': 'Hapus akun',

@@ -1,15 +1,23 @@
 # OmniChat
 
 多平台聚合聊天桌面客户端（Windows / macOS），面向跨境客服场景：
-一个收件箱聚合 WhatsApp、Telegram、LINE 等平台的会话，聊天内容双向自动翻译。
+一个收件箱聚合 WhatsApp、Telegram、LINE、KakaoTalk、Facebook Messenger、Instagram、TikTok、X、Snapchat 等平台的会话，聊天内容双向自动翻译。
 
-**核心架构原则：平台连接跑在客户端本地。** 每个用户用自己的电脑、自己的 IP（或自己配置的代理）
-连接聊天平台，避免所有账号从同一服务端 IP 出口导致的批量封号风险。
+WhatsApp、Telegram、LINE、KakaoTalk 的个人账号协议连接跑在客户端本地。Messenger 与 Instagram
+使用 Meta 官方 OAuth/Graph API，令牌由服务器加密托管；客户只在官方网页授权。
+TikTok 使用官方 API for Business，企业号 access/refresh token 同样只在服务器加密托管。
+X 使用官方 OAuth 2.0 / Direct Messages API；Snapchat 使用官方 Public Profile Messaging。
 
 ## 技术栈
 
 - Electron + electron-vite + React 19 + TypeScript（ESM 全家桶）
 - WhatsApp：[Baileys v7](https://github.com/WhiskeySockets/Baileys)（WebSocket 直连，无需浏览器）
+- KakaoTalk：[@lukim9-kakao/client-android](https://github.com/Lukim99/node-kakao-stable/tree/master/v5)（Android 子设备授权 + LOCO 长连接）
+- Facebook Messenger：Meta 官方 Facebook Login + Messenger Platform API
+- Instagram：Meta 官方 Instagram API with Instagram Login（专业账号）
+- TikTok：官方 API for Business / Business Messaging（企业号 OAuth + 私信 Webhook）
+- X：官方 OAuth 2.0 PKCE + Direct Messages API（消息增量轮询）
+- Snapchat：官方 Public Profile Messaging（仅品牌公共主页 ↔ 创作者合作消息）
 - 测试：Vitest（59+ 用例覆盖核心层）
 - 日志:pino（控制台 + `userData/logs/omnichat.log`）
 
@@ -25,6 +33,22 @@ npm run build      # 生产构建
 
 首次启动后点击左侧 WhatsApp 图标 → 手机 WhatsApp「设置 → 已关联的设备 → 关联设备」扫码登录。
 登录凭证保存在本机 `userData/channels/whatsapp/auth/`，不会上传任何服务器。
+
+KakaoTalk 首次登录需填写 Kakao 邮箱与密码，并在手机主设备输入客户端展示的 8 位设备验证码。
+验证成功后密码会立即从本地配置清除，只保留该账号独立的设备 UUID 与会话令牌；鉴权、节点发现、
+消息长连接均遵循账号自己的 SOCKS4/5 或 HTTP(S) CONNECT 代理。
+
+Messenger / Instagram 新增账号后点击“网页授权并连接”，系统浏览器会打开官方登录页。服务器集中配置
+Meta 应用凭证一次即可，所有客户均不需要填写 App ID、App Secret 或访问令牌；同一团队换电脑后会自动
+恢复已授权账号。服务器部署步骤见 [`docs/meta-integration.md`](../docs/meta-integration.md)。
+
+TikTok 新增账号也使用“网页授权并连接”。客户必须授权企业号，且服务方 TikTok 开发者应用需先获
+Business Messaging 权限；客户端不要求客户填写 App ID、Secret 或 Token。部署步骤见
+[`docs/tiktok-integration.md`](../docs/tiktok-integration.md)。
+
+X 新增账号后直接网页授权，可读取和回复当前账号私信。Snapchat 新增账号需先授权已获 API 准入的
+品牌 Public Profile，再在账号设置填写创作者 Public Profile ID；它不支持普通个人聊天收件箱。
+配置见 [`docs/x-snapchat-integration.md`](../docs/x-snapchat-integration.md)。
 
 ## 架构
 
@@ -77,7 +101,7 @@ Content-Type: application/json
 
 ## 风险声明
 
-WhatsApp 通道基于非官方协议（Baileys），违反 WhatsApp 服务条款，存在封号风险。
+WhatsApp 与 KakaoTalk 通道均基于非官方协议实现，平台升级时可能失效，也存在账号限制风险。
 请使用专用号码，控制发送频率。商用场景建议评估官方 WhatsApp Business Cloud API。
 
 ## 路线图

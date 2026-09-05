@@ -93,7 +93,8 @@ describe('parseTrustProxy', () => {
     assert.equal(parseTrustProxy('TRUE'), true)
   })
   test('跳数转数字，其余原样透传给 proxy-addr', () => {
-    assert.equal(parseTrustProxy('2'), 2)
+    // 数字跳数可被伪造更长的 XFF 绕过，安全回落为不信任代理。
+    assert.equal(parseTrustProxy('2'), false)
     assert.equal(parseTrustProxy('loopback'), 'loopback')
     assert.equal(parseTrustProxy('127.0.0.1'), '127.0.0.1')
     assert.equal(parseTrustProxy('10.0.0.0/8'), '10.0.0.0/8')
@@ -115,7 +116,7 @@ describe('公开看板地区限制（HTTP）', () => {
   let dir: string
   let app: FastifyInstance
 
-  function makeConfig(dbPath: string, trustProxy?: boolean | string | number): ServerConfig {
+  function makeConfig(dbPath: string, trustProxy?: boolean | string): ServerConfig {
     return {
       port: 0,
       host: '127.0.0.1',

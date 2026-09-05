@@ -4,9 +4,12 @@ export type ManagementSection = 'subaccounts' | 'proxy' | 'workorders' | 'invite
 
 interface Props {
   canSubaccounts: boolean
+  canProxy: boolean
   canWorkorders: boolean
   onOpenSubaccounts: () => void
+  onOpenProxy: () => void
   onOpenWorkorders: () => void
+  onOpenQuickMessages: () => void
 }
 
 interface Card {
@@ -19,9 +22,12 @@ interface Card {
 
 export function ManagementPage({
   canSubaccounts,
+  canProxy,
   canWorkorders,
   onOpenSubaccounts,
-  onOpenWorkorders
+  onOpenProxy,
+  onOpenWorkorders,
+  onOpenQuickMessages
 }: Props): React.JSX.Element {
   const { t } = useI18n()
   const cards: Card[] = [
@@ -36,7 +42,8 @@ export function ManagementPage({
       id: 'proxy',
       titleKey: 'management.proxy',
       descKey: 'management.proxyDesc',
-      available: false
+      available: canProxy,
+      action: onOpenProxy
     },
     {
       id: 'workorders',
@@ -55,7 +62,8 @@ export function ManagementPage({
       id: 'quick-messages',
       titleKey: 'management.quickMessages',
       descKey: 'management.quickMessagesDesc',
-      available: false
+      available: true,
+      action: onOpenQuickMessages
     }
   ]
 

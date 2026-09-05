@@ -237,4 +237,17 @@ describe('JsonMessageStore', () => {
     expect(convs[0]?.unreadCount).toBe(1)
     expect(await reloaded.listMessages('whatsapp:main:123@s.whatsapp.net')).toHaveLength(1)
   })
+
+  it('并发 flush 串行落盘，不会争抢同一个临时文件', async () => {
+    await store.recordMessage(msg({ externalId: 'P2' }))
+    await expect(Promise.all([store.flush(), store.flush(), store.flush()])).resolves.toEqual([
+      undefined,
+      undefined,
+      undefined
+    ])
+
+    const reloaded = new JsonMessageStore(dir)
+    await reloaded.init()
+    expect(await reloaded.listMessages('whatsapp:main:123@s.whatsapp.net')).toHaveLength(1)
+  })
 })

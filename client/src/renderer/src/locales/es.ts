@@ -2,6 +2,7 @@ import type { MessageKey } from './zh-CN'
 
 /** Español */
 export const es: Partial<Record<MessageKey, string>> = {
+  'account.proxyConfig': 'Configuración del proxy',
   // ── Complemento (~209 claves, español) ──
   'chat.intentHigh': 'Intención alta',
   'chat.intentMedium': 'Intención media',
@@ -233,7 +234,7 @@ export const es: Partial<Record<MessageKey, string>> = {
   'chat.previewLabel': 'Vista previa del envío',
   'chat.confirmSend': 'Confirmar y enviar',
   'channel.whatsapp': 'WhatsApp',
-  'channel.telegram': 'Telegram (próximamente)',
+  'channel.telegram': 'Telegram',
   'channel.line': 'LINE (próximamente)',
   'rail.allChats': 'Todos los mensajes',
   'rail.accounts': 'Cuentas',
@@ -248,6 +249,8 @@ export const es: Partial<Record<MessageKey, string>> = {
   'account.deviceAuto': 'Automático (distinto por cuenta)',
   'account.deviceHint': 'Nombre mostrado en «Dispositivos vinculados», aislado por cuenta. Vuelve a iniciar sesión para aplicarlo.',
   'account.saveConnect': 'Guardar y conectar',
+  'account.oauthConnect': 'Autorizar y conectar',
+  'account.oauthHint': 'Autoriza en la página oficial de inicio de sesión. La contraseña y el token de acceso no se guardan en este dispositivo.',
   'account.advanced': 'Avanzado (rara vez necesario)',
   'campaign.title': 'Campañas',
   'campaign.tabCampaigns': 'Campañas',
@@ -336,6 +339,7 @@ export const es: Partial<Record<MessageKey, string>> = {
   'picker.title': 'Elige una plataforma para añadir',
   'picker.qr': 'Inicio con QR',
   'picker.credentials': 'Inicio con credenciales',
+  'picker.oauth': 'Autorización web',
   'status.need_credentials': 'Faltan credenciales',
   'status.waiting_phone': 'Esperando el número de teléfono',
   'status.waiting_code': 'Esperando el código de verificación',
@@ -422,8 +426,8 @@ export const es: Partial<Record<MessageKey, string>> = {
   'settings.customKey': 'API Key (opcional)',
   'settings.customHint': 'Contrato: POST JSON {"text","target_lang"} → {"text","source_lang"?}',
   'settings.account': 'Cuentas',
-  'settings.proxy': 'Proxy (socks5:// o http://, vacío = conexión directa)',
-  'settings.proxyHint': 'Se aplica en la próxima reconexión',
+  'settings.proxy': 'Proxy dedicado de la cuenta (obligatorio antes de iniciar sesión)',
+  'settings.proxyHint': 'La salida se verifica al guardar; si falla, se bloquea sin conexión directa',
   'settings.logout': 'Cerrar sesión',
   'settings.logoutConfirm': '¿Cerrar sesión? Se borrarán las credenciales locales.',
   'settings.removeAccount': 'Eliminar cuenta',

@@ -2,6 +2,7 @@ import type { MessageKey } from './zh-CN'
 
 /** 한국어 */
 export const ko: Partial<Record<MessageKey, string>> = {
+  'account.proxyConfig': '프록시 설정',
   'chat.intentHigh': '관심 높음',
   'chat.intentMedium': '관심 보통',
   // ── 보완(약 200개, 비즈니스 한국어) ──
@@ -233,7 +234,7 @@ export const ko: Partial<Record<MessageKey, string>> = {
   'chat.previewLabel': '전송 미리보기',
   'chat.confirmSend': '확인 후 전송',
   'channel.whatsapp': 'WhatsApp',
-  'channel.telegram': 'Telegram (곧 지원)',
+  'channel.telegram': 'Telegram',
   'channel.line': 'LINE (곧 지원)',
   'rail.allChats': '전체 메시지',
   'rail.accounts': '계정',
@@ -248,6 +249,8 @@ export const ko: Partial<Record<MessageKey, string>> = {
   'account.deviceAuto': '자동 (계정마다 다름)',
   'account.deviceHint': '「연결된 기기」에 표시되는 이름이며 계정별로 분리됩니다. 변경 후 재로그인해야 적용됩니다.',
   'account.saveConnect': '저장 후 연결',
+  'account.oauthConnect': '웹 인증 후 연결',
+  'account.oauthHint': '아래 버튼을 눌러 공식 로그인 페이지에서 인증하세요. 비밀번호와 액세스 토큰은 이 기기에 저장되지 않습니다.',
   'account.advanced': '고급 설정 (보통 건드릴 필요 없음)',
   'campaign.title': '유입 작업',
   'campaign.tabCampaigns': '작업',
@@ -336,6 +339,7 @@ export const ko: Partial<Record<MessageKey, string>> = {
   'picker.title': '추가할 플랫폼 선택',
   'picker.qr': 'QR 로그인',
   'picker.credentials': '인증 정보',
+  'picker.oauth': '웹 인증',
   'status.need_credentials': '인증 정보 필요',
   'status.waiting_phone': '전화번호 입력 대기',
   'status.waiting_code': '인증 코드 입력 대기',
@@ -422,8 +426,8 @@ export const ko: Partial<Record<MessageKey, string>> = {
   'settings.customKey': 'API Key (선택)',
   'settings.customHint': '규격: POST JSON {"text","target_lang"} → {"text","source_lang"?}',
   'settings.account': '계정',
-  'settings.proxy': '프록시 (socks5:// 또는 http://, 비우면 직접 연결)',
-  'settings.proxyHint': '다음 재연결 시 적용됩니다',
+  'settings.proxy': '계정 전용 프록시 (로그인 전 필수)',
+  'settings.proxyHint': '저장할 때 출구를 확인하며, 연결이 끊기면 직접 연결 없이 즉시 격리합니다',
   'settings.logout': '로그아웃',
   'settings.logoutConfirm': '로그아웃할까요? 로컬 인증 정보가 삭제됩니다.',
   'settings.removeAccount': '계정 삭제',

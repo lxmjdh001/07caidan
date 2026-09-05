@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import {
   BriefcaseBusiness,
   ChevronDown,
   ChevronRight,
   CircleQuestionMark,
   CreditCard,
+  Globe2,
   MoreVertical,
   Power,
   PowerOff,
@@ -17,12 +18,19 @@ import {
   LogOut
   ,UserRoundPlus
 } from 'lucide-react'
-import type { ChannelState } from '@shared/domain'
+import type { ChannelKind, ChannelState } from '@shared/domain'
 import { UnreadBadge } from './UnreadBadge'
 import { useI18n } from '../i18n'
 import whatsappLogo from '../assets/platforms/whatsapp.svg'
 import telegramLogo from '../assets/platforms/telegram.svg'
 import lineLogo from '../assets/platforms/line.svg'
+import kakaoTalkLogo from '../assets/platforms/kakaotalk.svg'
+import facebookLogo from '../assets/platforms/facebook.svg'
+import instagramLogo from '../assets/platforms/instagram.svg'
+import tiktokLogo from '../assets/platforms/tiktok.svg'
+import xLogo from '../assets/platforms/x.svg'
+import snapchatLogo from '../assets/platforms/snapchat.svg'
+import { DEFAULT_PLATFORM_ORDER, normalizePlatformOrder, reorderPlatformOrder } from '../platform-order'
 
 const STATUS_COLOR: Record<string, string> = {
   connected: 'var(--ok)',
@@ -32,6 +40,8 @@ const STATUS_COLOR: Record<string, string> = {
   waiting_phone: 'var(--warn)',
   waiting_code: 'var(--warn)',
   waiting_password: 'var(--warn)',
+  waiting_device_approval: 'var(--warn)',
+  waiting_oauth: 'var(--warn)',
   error: 'var(--danger)',
   logged_out: 'var(--muted)',
   stopped: 'var(--muted)',
@@ -42,9 +52,15 @@ const PLATFORM_META: Record<string, { label: string; color: string; logo: string
   whatsapp: { label: 'WhatsApp', color: '#25d366', logo: whatsappLogo },
   telegram: { label: 'Telegram', color: '#229ed9', logo: telegramLogo },
   telegram_bot: { label: 'Telegram Bot', color: '#229ed9', logo: telegramLogo },
-  line: { label: 'LINE', color: '#06c755', logo: lineLogo }
+  line: { label: 'LINE', color: '#06c755', logo: lineLogo },
+  kakaotalk: { label: 'KakaoTalk', color: '#f3c800', logo: kakaoTalkLogo },
+  facebook: { label: 'Facebook Messenger', color: '#0866ff', logo: facebookLogo },
+  instagram: { label: 'Instagram', color: '#c13584', logo: instagramLogo },
+  tiktok: { label: 'TikTok', color: '#111111', logo: tiktokLogo },
+  x: { label: 'X', color: '#000000', logo: xLogo },
+  snapchat: { label: 'Snapchat', color: '#e6c900', logo: snapchatLogo }
 }
-const PLATFORM_ORDER = ['whatsapp', 'telegram', 'telegram_bot', 'line']
+const LONG_PRESS_MS = 420
 
 function platformMeta(kind: string): { label: string; color: string; logo: string } {
   return PLATFORM_META[kind] ?? { label: kind, color: '#94a3b8', logo: telegramLogo }
@@ -70,8 +86,11 @@ interface Props {
   totalUnread: number
   /** null = 全部消息视图 */
   activeKey: string | null
+  platformOrder: ChannelKind[]
+  onPlatformOrderChange: (order: ChannelKind[]) => void
   onSelect: (key: string | null) => void
   onAccountSettings: (key: string) => void
+  onProxySettings: (key: string) => void
   onReconnect: (key: string) => void
   onToggleEnabled: (key: string, enabled: boolean) => void
   onMarkAccountRead: (key: string) => void
@@ -97,8 +116,11 @@ export function AccountList({
   accounts,
   totalUnread,
   activeKey,
+  platformOrder,
+  onPlatformOrderChange,
   onSelect,
   onAccountSettings,
+  onProxySettings,
   onReconnect,
   onToggleEnabled,
   onMarkAccountRead,
@@ -123,7 +145,16 @@ export function AccountList({
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0 })
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [navMenuOpen, setNavMenuOpen] = useState(false)
+  const [draggingKind, setDraggingKind] = useState<ChannelKind | null>(null)
+  const [dragOverKind, setDragOverKind] = useState<ChannelKind | null>(null)
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const pointerStart = useRef<{ id: number; x: number; y: number; kind: ChannelKind } | undefined>(undefined)
+  const suppressHeaderClick = useRef(false)
   const menuAccount = menuKey ? accounts.find((account) => account.key === menuKey) : undefined
+  const normalizedPlatformOrder = useMemo(
+    () => normalizePlatformOrder(platformOrder),
+    [platformOrder]
+  )
 
   useEffect(() => {
     if (!navMenuOpen) return
@@ -134,6 +165,10 @@ export function AccountList({
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [navMenuOpen])
 
+  useEffect(() => () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current)
+  }, [])
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
     if (!q) return accounts
@@ -143,7 +178,7 @@ export function AccountList({
   }, [accounts, query])
 
   const groups = useMemo(() => {
-    const map = new Map<string, AccountRow[]>()
+    const map = new Map<ChannelKind, AccountRow[]>()
     for (const account of filtered) {
       const list = map.get(account.state.kind) ?? []
       list.push(account)
@@ -151,19 +186,69 @@ export function AccountList({
     }
     return [...map.entries()]
       .sort(([a], [b]) => {
-        const ai = PLATFORM_ORDER.indexOf(a)
-        const bi = PLATFORM_ORDER.indexOf(b)
+        const ai = normalizedPlatformOrder.indexOf(a)
+        const bi = normalizedPlatformOrder.indexOf(b)
         if (ai >= 0 && bi >= 0) return ai - bi
         if (ai >= 0) return -1
         if (bi >= 0) return 1
         return a.localeCompare(b)
       })
       .map(([kind, groupAccounts]) => ({ kind, accounts: groupAccounts, ...platformMeta(kind) }))
-  }, [filtered])
+  }, [filtered, normalizedPlatformOrder])
+
+  const stopLongPress = (): void => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current)
+    longPressTimer.current = undefined
+  }
+
+  const startPlatformDrag = (event: ReactPointerEvent<HTMLButtonElement>, kind: ChannelKind): void => {
+    if (event.button !== 0) return
+    stopLongPress()
+    pointerStart.current = { id: event.pointerId, x: event.clientX, y: event.clientY, kind }
+    event.currentTarget.setPointerCapture(event.pointerId)
+    longPressTimer.current = setTimeout(() => {
+      suppressHeaderClick.current = true
+      setDraggingKind(kind)
+      setDragOverKind(kind)
+      longPressTimer.current = undefined
+    }, LONG_PRESS_MS)
+  }
+
+  const movePlatformDrag = (event: ReactPointerEvent<HTMLButtonElement>): void => {
+    const start = pointerStart.current
+    if (!start || start.id !== event.pointerId) return
+    if (!draggingKind && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) {
+      stopLongPress()
+      return
+    }
+    if (!draggingKind) return
+    const target = document.elementFromPoint(event.clientX, event.clientY)
+      ?.closest<HTMLElement>('[data-platform-kind]')
+      ?.dataset.platformKind as ChannelKind | undefined
+    if (target && DEFAULT_PLATFORM_ORDER.includes(target)) setDragOverKind(target)
+  }
+
+  const endPlatformDrag = (event: ReactPointerEvent<HTMLButtonElement>): void => {
+    const start = pointerStart.current
+    if (!start || start.id !== event.pointerId) return
+    stopLongPress()
+    pointerStart.current = undefined
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
+    if (!draggingKind) return
+    const source = draggingKind
+    const target = dragOverKind
+    setDraggingKind(null)
+    setDragOverKind(null)
+    // pointerup 后浏览器可能继续派发 click；本次拖拽不应顺手把平台折叠。
+    // 若浏览器因移动距离过大不派发 click，下一轮事件循环后也会自动解除抑制。
+    setTimeout(() => { suppressHeaderClick.current = false }, 0)
+    if (!target || source === target) return
+    onPlatformOrderChange(reorderPlatformOrder(normalizedPlatformOrder, source, target))
+  }
 
   const openMenu = (key: string, target: HTMLElement): void => {
     const rect = target.getBoundingClientRect()
-    const menuHeight = 250
+    const menuHeight = 290
     setMenuKey(key)
     setMenuPos({
       top: Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - menuHeight - 8)),
@@ -225,12 +310,29 @@ export function AccountList({
           const isCollapsed = collapsed[group.kind] === true
           const groupUnread = group.accounts.reduce((sum, account) => sum + account.unread, 0)
           return (
-            <section className="account-platform-group" key={group.kind}>
+            <section
+              className={`account-platform-group ${draggingKind === group.kind ? 'dragging' : ''} ${draggingKind && dragOverKind === group.kind && draggingKind !== group.kind ? 'drag-over' : ''}`}
+              data-platform-kind={group.kind}
+              key={group.kind}
+            >
               <button
                 type="button"
                 className="account-platform-header"
-                onClick={() => setCollapsed((prev) => ({ ...prev, [group.kind]: !isCollapsed }))}
+                onClick={(event) => {
+                  if (suppressHeaderClick.current) {
+                    suppressHeaderClick.current = false
+                    event.preventDefault()
+                    return
+                  }
+                  setCollapsed((prev) => ({ ...prev, [group.kind]: !isCollapsed }))
+                }}
+                onPointerDown={(event) => startPlatformDrag(event, group.kind)}
+                onPointerMove={movePlatformDrag}
+                onPointerUp={endPlatformDrag}
+                onPointerCancel={endPlatformDrag}
                 aria-expanded={!isCollapsed}
+                aria-grabbed={draggingKind === group.kind}
+                title="长按并拖动可调整平台顺序"
               >
                 {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
                 <img src={group.logo} alt="" />
@@ -298,6 +400,7 @@ export function AccountList({
           <button type="button" className="account-menu-scrim" aria-label={t('account.closeMenu')} onClick={() => setMenuKey(null)} />
           <div className="account-context-menu" style={{ top: menuPos.top, left: menuPos.left }} role="menu">
             <button type="button" onClick={() => { onAccountSettings(menuKey); setMenuKey(null) }}><Settings2 size={17} />{t('account.edit')}</button>
+            <button type="button" onClick={() => { onProxySettings(menuKey); setMenuKey(null) }}><Globe2 size={17} />{t('account.proxyConfig')}</button>
             <button type="button" onClick={() => { onReconnect(menuKey); setMenuKey(null) }}><RefreshCw size={17} />{t('account.refresh')}</button>
             <button
               type="button"

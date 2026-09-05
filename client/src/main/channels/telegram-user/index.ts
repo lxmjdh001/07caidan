@@ -32,7 +32,7 @@ export const telegramUserPlugin: ChannelPlugin = {
       // 复用 WhatsApp 的设备标识派生：各账号稳定且互不相同，用于多账号防关联
       getDeviceFingerprint: () => {
         const [systemVersion, deviceModel, appVersion] = deviceIdentity(
-          accountId,
+          ctx.getAccountConfig().fingerprint?.seed || accountId,
           ctx.getAccountConfig().deviceLabel
         )
         return { deviceModel, systemVersion, appVersion }

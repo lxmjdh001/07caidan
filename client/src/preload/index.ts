@@ -18,6 +18,7 @@ const api: OmniApi = {
   startChannel: (key: string) => ipcRenderer.invoke(IPC_METHODS.startChannel, key),
   submitAuthInput: (key: string, value: string) =>
     ipcRenderer.invoke(IPC_METHODS.submitAuthInput, key, value),
+  beginOAuth: (key: string) => ipcRenderer.invoke(IPC_METHODS.beginOAuth, key),
   setLoginMode: (key: string, mode: 'qr' | 'phone') =>
     ipcRenderer.invoke(IPC_METHODS.setLoginMode, key, mode),
   campaign: (method: string, ...args: unknown[]) =>
@@ -34,6 +35,17 @@ const api: OmniApi = {
   removeAccount: (key: string) => ipcRenderer.invoke(IPC_METHODS.removeAccount, key),
   setAccountEnabled: (key: string, enabled: boolean) =>
     ipcRenderer.invoke(IPC_METHODS.setAccountEnabled, key, enabled),
+  listAccountNetworks: () => ipcRenderer.invoke(IPC_METHODS.listAccountNetworks),
+  testProxy: (proxyUrl: string) => ipcRenderer.invoke(IPC_METHODS.testProxy, proxyUrl),
+  saveProxyAsset: (input) => ipcRenderer.invoke(IPC_METHODS.saveProxyAsset, input),
+  deleteProxyAsset: (id: string) => ipcRenderer.invoke(IPC_METHODS.deleteProxyAsset, id),
+  unlinkAccountProxy: (key: string) => ipcRenderer.invoke(IPC_METHODS.unlinkAccountProxy, key),
+  setProxyAssetBindings: (assetId: string, accountKeys: string[]) =>
+    ipcRenderer.invoke(IPC_METHODS.setProxyAssetBindings, assetId, accountKeys),
+  testAccountProxy: (key: string, proxyUrl: string) =>
+    ipcRenderer.invoke(IPC_METHODS.testAccountProxy, key, proxyUrl),
+  configureAccountNetwork: (key, input) =>
+    ipcRenderer.invoke(IPC_METHODS.configureAccountNetwork, key, input),
   listGroups: (key: string) => ipcRenderer.invoke(IPC_METHODS.listGroups, key),
   createGroup: (key: string, subject: string, participantIds: string[]) =>
     ipcRenderer.invoke(IPC_METHODS.createGroup, key, subject, participantIds),

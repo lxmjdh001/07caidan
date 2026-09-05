@@ -1,6 +1,6 @@
-import { and, asc, desc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gt, inArray, like, or, sql } from 'drizzle-orm'
 import type { Db } from './db.ts'
-import { campaigns, conversations, media, messages, tenantSettings } from './schema.ts'
+import { campaigns, conversationReads, conversations, media, messages, syncClaims, tenantSettings } from './schema.ts'
 import type { StoredMessage, SyncConversation, SyncMessage, SyncPayload } from './types.ts'
 
 /** 数据访问层（Drizzle）。幂等 upsert + 查询，全部按 tenant 隔离。 */
@@ -35,8 +35,17 @@ export class Repo {
             channel: c.channel,
             accountId: c.accountId,
             contactId: c.contactId ?? null,
+            publicId: c.publicId ?? null,
+            avatarMediaId: c.avatarMediaId ?? null,
             title: c.title,
             isGroup: c.isGroup ? 1 : 0,
+            detectedLang: c.detectedLang ?? null,
+            langOverride: c.langOverride ?? null,
+            autoReply: c.autoReply ? 1 : 0,
+            pinned: c.pinned ? 1 : 0,
+            muted: c.muted ? 1 : 0,
+            customerNote: c.customerNote ?? '',
+            lastMessagePreview: c.lastMessagePreview ?? '',
             leadSourceCode: c.leadSourceCode ?? null,
             leadSourceVia: c.leadSourceVia ?? null,
             lastMessageAt: c.lastMessageAt,
@@ -46,8 +55,20 @@ export class Repo {
             target: [conversations.tenant, conversations.id],
             set: {
               contactId: sql`COALESCE(excluded.contact_id, ${conversations.contactId})`,
+              publicId: sql`COALESCE(excluded.public_id, ${conversations.publicId})`,
+              avatarMediaId: sql`COALESCE(excluded.avatar_media_id, ${conversations.avatarMediaId})`,
               title: sql`excluded.title`,
               isGroup: sql`excluded.is_group`,
+              detectedLang: sql`COALESCE(excluded.detected_lang, ${conversations.detectedLang})`,
+              // langOverride 的 null 有“清除”语义，因此跟随本次客户端快照。
+              langOverride: c.langOverride === undefined ? conversations.langOverride : sql`excluded.lang_override`,
+              autoReply: c.autoReply === undefined ? conversations.autoReply : sql`excluded.auto_reply`,
+              pinned: c.pinned === undefined ? conversations.pinned : sql`excluded.pinned`,
+              muted: c.muted === undefined ? conversations.muted : sql`excluded.muted`,
+              customerNote: c.customerNote === undefined ? conversations.customerNote : sql`excluded.customer_note`,
+              lastMessagePreview: c.lastMessagePreview === undefined
+                ? conversations.lastMessagePreview
+                : sql`excluded.last_message_preview`,
               // 来源只认第一次，后续同步不覆盖（客户端也是这个口径）
               leadSourceCode: sql`COALESCE(${conversations.leadSourceCode}, excluded.lead_source_code)`,
               leadSourceVia: sql`COALESCE(${conversations.leadSourceVia}, excluded.lead_source_via)`,
@@ -100,7 +121,7 @@ export class Repo {
       for (const m of payload.messages) {
         const res = tx
           .insert(messages)
-          .values(mapInsert(tenant, m))
+          .values(mapInsert(tenant, m, now))
           .onConflictDoNothing({ target: [messages.tenant, messages.externalId] })
           .run()
         if (res.changes > 0) {
@@ -111,7 +132,8 @@ export class Repo {
             .set({
               translationText: sql`COALESCE(${m.translationText ?? null}, ${messages.translationText})`,
               translationLang: sql`COALESCE(${m.translationLang ?? null}, ${messages.translationLang})`,
-              mediaId: sql`COALESCE(${m.mediaId ?? null}, ${messages.mediaId})`
+              mediaId: sql`COALESCE(${m.mediaId ?? null}, ${messages.mediaId})`,
+              updatedAt: now
             })
             .where(and(eq(messages.tenant, tenant), eq(messages.externalId, m.externalId)))
             .run()
@@ -134,15 +156,60 @@ export class Repo {
       .map(toConversation)
   }
 
-  listMessages(tenant: string, conversationId: string, limit = 500): StoredMessage[] {
+  pullConversations(tenant: string, updatedAt: number, id: string, limit = 500): SyncConversation[] {
+    return this.db.select().from(conversations).where(and(
+      eq(conversations.tenant, tenant),
+      or(
+        gt(conversations.updatedAt, updatedAt),
+        and(eq(conversations.updatedAt, updatedAt), gt(conversations.id, id))
+      )
+    )).orderBy(asc(conversations.updatedAt), asc(conversations.id)).limit(limit).all().map(toConversation)
+  }
+
+  listMessages(tenant: string, conversationId: string, limit = 500, offset = 0): StoredMessage[] {
     return this.db
       .select()
       .from(messages)
       .where(and(eq(messages.tenant, tenant), eq(messages.conversationId, conversationId)))
       .orderBy(asc(messages.timestamp))
       .limit(limit)
+      .offset(offset)
       .all()
       .map(toMessage)
+  }
+
+  /**
+   * 给桌面端的增量消息流。游标使用 (updated_at, external_id) 复合键，避免同一毫秒
+   * 的大批量同步在分页边界丢消息。
+   */
+  pullMessages(tenant: string, updatedAt: number, externalId: string, limit = 500): StoredMessage[] {
+    return this.db
+      .select()
+      .from(messages)
+      .where(
+        and(
+          eq(messages.tenant, tenant),
+          or(
+            gt(messages.updatedAt, updatedAt),
+            and(eq(messages.updatedAt, updatedAt), gt(messages.externalId, externalId))
+          )
+        )
+      )
+      .orderBy(asc(messages.updatedAt), asc(messages.externalId))
+      .limit(limit)
+      .all()
+      .map(toMessage)
+  }
+
+  conversationsForMessages(tenant: string, messagesToMap: readonly StoredMessage[]): SyncConversation[] {
+    const ids = [...new Set(messagesToMap.map((m) => m.conversationId))]
+    if (ids.length === 0) return []
+    return this.db
+      .select()
+      .from(conversations)
+      .where(and(eq(conversations.tenant, tenant), inArray(conversations.id, ids)))
+      .all()
+      .map(toConversation)
   }
 
   /** 按客户标识跨会话/账号取全部消息（供 AI 分析该客户意向） */
@@ -180,6 +247,16 @@ export class Repo {
     return r ? { path: r.path, mimeType: r.mimeType } : null
   }
 
+  /** 管理员查看支持工单附件时，可在其租户下的客户工作区中按不可猜 mediaId 查找。 */
+  getMediaForAdmin(tenant: string, mediaId: string): { path: string; mimeType: string | null } | null {
+    const r = this.db
+      .select()
+      .from(media)
+      .where(and(or(eq(media.tenant, tenant), like(media.tenant, `${tenant}::workspace:%`)), eq(media.mediaId, mediaId)))
+      .get()
+    return r ? { path: r.path, mimeType: r.mimeType } : null
+  }
+
   hasMedia(tenant: string, mediaId: string): boolean {
     return !!this.db
       .select({ x: sql`1` })
@@ -187,12 +264,50 @@ export class Repo {
       .where(and(eq(media.tenant, tenant), eq(media.mediaId, mediaId)))
       .get()
   }
+
+
+  markRead(tenant: string, userId: number, conversationId: string): { readAt: number; updatedAt: number } {
+    const now = Date.now()
+    this.db.insert(conversationReads)
+      .values({ tenant, userId, conversationId, readAt: now, updatedAt: now })
+      .onConflictDoUpdate({
+        target: [conversationReads.tenant, conversationReads.userId, conversationReads.conversationId],
+        set: { readAt: now, updatedAt: now }
+      }).run()
+    return { readAt: now, updatedAt: now }
+  }
+
+  pullReads(tenant: string, userId: number, updatedAt: number, conversationId: string, limit = 500): Array<{
+    conversationId: string; readAt: number; updatedAt: number
+  }> {
+    return this.db.select({
+      conversationId: conversationReads.conversationId,
+      readAt: conversationReads.readAt,
+      updatedAt: conversationReads.updatedAt
+    }).from(conversationReads).where(and(
+      eq(conversationReads.tenant, tenant),
+      eq(conversationReads.userId, userId),
+      or(
+        gt(conversationReads.updatedAt, updatedAt),
+        and(eq(conversationReads.updatedAt, updatedAt), gt(conversationReads.conversationId, conversationId))
+      )
+    )).orderBy(asc(conversationReads.updatedAt), asc(conversationReads.conversationId)).limit(limit).all()
+  }
+
+  /** 返回 true 仅表示当前工作区第一次成功占位。 */
+  claim(tenant: string, purpose: string, claimKey: string): boolean {
+    const result = this.db.insert(syncClaims)
+      .values({ tenant, purpose, claimKey, createdAt: Date.now() })
+      .onConflictDoNothing({ target: [syncClaims.tenant, syncClaims.purpose, syncClaims.claimKey] })
+      .run()
+    return result.changes > 0
+  }
 }
 
 type ConvRow = typeof conversations.$inferSelect
 type MsgRow = typeof messages.$inferSelect
 
-function mapInsert(tenant: string, m: SyncMessage): typeof messages.$inferInsert {
+function mapInsert(tenant: string, m: SyncMessage, updatedAt: number): typeof messages.$inferInsert {
   return {
     tenant,
     externalId: m.externalId,
@@ -211,7 +326,8 @@ function mapInsert(tenant: string, m: SyncMessage): typeof messages.$inferInsert
     durationSec: m.durationSec ?? null,
     translationText: m.translationText ?? null,
     translationLang: m.translationLang ?? null,
-    timestamp: m.timestamp
+    timestamp: m.timestamp,
+    updatedAt
   }
 }
 
@@ -221,11 +337,21 @@ function toConversation(r: ConvRow): SyncConversation {
     channel: r.channel,
     accountId: r.accountId,
     contactId: r.contactId ?? undefined,
+    publicId: r.publicId ?? undefined,
+    avatarMediaId: r.avatarMediaId ?? undefined,
     title: r.title,
     isGroup: r.isGroup === 1,
+    detectedLang: r.detectedLang ?? undefined,
+    langOverride: r.langOverride ?? undefined,
+    autoReply: r.autoReply === 1,
+    pinned: r.pinned === 1,
+    muted: r.muted === 1,
+    customerNote: r.customerNote,
+    lastMessagePreview: r.lastMessagePreview,
     leadSourceCode: r.leadSourceCode ?? undefined,
     leadSourceVia: r.leadSourceVia ?? undefined,
-    lastMessageAt: r.lastMessageAt
+    lastMessageAt: r.lastMessageAt,
+    syncUpdatedAt: r.updatedAt
   }
 }
 
@@ -247,6 +373,7 @@ function toMessage(r: MsgRow): StoredMessage {
     durationSec: r.durationSec ?? undefined,
     translationText: r.translationText ?? undefined,
     translationLang: r.translationLang ?? undefined,
-    timestamp: r.timestamp
+    timestamp: r.timestamp,
+    syncUpdatedAt: r.updatedAt
   }
 }

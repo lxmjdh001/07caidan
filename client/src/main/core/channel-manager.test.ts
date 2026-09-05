@@ -5,7 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UnifiedMessage } from '@shared/domain'
 import type { OmniEvent } from '@shared/ipc'
 import { writeFile } from 'node:fs/promises'
-import { ChannelAdapter, type OutboundMedia, type OutboundResult } from './channel-adapter'
+import {
+  ChannelAdapter,
+  type GroupSummary,
+  type OutboundMedia,
+  type OutboundResult
+} from './channel-adapter'
 import { ChannelManager } from './channel-manager'
 import { JsonContactStore } from './contact-store'
 import { JsonMessageStore } from './json-message-store'
@@ -23,6 +28,12 @@ class FakeAdapter extends ChannelAdapter {
       externalId: 'MEDIA1'
     })
   )
+  override listGroups = vi.fn(async (): Promise<GroupSummary[]> => [])
+  override createGroup = vi.fn(async (subject: string, participantIds: string[]): Promise<GroupSummary> => ({
+    externalChatId: 'created@g.us',
+    title: subject,
+    participantIds
+  }))
   start = vi.fn(async () => {})
   stop = vi.fn(async () => {})
   logout = vi.fn(async () => {})
@@ -77,6 +88,10 @@ beforeEach(async () => {
 })
 
 afterEach(async () => {
+  // ChannelManager 的头像/联系人补全是异步触发的，落盘有 500ms 防抖。
+  // 先让在途任务完成并强制 flush，再删临时目录，避免 Vitest 报未处理的 ENOENT。
+  await new Promise((resolve) => setTimeout(resolve, 550))
+  await store.flush()
   await rm(dir, { recursive: true, force: true })
 })
 
@@ -137,11 +152,75 @@ describe('ChannelManager', () => {
     expect(events.some((e) => e.type === 'message:new')).toBe(true)
   })
 
+  it('网络门禁失败时不调用适配器，登录前即 fail-closed', async () => {
+    const assertReady = vi.fn(async () => { throw new Error('代理未配置，安全隔离已阻止直连') })
+    manager.setNetworkPolicy({
+      assertReady,
+      isUsable: () => false,
+      startMonitoring: vi.fn(),
+      stopMonitoring: vi.fn()
+    })
+
+    await expect(manager.start('whatsapp:main')).rejects.toThrow('阻止直连')
+    expect(assertReady).toHaveBeenCalledWith('whatsapp:main')
+    expect(adapter.start).not.toHaveBeenCalled()
+    expect(manager.listChannels()[0]).toMatchObject({ status: 'error' })
+  })
+
+  it('代理监控断线后停止平台连接并切换为安全隔离错误态', async () => {
+    let onUnavailable: ((detail: string) => void) | undefined
+    manager.setNetworkPolicy({
+      assertReady: vi.fn(async () => undefined),
+      isUsable: () => true,
+      startMonitoring: (_key, callback) => { onUnavailable = callback },
+      stopMonitoring: vi.fn()
+    })
+
+    await manager.start('whatsapp:main')
+    expect(adapter.start).toHaveBeenCalledTimes(1)
+    onUnavailable?.('ECONNREFUSED')
+    await flushAsync()
+    expect(adapter.stop).toHaveBeenCalledTimes(1)
+    expect(manager.listChannels()[0]).toMatchObject({
+      status: 'error',
+      detail: expect.stringContaining('账号已安全隔离')
+    })
+  })
+
   it('重复 externalId 的消息不重复广播', async () => {
     adapter.fakeIncoming({ externalId: 'DUP', id: 'a' })
     adapter.fakeIncoming({ externalId: 'DUP', id: 'b' })
     await flushAsync()
     expect(events.filter((e) => e.type === 'message:new')).toHaveLength(1)
+  })
+
+  it('手机端发出的消息也入库，但不累计未读或触发入站翻译', async () => {
+    adapter.fakeIncoming({
+      id: 'mobile-outbound',
+      externalId: 'OUT-1',
+      direction: 'out',
+      body: { type: 'text', text: '手机端回复' }
+    })
+    await flushAsync()
+
+    const [message] = await store.listMessages('whatsapp:main:42@s.whatsapp.net')
+    expect(message).toMatchObject({ direction: 'out', externalId: 'OUT-1' })
+    const [conversation] = await store.listConversations()
+    expect(conversation?.unreadCount).toBe(0)
+  })
+
+  it('登录历史快照静默入库，不累计未读或冒充新消息广播', async () => {
+    const historical = adapter.fakeIncoming({ externalId: 'HISTORY-1' })
+    await flushAsync()
+    await store.clearConversation(historical.conversationId)
+    events.length = 0
+
+    adapter.emit('historyMessage', { ...historical, id: 'history-local' })
+    await flushAsync()
+
+    expect(await store.listMessages(historical.conversationId)).toHaveLength(1)
+    expect((await store.getConversation(historical.conversationId))?.unreadCount).toBe(0)
+    expect(events.some((event) => event.type === 'message:new')).toBe(false)
   })
 
   it('状态事件更新 listChannels 并广播', () => {
@@ -198,6 +277,86 @@ describe('ChannelManager', () => {
     const convs = await store.listConversations()
     expect(convs[0]?.title).toBe('客户老张')
     expect(events.some((e) => e.type === 'conversation:updated')).toBe(true)
+  })
+
+  it('平台登录快照可登记无本地消息的会话摘要', async () => {
+    adapter.emit('conversation', {
+      externalChatId: 'snapshot-chat',
+      title: '历史客户',
+      isGroup: false,
+      contactId: 'wa:+8613800000000',
+      lastMessageAt: 1_700_000_000_000,
+      lastMessagePreview: '上一条消息',
+      unreadCount: 3
+    })
+    await flushAsync()
+
+    const conversation = await store.getConversation('whatsapp:main:snapshot-chat')
+    expect(conversation).toMatchObject({
+      title: '历史客户',
+      contactId: 'wa:+8613800000000',
+      lastMessagePreview: '上一条消息',
+      unreadCount: 3
+    })
+    expect(await store.listMessages('whatsapp:main:snapshot-chat')).toEqual([])
+  })
+
+  it('刷新群组使用平台最新群名，同时保留已有消息摘要', async () => {
+    await store.upsertConversation({
+      id: 'whatsapp:main:group@g.us',
+      channel: 'whatsapp',
+      accountId: 'main',
+      externalChatId: 'group@g.us',
+      title: '旧群名',
+      isGroup: true,
+      lastMessageAt: 123,
+      lastMessagePreview: '历史消息',
+      unreadCount: 2
+    })
+    adapter.listGroups.mockResolvedValueOnce([
+      { externalChatId: 'group@g.us', title: '平台最新群名', participantIds: [] }
+    ])
+
+    const [group] = await manager.listGroups('whatsapp:main')
+
+    expect(group).toMatchObject({
+      title: '平台最新群名',
+      isGroup: true,
+      lastMessageAt: 123,
+      lastMessagePreview: '历史消息',
+      unreadCount: 2
+    })
+    expect((await store.getConversation('whatsapp:main:group@g.us'))?.title).toBe('平台最新群名')
+  })
+
+  it('创建群组后登记真实平台群 ID', async () => {
+    const group = await manager.createGroup('whatsapp:main', '售后群', ['1@s.whatsapp.net'])
+
+    expect(adapter.createGroup).toHaveBeenCalledWith('售后群', ['1@s.whatsapp.net'])
+    expect(group).toMatchObject({
+      id: 'whatsapp:main:created@g.us',
+      externalChatId: 'created@g.us',
+      title: '售后群',
+      isGroup: true
+    })
+  })
+
+  it('公开账号 ID 自动补齐且同一会话只查询一次', async () => {
+    adapter.fetchPublicId = vi.fn(async () => '@line')
+    adapter.fakeIncoming({ authorName: undefined })
+    await flushAsync()
+
+    const [conversation] = await store.listConversations()
+    expect(conversation?.publicId).toBe('@line')
+    expect(adapter.fetchPublicId).toHaveBeenCalledWith('42@s.whatsapp.net')
+
+    adapter.emit('conversation', {
+      externalChatId: '42@s.whatsapp.net',
+      title: 'LINE',
+      isGroup: false
+    })
+    await flushAsync()
+    expect(adapter.fetchPublicId).toHaveBeenCalledTimes(1)
   })
 
   it('出站目标语言解析优先级：会话手动 > 检测 > 账号默认 > 全局默认', async () => {

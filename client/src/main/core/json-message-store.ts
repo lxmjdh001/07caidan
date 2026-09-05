@@ -88,6 +88,7 @@ export class JsonMessageStore implements MessageStore {
     if (patch.isGroup !== undefined) conv.isGroup = patch.isGroup
     if (patch.avatarMediaId) conv.avatarMediaId = patch.avatarMediaId
     if (patch.contactId) conv.contactId = patch.contactId
+    if (patch.publicId) conv.publicId = patch.publicId
     if (patch.detectedLang) conv.detectedLang = patch.detectedLang
     if (patch.langOverride !== undefined) {
       conv.langOverride = patch.langOverride ?? undefined
@@ -99,6 +100,14 @@ export class JsonMessageStore implements MessageStore {
     if (patch.pinned !== undefined) conv.pinned = patch.pinned
     if (patch.muted !== undefined) conv.muted = patch.muted
     if (patch.customerNote !== undefined) conv.customerNote = patch.customerNote
+    const snapshotIsCurrent = patch.lastMessageAt === undefined || patch.lastMessageAt >= conv.lastMessageAt
+    if (patch.lastMessageAt !== undefined && snapshotIsCurrent) {
+      conv.lastMessageAt = patch.lastMessageAt
+      if (patch.lastMessagePreview !== undefined) conv.lastMessagePreview = patch.lastMessagePreview
+    }
+    if (patch.unreadCount !== undefined && snapshotIsCurrent) {
+      conv.unreadCount = Math.max(0, patch.unreadCount)
+    }
     this.scheduleFlush()
     return conv
   }
@@ -109,6 +118,20 @@ export class JsonMessageStore implements MessageStore {
       existing.title = conversation.title || existing.title
       existing.isGroup = conversation.isGroup
       existing.externalChatId = conversation.externalChatId
+      existing.contactId = conversation.contactId ?? existing.contactId
+      existing.publicId = conversation.publicId ?? existing.publicId
+      existing.avatarMediaId = conversation.avatarMediaId ?? existing.avatarMediaId
+      existing.detectedLang = conversation.detectedLang ?? existing.detectedLang
+      existing.langOverride = conversation.langOverride
+      existing.leadSource = conversation.leadSource ?? existing.leadSource
+      existing.autoReply = conversation.autoReply
+      existing.pinned = conversation.pinned
+      existing.muted = conversation.muted
+      existing.customerNote = conversation.customerNote ?? existing.customerNote
+      if (conversation.lastMessageAt >= existing.lastMessageAt) {
+        existing.lastMessageAt = conversation.lastMessageAt
+        existing.lastMessagePreview = conversation.lastMessagePreview
+      }
       this.scheduleFlush()
       return existing
     }
@@ -225,7 +248,7 @@ export class JsonMessageStore implements MessageStore {
       clearTimeout(this.flushTimer)
       this.flushTimer = undefined
     }
-    await this.writeToDisk()
+    await this.enqueueFlush()
   }
 
   private ensureConversation(msg: UnifiedMessage): Conversation {
@@ -261,8 +284,20 @@ export class JsonMessageStore implements MessageStore {
     if (this.flushTimer) return
     this.flushTimer = setTimeout(() => {
       this.flushTimer = undefined
-      this.pendingFlush = this.pendingFlush.then(() => this.writeToDisk())
+      void this.enqueueFlush()
     }, FLUSH_DELAY_MS)
+  }
+
+  /**
+   * 所有原子替换写入共用一条串行队列。定时落盘和应用退出时的显式 flush 可能同时触发；
+   * 若它们并发使用同一个 .tmp 文件，先完成的 rename 会让另一条写入报 ENOENT。
+   */
+  private enqueueFlush(): Promise<void> {
+    const next = this.pendingFlush.then(() => this.writeToDisk())
+    // 队列尾吞掉本次失败，确保一次磁盘错误不会让后续保存永久失效；
+    // 返回的 next 仍保留拒绝，显式 flush 的调用方可以获知错误。
+    this.pendingFlush = next.catch(() => undefined)
+    return next
   }
 
   private async writeToDisk(): Promise<void> {

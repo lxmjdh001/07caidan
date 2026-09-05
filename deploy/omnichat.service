@@ -5,8 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# 代码放这里（deploy.sh 会把 server/ rsync 到 /opt/omnichat/server）
-WorkingDirectory=/opt/omnichat/server
+# 生产代码来自 git@github.com:lxmjdh001/07caidan.git 的服务器工作树。
+WorkingDirectory=/opt/omnichat/repo/server
 EnvironmentFile=/etc/omnichat/omnichat.env
 # 需 Node ≥ 22.18（--experimental-strip-types 稳定）；nvm 安装时改成绝对路径
 ExecStart=/usr/bin/node --experimental-strip-types src/index.ts

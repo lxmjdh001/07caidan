@@ -12,6 +12,8 @@ export interface AutoReplyDeps {
   }) => Promise<{ text: string }>
   /** 发出回复（走 prepared 跳过出站翻译 —— 模型已按客户语言作答，再翻一次会翻坏） */
   send: (conversationId: string, text: string) => Promise<void>
+  /** 多设备幂等抢占；false 表示另一台电脑已经负责这条来信。 */
+  claim?: (message: UnifiedMessage) => Promise<boolean>
   /** 客户要求人工：停用该会话的自动回复 */
   pauseConversation?: (conversationId: string) => Promise<void>
   /** 提醒客服接管（系统通知） */
@@ -73,6 +75,7 @@ export class AutoReplyService {
     const cfg = this.deps.getConfig()
     this.inFlight.add(conversation.id)
     try {
+      if (this.deps.claim && !(await this.deps.claim(message))) return
       const history = await this.deps.getMessages(conversation.id)
       const context = toContext(history)
       if (context.length === 0 || context[context.length - 1]!.role !== 'user') return

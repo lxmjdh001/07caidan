@@ -38,14 +38,44 @@ export interface ServerConfig {
    * Fastify trustProxy：置真后 req.ip 取自 X-Forwarded-For（反代传来的真实客户端 IP）。
    * 公开看板的地区限制靠 req.ip 判属地——若前置 Caddy/nginx 终止 TLS 而这里不信任代理，
    * req.ip 会是回环地址，地区限制形同虚设。仅当本服务只被同机反代访问时开启（否则 XFF 可伪造）。
-   * 取值：'true'→true（信任所有跳）；'loopback'/'127.0.0.1'/网段/跳数→原样透传给 proxy-addr；空→false。
+   * 取值：'true'→true（信任所有跳）；'loopback'/'127.0.0.1'/网段→原样透传给 proxy-addr；空→false。
+   * 不接受“信任 N 跳”的数字模式：客户端可通过补造 X-Forwarded-For 绕过跳数判断。
    * 可选：省略等同 false（直连，不信任 XFF）。loadConfig 总会显式赋值。
    */
-  trustProxy?: boolean | string | number
+  trustProxy?: boolean | string
   /** 客户端自动更新产物目录（latest*.yml + 安装包）；发布 = 把文件拷进来 */
   updatesDir: string
   /** Crisp 在线客服 Website ID；未配置则客户端隐藏在线客服入口 */
   crispWebsiteId: string | undefined
+  /** Meta 应用凭证：集中配置一次，客户只走 Facebook 网页授权。 */
+  metaAppId?: string
+  metaAppSecret?: string
+  /** Instagram API with Instagram Login 使用独立的 Instagram App ID/Secret。 */
+  metaInstagramAppId?: string
+  metaInstagramAppSecret?: string
+  /** Meta Webhooks 后台配置时填写的自定义校验串。 */
+  metaWebhookVerifyToken?: string
+  /** Facebook Login for Business 的配置 ID；未填时使用标准 OAuth scope。 */
+  metaLoginConfigId?: string
+  /** Meta Page Access Token 的静态加密密钥；至少 32 个随机字符。 */
+  metaTokenEncryptionKey?: string
+  /** 固定 Graph API 版本，避免 Meta 默认版本自动漂移。 */
+  metaGraphVersion?: string
+  /** TikTok API for Business 应用凭证；客户只走网页 OAuth 授权。 */
+  tiktokAppId?: string
+  tiktokAppSecret?: string
+  /** TikTok access/refresh token 的静态加密密钥；至少 32 个随机字符。 */
+  tiktokTokenEncryptionKey?: string
+  /** X OAuth 2.0 应用凭证；客户只需在 X 网页确认授权。 */
+  xClientId?: string
+  xClientSecret?: string
+  /** X access/refresh token 的静态加密密钥；至少 32 个随机字符。 */
+  xTokenEncryptionKey?: string
+  /** Snapchat Public Profile API 应用凭证。 */
+  snapchatClientId?: string
+  snapchatClientSecret?: string
+  /** Snapchat access/refresh/conversation token 的静态加密密钥。 */
+  snapchatTokenEncryptionKey?: string
 }
 
 export function loadConfig(): ServerConfig {
@@ -86,21 +116,40 @@ export function loadConfig(): ServerConfig {
       process.env.OMNI_CAMPAIGN_SHARE_DOMAIN || process.env.OMNI_PUBLIC_URL || 'https://wzzapp.cloud',
     trustProxy: parseTrustProxy(process.env.OMNI_TRUST_PROXY),
     updatesDir: process.env.OMNI_UPDATES_DIR || join(dataDir, 'updates'),
-    crispWebsiteId: process.env.OMNI_CRISP_WEBSITE_ID || undefined
+    crispWebsiteId: process.env.OMNI_CRISP_WEBSITE_ID || undefined,
+    metaAppId: process.env.META_APP_ID || undefined,
+    metaAppSecret: process.env.META_APP_SECRET || undefined,
+    metaInstagramAppId: process.env.META_INSTAGRAM_APP_ID || undefined,
+    metaInstagramAppSecret: process.env.META_INSTAGRAM_APP_SECRET || undefined,
+    metaWebhookVerifyToken: process.env.META_WEBHOOK_VERIFY_TOKEN || undefined,
+    metaLoginConfigId: process.env.META_LOGIN_CONFIG_ID || undefined,
+    metaTokenEncryptionKey: process.env.META_TOKEN_ENCRYPTION_KEY || undefined,
+    metaGraphVersion: /^v\d+\.0$/.test(process.env.META_GRAPH_VERSION || '')
+      ? process.env.META_GRAPH_VERSION
+      : 'v26.0',
+    tiktokAppId: process.env.TIKTOK_APP_ID || undefined,
+    tiktokAppSecret: process.env.TIKTOK_APP_SECRET || undefined,
+    tiktokTokenEncryptionKey: process.env.TIKTOK_TOKEN_ENCRYPTION_KEY || undefined,
+    xClientId: process.env.X_CLIENT_ID || undefined,
+    xClientSecret: process.env.X_CLIENT_SECRET || undefined,
+    xTokenEncryptionKey: process.env.X_TOKEN_ENCRYPTION_KEY || undefined,
+    snapchatClientId: process.env.SNAPCHAT_CLIENT_ID || undefined,
+    snapchatClientSecret: process.env.SNAPCHAT_CLIENT_SECRET || undefined,
+    snapchatTokenEncryptionKey: process.env.SNAPCHAT_TOKEN_ENCRYPTION_KEY || undefined
   }
 }
 
 /**
  * 解析 OMNI_TRUST_PROXY：空/未设→false（安全默认，直连时 XFF 不可信）；
- * 'true'/'1'→true；'false'/'0'→false；其余非空值（'loopback'、'127.0.0.1'、'10.0.0.0/8'、跳数）原样透传。
- * 纯数字字符串转成跳数（proxy-addr 语义）。
+ * 'true'/'1'→true；'false'/'0'→false；其余非空值（'loopback'、'127.0.0.1'、'10.0.0.0/8'）原样透传。
+ * 纯数字跳数存在 X-Forwarded-For 欺骗风险，除兼容布尔值 0/1 外统一安全回落为 false。
  */
-export function parseTrustProxy(raw: string | undefined): boolean | string | number {
+export function parseTrustProxy(raw: string | undefined): boolean | string {
   const v = (raw ?? '').trim()
   if (!v) return false
   const low = v.toLowerCase()
   if (low === 'true' || low === '1') return true
   if (low === 'false' || low === '0') return false
-  if (/^\d+$/.test(v)) return Number(v)
+  if (/^\d+$/.test(v)) return false
   return v
 }

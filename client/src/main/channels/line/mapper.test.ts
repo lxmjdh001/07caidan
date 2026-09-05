@@ -24,6 +24,7 @@ describe('lineChatId / isLineGroup', () => {
 describe('lineContactId', () => {
   it('私聊标识带 Provider 作用域', () => {
     expect(lineContactId('U123', 'p1')).toBe('line:p1:U123')
+    expect(lineContactId('u123', 'p1')).toBe('line:p1:u123')
   })
   it('同一 userId 在不同 Provider 下是不同的人', () => {
     expect(lineContactId('U123', 'p1')).not.toBe(lineContactId('U123', 'p2'))

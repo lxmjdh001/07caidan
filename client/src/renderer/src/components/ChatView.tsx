@@ -27,6 +27,7 @@ interface Props {
   /** 发送前是否需要预览确认 */
   confirmBeforeSend: boolean
   quickReplies: QuickReply[]
+  onManageQuickReplies: () => void
   onOpenProxySettings: (accountKey: string) => void
 }
 
@@ -216,6 +217,7 @@ export function ChatView({
   onPreview,
   confirmBeforeSend,
   quickReplies,
+  onManageQuickReplies,
   onOpenProxySettings
 }: Props): React.JSX.Element {
   const { t, locale } = useI18n()
@@ -396,9 +398,11 @@ export function ChatView({
                 {t(intent === 'high' ? 'chat.intentHigh' : 'chat.intentMedium')}
               </span>
             )}
-            {conversation.contactId && (
-              <span className="contact-id">{conversation.contactId.replace(/^wa:/, '')}</span>
-            )}
+            {conversation.publicId ? (
+              <span className="contact-id">{conversation.publicId}</span>
+            ) : conversation.contactId && !['line', 'facebook', 'instagram', 'tiktok', 'x', 'snapchat'].includes(conversation.channel) ? (
+              <span className="contact-id">{conversation.contactId.replace(/^(?:wa|tg):/, '')}</span>
+            ) : null}
             {knownFromOther && <span className="known-chip">{t('chat.knownContact')}</span>}
             {conversation.leadSource && (
               <span
@@ -418,7 +422,7 @@ export function ChatView({
         {showProfile && <div className="customer-profile-popover">
           <h4>{t('chat.customerInfo')}</h4>
           <label className="field"><span>{t('chat.customerName')}</span><input value={profileTitle} onChange={(e) => setProfileTitle(e.target.value)} /></label>
-          <label className="field"><span>{t('chat.customerContact')}</span><input value={conversation.contactId?.replace(/^wa:/, '') || conversation.externalChatId} readOnly /></label>
+          <label className="field"><span>{t('chat.customerContact')}</span><input value={conversation.publicId || (['line', 'facebook', 'instagram', 'tiktok', 'x', 'snapchat'].includes(conversation.channel) ? conversation.externalChatId : (conversation.contactId?.replace(/^(?:wa|tg):/, '') || conversation.externalChatId))} readOnly /></label>
           <label className="field"><span>{t('chat.customerNote')}</span><textarea rows={3} value={profileNote} onChange={(e) => setProfileNote(e.target.value)} /></label>
           <button type="button" className="primary-btn" disabled={profileSaving} onClick={async () => { setProfileSaving(true); try { await window.omni.updateConversationProfile(conversation.id, profileTitle, profileNote); setShowProfile(false) } catch (error) { window.alert(`保存客户信息失败：${error instanceof Error ? error.message : String(error)}`) } finally { setProfileSaving(false) } }}>{t('settings.save')}</button>
         </div>}
@@ -542,7 +546,13 @@ export function ChatView({
       <footer className="composer">
         {showQuickReplies && (
           <div className="quick-replies-popover">
-            <div className="quick-replies-head"><strong>{t('chat.quickReplies')}</strong><button type="button" onClick={() => setShowQuickReplies(false)}><X size={15} /></button></div>
+            <div className="quick-replies-head">
+              <strong>{t('chat.quickReplies')}</strong>
+              <span className="quick-replies-head-actions">
+                <button type="button" title="管理快捷消息" onClick={() => { setShowQuickReplies(false); onManageQuickReplies() }}><Settings2 size={15} /></button>
+                <button type="button" title="关闭" onClick={() => setShowQuickReplies(false)}><X size={15} /></button>
+              </span>
+            </div>
             {quickReplies.length === 0 ? <p className="field-hint">{t('chat.quickRepliesEmpty')}</p> : quickReplies.map((reply, index) => (
               <button type="button" className="quick-reply-option" key={reply.id} onClick={() => { setDraft(reply.text); setShowQuickReplies(false) }}>
                 <span className="quick-reply-number">{index + 1}</span><span><strong>{reply.title || reply.text}</strong>{reply.title && <small>{reply.text}</small>}</span>

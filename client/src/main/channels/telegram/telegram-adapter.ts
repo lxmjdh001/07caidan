@@ -3,7 +3,7 @@ import type { ChannelStatus, UnifiedMessage } from '@shared/domain'
 import { ChannelAdapter, type OutboundMedia, type OutboundResult } from '../../core/channel-adapter'
 import { noopLogger, type Logger } from '../../core/logger'
 import { extFromMime } from '../../core/mime'
-import { createDispatcher, withDispatcher } from '../../core/proxy'
+import { createRequiredDispatcher, redactProxyUrl, withDispatcher } from '../../core/proxy'
 import type { Dispatcher } from 'undici'
 import {
   chatTitle,
@@ -19,7 +19,7 @@ export interface TelegramAdapterOptions {
   logger?: Logger
   /** 读取 Bot Token（在账号设置里填）；空 = 需要填凭证 */
   getBotToken: () => string | undefined
-  /** 读取该账号代理地址（socks5/http）；空 = 走默认网络。做成函数以便改后重连生效 */
+  /** 读取该账号代理地址；为空时安全隔离会拒绝启动。 */
   getProxyUrl?: () => string | undefined
   saveMedia?: (data: Buffer, ext: string) => Promise<string>
 }
@@ -67,9 +67,10 @@ export class TelegramAdapter extends ChannelAdapter {
     }
     // 按账号代理重建 dispatcher（非法代理地址直接置错误态）
     try {
+      await this.closeDispatcher()
       const proxy = this.getProxyUrl()
-      this.dispatcher = createDispatcher(proxy)
-      if (proxy) this.log.info('使用代理连接', { proxy: proxy.replace(/\/\/.*@/, '//***@') })
+      this.dispatcher = createRequiredDispatcher(proxy)
+      this.log.info('使用账号独立代理连接', { proxy: redactProxyUrl(proxy ?? '') })
     } catch (err) {
       this.setState('error', { detail: err instanceof Error ? err.message : String(err) })
       return
@@ -84,6 +85,7 @@ export class TelegramAdapter extends ChannelAdapter {
       void this.pollLoop()
     } catch (err) {
       this.log.error('连接失败', err)
+      await this.closeDispatcher()
       this.setState('error', { detail: err instanceof Error ? err.message : String(err) })
     }
   }
@@ -91,6 +93,8 @@ export class TelegramAdapter extends ChannelAdapter {
   async stop(): Promise<void> {
     this.stopping = true
     this.abort?.abort()
+    this.abort = undefined
+    await this.closeDispatcher()
     this.setState('stopped')
   }
 
@@ -131,7 +135,7 @@ export class TelegramAdapter extends ChannelAdapter {
       if (!token) return undefined
       const res = await fetch(
         `https://api.telegram.org/file/bot${token}/${file.file_path}`,
-        withDispatcher({ signal: AbortSignal.timeout(30_000) }, this.dispatcher)
+        withDispatcher({ signal: AbortSignal.timeout(30_000) }, this.requiredDispatcher())
       )
       if (!res.ok) return undefined
       const buffer = Buffer.from(await res.arrayBuffer())
@@ -197,7 +201,7 @@ export class TelegramAdapter extends ChannelAdapter {
       const url = `https://api.telegram.org/file/bot${token}/${file.file_path}`
       const res = await fetch(
         url,
-        withDispatcher({ signal: AbortSignal.timeout(30_000) }, this.dispatcher)
+        withDispatcher({ signal: AbortSignal.timeout(30_000) }, this.requiredDispatcher())
       )
       if (!res.ok) return
       const buf = Buffer.from(await res.arrayBuffer())
@@ -226,7 +230,7 @@ export class TelegramAdapter extends ChannelAdapter {
           body: JSON.stringify(params ?? {}),
           signal: signal ?? AbortSignal.timeout(timeoutMs)
         },
-        this.dispatcher
+        this.requiredDispatcher()
       )
     )
     return this.parse<T>(res)
@@ -237,7 +241,10 @@ export class TelegramAdapter extends ChannelAdapter {
     if (!token) throw new Error('缺少 Bot Token')
     const res = await fetch(
       `https://api.telegram.org/bot${token}/${method}`,
-      withDispatcher({ method: 'POST', body: form, signal: AbortSignal.timeout(60_000) }, this.dispatcher)
+      withDispatcher(
+        { method: 'POST', body: form, signal: AbortSignal.timeout(60_000) },
+        this.requiredDispatcher()
+      )
     )
     return this.parse<T>(res)
   }
@@ -246,6 +253,17 @@ export class TelegramAdapter extends ChannelAdapter {
     const data = (await res.json()) as { ok: boolean; result?: T; description?: string }
     if (!data.ok) throw new Error(data.description || `Telegram API ${res.status}`)
     return data.result as T
+  }
+
+  private requiredDispatcher(): Dispatcher {
+    if (!this.dispatcher) throw new Error('代理链路已断开，安全隔离已阻止直连')
+    return this.dispatcher
+  }
+
+  private async closeDispatcher(): Promise<void> {
+    const dispatcher = this.dispatcher
+    this.dispatcher = undefined
+    if (dispatcher) await dispatcher.close().catch(() => undefined)
   }
 
   private setState(

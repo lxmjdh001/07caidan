@@ -35,17 +35,17 @@
           </button>
           <div class="download-menu" id="download-menu" role="menu" aria-label="选择客户端版本">
             <div class="download-menu-title">选择客户端版本</div>
-            <a role="menuitem" href="/downloads/OmniChat Setup 0.1.0.exe" download>
+            <a role="menuitem" href="/downloads/OmniChat Setup 0.2.4.exe" download>
               <span class="menu-platform-icon windows">⊞</span>
               <span><strong>Windows 客户端</strong><small>Windows 10 / 11 · x64</small></span>
               <span class="menu-arrow" aria-hidden="true">↓</span>
             </a>
-            <a role="menuitem" href="/downloads/OmniChat-0.1.0-arm64.dmg" download>
+            <a role="menuitem" href="/downloads/OmniChat-0.2.4-arm64.dmg" download>
               <span class="menu-platform-icon apple"></span>
               <span><strong>Mac Apple 芯片</strong><small>macOS · arm64</small></span>
               <span class="menu-arrow" aria-hidden="true">↓</span>
             </a>
-            <a role="menuitem" href="/downloads/OmniChat-0.1.0.dmg" download>
+            <a role="menuitem" href="/downloads/OmniChat-0.2.4.dmg" download>
               <span class="menu-platform-icon apple"></span>
               <span><strong>Mac Intel 芯片</strong><small>macOS · x64</small></span>
               <span class="menu-arrow" aria-hidden="true">↓</span>
@@ -96,16 +96,16 @@
             <span class="download-badge">当前稳定版</span>
           </div>
           <div class="download-primary">
-            <div><strong>推荐下载</strong><small id="primary-meta">OmniChat 0.1.0 · 立即安装</small></div>
-            <a class="button" id="primary-download" href="/downloads/OmniChat-0.1.0-arm64.dmg" download>下载 macOS 客户端 <span>↓</span></a>
+            <div><strong>推荐下载</strong><small id="primary-meta">OmniChat 0.1.3 · 立即安装</small></div>
+            <a class="button" id="primary-download" href="/downloads/OmniChat-0.2.4-arm64.dmg" download>下载 macOS 客户端 <span>↓</span></a>
           </div>
           <div class="download-options-title">全部版本</div>
           <div class="download-options" aria-label="全部客户端版本">
-            <a class="download-option" data-download="windows" href="/downloads/OmniChat Setup 0.1.0.exe" download><span class="option-icon windows">⊞</span><span class="option-copy"><strong>Windows 客户端</strong><small>Windows 10 / 11 · x64</small></span><span class="option-arrow">↓</span></a>
-            <a class="download-option" data-download="macArm" href="/downloads/OmniChat-0.1.0-arm64.dmg" download><span class="option-icon apple"></span><span class="option-copy"><strong>Mac Apple 芯片</strong><small>macOS · arm64</small></span><span class="option-arrow">↓</span></a>
-            <a class="download-option" data-download="macIntel" href="/downloads/OmniChat-0.1.0.dmg" download><span class="option-icon apple"></span><span class="option-copy"><strong>Mac Intel 芯片</strong><small>macOS · x64</small></span><span class="option-arrow">↓</span></a>
+            <a class="download-option" data-download="windows" href="/downloads/OmniChat Setup 0.2.4.exe" download><span class="option-icon windows">⊞</span><span class="option-copy"><strong>Windows 客户端</strong><small>Windows 10 / 11 · x64</small></span><span class="option-arrow">↓</span></a>
+            <a class="download-option" data-download="macArm" href="/downloads/OmniChat-0.2.4-arm64.dmg" download><span class="option-icon apple"></span><span class="option-copy"><strong>Mac Apple 芯片</strong><small>macOS · arm64</small></span><span class="option-arrow">↓</span></a>
+            <a class="download-option" data-download="macIntel" href="/downloads/OmniChat-0.2.4.dmg" download><span class="option-icon apple"></span><span class="option-copy"><strong>Mac Intel 芯片</strong><small>macOS · x64</small></span><span class="option-arrow">↓</span></a>
           </div>
-          <small class="download-version">版本 0.1.0 · 桌面端支持多账号、实时消息提醒与稳定连接</small>
+          <small class="download-version">macOS 0.2.4 · Windows 0.2.4 · 桌面端支持多账号、实时消息提醒与稳定连接</small>
         </div>
       </section>
 
@@ -136,9 +136,9 @@
       toggle?.addEventListener('click', () => { const open = nav.classList.toggle('open'); toggle.setAttribute('aria-expanded', String(open)); });
       nav?.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => nav.classList.remove('open')));
       const downloads = {
-        windows: { href: '/downloads/OmniChat Setup 0.1.0.exe', title: 'Windows 客户端', subtitle: 'Windows 10 / 11 · x64', icon: '⊞' },
-        macArm: { href: '/downloads/OmniChat-0.1.0-arm64.dmg', title: 'macOS 客户端', subtitle: 'Apple 芯片版（arm64）', icon: '' },
-        macIntel: { href: '/downloads/OmniChat-0.1.0.dmg', title: 'macOS 客户端', subtitle: 'Intel 芯片版（x64）', icon: '' }
+        windows: { href: '/downloads/OmniChat Setup 0.2.4.exe', title: 'Windows 客户端', subtitle: 'Windows 10 / 11 · x64', icon: '⊞' },
+        macArm: { href: '/downloads/OmniChat-0.2.4-arm64.dmg', title: 'macOS 客户端', subtitle: 'Apple 芯片版（arm64）', icon: '' },
+        macIntel: { href: '/downloads/OmniChat-0.2.4.dmg', title: 'macOS 客户端', subtitle: 'Intel 芯片版（x64）', icon: '' }
       }
       async function applyRecommendedDownload() {
         const platform = String(navigator.userAgentData?.platform || navigator.platform || navigator.userAgent).toLowerCase()
@@ -169,7 +169,7 @@
           primary.href = target.href
           primary.textContent = '下载 ' + target.title + ' ↓'
           primary.setAttribute('download', '')
-          if (primaryMeta) primaryMeta.textContent = 'OmniChat 0.1.0 · ' + target.subtitle
+          if (primaryMeta) primaryMeta.textContent = 'OmniChat 0.1.3 · ' + target.subtitle
           document.querySelectorAll('.download-option').forEach((option) => option.classList.toggle('recommended', option.dataset.download === Object.keys(downloads).find((key) => downloads[key] === target)))
         }
       }

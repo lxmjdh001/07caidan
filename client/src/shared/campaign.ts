@@ -13,6 +13,8 @@ export interface Campaign {
   accountProfiles: Record<string, AccountProfile>
   totalTarget: number
   accessPasswordEnabled: boolean
+  /** 分享网页是否允许打开粉丝详情与进粉趋势。 */
+  allowFanData: boolean
   accountTargets: Record<string, number>
   accountTargetsManual: boolean
   resetTime: string
@@ -47,6 +49,7 @@ export interface CampaignInput {
   totalTarget?: number
   accessPasswordEnabled?: boolean
   accessPassword?: string
+  allowFanData?: boolean
   accountTargets?: Record<string, number>
   accountTargetsManual?: boolean
   resetTime?: string
@@ -143,5 +146,11 @@ export interface ImportResult {
 export const LIBRARY_CHANNELS = [
   { value: 'whatsapp', label: 'WhatsApp' },
   { value: 'telegram', label: 'Telegram' },
-  { value: 'line', label: 'LINE' }
+  { value: 'line', label: 'LINE' },
+  { value: 'kakaotalk', label: 'KakaoTalk' },
+  { value: 'facebook', label: 'Facebook Messenger' },
+  { value: 'instagram', label: 'Instagram' },
+  { value: 'tiktok', label: 'TikTok' },
+  { value: 'x', label: 'X' },
+  { value: 'snapchat', label: 'Snapchat' }
 ] as const

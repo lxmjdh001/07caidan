@@ -28,6 +28,24 @@ import type { ServerConfig } from './config.ts'
 import { openDb } from './db.ts'
 import { createEmailSender } from './email.ts'
 import { LineRelay } from './line-relay.ts'
+import {
+  isMetaChannel,
+  MetaService,
+  MetaServiceError,
+  type MetaOauthResult,
+  type MetaOutboundMediaType
+} from './meta-service.ts'
+import {
+  TikTokService,
+  TikTokServiceError,
+  type TikTokOauthResult
+} from './tiktok-service.ts'
+import { XService, XServiceError, type XOauthResult } from './x-service.ts'
+import {
+  SnapchatService,
+  SnapchatServiceError,
+  type SnapchatOauthResult
+} from './snapchat-service.ts'
 import { NotifyRepo, type Audience } from './notify/notify-repo.ts'
 import { sweepReminders } from './notify/reminder-cron.ts'
 import { REMINDER_VARS } from './notify/template.ts'
@@ -37,6 +55,7 @@ import { BATCH_MAX, LogRepo, isLogLevel, type LogEntryInput } from './logs/log-r
 import type { SyncPayload } from './types.ts'
 import { brand } from './branding.ts'
 import { regionAllowed } from './geoip/geoip.ts'
+import { WorkspaceAccountRepo } from './workspace-account-repo.ts'
 
 /** 请求上下文：要么是同步客户端（仅 tenant），要么是登录的管理员（含权限） */
 interface ReqCtx {
@@ -58,6 +77,14 @@ interface ReqCtx {
 export interface ServerOverrides {
   /** 测试注入：假 AI 客户端，避免真调供应商 */
   aiClient?: AiClient
+  /** 测试注入：拦截 Meta OAuth / Graph API 请求，避免真实外网调用。 */
+  metaFetch?: typeof fetch
+  /** 测试注入：拦截 TikTok OAuth / Business API 请求，避免真实外网调用。 */
+  tiktokFetch?: typeof fetch
+  /** 测试注入：拦截 X OAuth / Direct Messages API。 */
+  xFetch?: typeof fetch
+  /** 测试注入：拦截 Snapchat Public Profile API。 */
+  snapchatFetch?: typeof fetch
 }
 
 export function buildServer(config: ServerConfig, overrides: ServerOverrides = {}): FastifyInstance {
@@ -66,7 +93,12 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   const auth = new AuthRepo(db)
   const clientAuth = new ClientAuthRepo(db)
   const clientConfig = new ClientConfigRepo(db)
+  const workspaceAccounts = new WorkspaceAccountRepo(db)
   const lineRelay = new LineRelay(db)
+  const metaService = new MetaService(db, config, overrides.metaFetch)
+  const tiktokService = new TikTokService(db, config, overrides.tiktokFetch)
+  const xService = new XService(db, config, overrides.xFetch)
+  const snapchatService = new SnapchatService(db, config, overrides.snapchatFetch)
   const campaignRepo = new CampaignRepo(db)
   const billingRepo = new BillingRepo(db)
   // 设备上限来自计费主体（老板）当前订阅的套餐；注入回调避免 auth 硬依赖 billing
@@ -175,6 +207,20 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
 
   const ctxOf = (req: FastifyRequest): ReqCtx => (req as unknown as { ctx: ReqCtx }).ctx
 
+  /**
+   * 聊天/工单等客户业务数据按“计费主体（老板）”分工作区。
+   * 同一老板的 Mac、Windows 和子账号共享；同一 SaaS tenant 下的其他客户绝对不可见。
+   * 静态同步令牌与管理后台保持旧 tenant 语义，兼容自托管和既有管理接口。
+   */
+  const workspaceOf = (req: FastifyRequest): string => {
+    const ctx = ctxOf(req)
+    return ctx.billingUserId === undefined
+      ? ctx.tenant
+      : `${ctx.tenant}::workspace:${ctx.billingUserId}`
+  }
+
+  const syncUserOf = (req: FastifyRequest): number => ctxOf(req).clientUserId ?? 0
+
   /** 权限守卫：要求管理员且具备指定权限 */
   const requirePerm = (req: FastifyRequest, reply: FastifyReply, perm: Permission): boolean => {
     const ctx = ctxOf(req)
@@ -197,6 +243,16 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
       return false
     }
     return true
+  }
+
+  /**
+   * 会话历史既可由管理后台读取，也可由已登录桌面端恢复本租户自己的本地缓存。
+   * 客户端权限表只控制管理功能；聊天是老板和客服的基础能力，不另设权限点。
+   */
+  const requireConversationRead = (req: FastifyRequest, reply: FastifyReply): boolean => {
+    const ctx = ctxOf(req)
+    if (ctx.isSyncClient) return true
+    return requirePerm(req, reply, 'conversations:read')
   }
 
   app.get('/health', async () => ({ ok: true }))
@@ -269,6 +325,27 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
       } catch (err) {
         app.log.warn({ err: String(err) }, '客户端日志清理失败')
       }
+      try {
+        const pruned = metaService.prune()
+        if (pruned.oauth || pruned.events) app.log.info({ pruned }, 'Meta 超龄状态已清理')
+      } catch (err) {
+        app.log.warn({ err: String(err) }, 'Meta 状态清理失败')
+      }
+      try {
+        const pruned = tiktokService.prune()
+        if (pruned.oauth || pruned.events) app.log.info({ pruned }, 'TikTok 超龄状态已清理')
+      } catch (err) {
+        app.log.warn({ err: String(err) }, 'TikTok 状态清理失败')
+      }
+      try {
+        const xPruned = xService.prune()
+        const snapPruned = snapchatService.prune()
+        if (xPruned.oauth || snapPruned.oauth || snapPruned.sent) {
+          app.log.info({ x: xPruned, snapchat: snapPruned }, 'X / Snapchat 超龄状态已清理')
+        }
+      } catch (err) {
+        app.log.warn({ err: String(err) }, 'X / Snapchat 状态清理失败')
+      }
     },
     60 * 60 * 1000
   )
@@ -293,7 +370,14 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   app.get('/api/client/config', async () => ({
     requireEmailVerify: config.requireEmailVerify,
     // Crisp Website ID 本身即公开信息（网页上人人可见），下发给客户端无风险
-    crispWebsiteId: config.crispWebsiteId
+    crispWebsiteId: config.crispWebsiteId,
+    meta: {
+      facebook: metaService.available('facebook'),
+      instagram: metaService.available('instagram')
+    },
+    tiktok: tiktokService.available(),
+    x: xService.available(),
+    snapchat: snapchatService.available()
   }))
 
   app.post('/api/client/send-code', async (req, reply) => {
@@ -447,6 +531,38 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
       b.blob as Record<string, unknown>,
       updatedAt
     )
+  })
+
+  // ── 客户工作区账号目录（跨设备，仅非敏感摘要）──
+  app.get('/api/client/accounts', async (req, reply) => {
+    if (!ctxOf(req).isSyncClient) return reply.code(403).send({ error: '需要同步客户端令牌' })
+    return { accounts: workspaceAccounts.list(workspaceOf(req)) }
+  })
+
+  app.put('/api/client/accounts/:accountKey', async (req, reply) => {
+    if (!ctxOf(req).isSyncClient) return reply.code(403).send({ error: '需要同步客户端令牌' })
+    const accountKey = (req.params as { accountKey: string }).accountKey
+    const b = (req.body ?? {}) as { channel?: string; accountId?: string; label?: unknown; defaultLang?: unknown }
+    if (!validAccountIdentity(accountKey, b.channel, b.accountId)) {
+      return reply.code(400).send({ error: '账号标识无效' })
+    }
+    return {
+      account: workspaceAccounts.upsert(workspaceOf(req), {
+        accountKey,
+        channel: b.channel!,
+        accountId: b.accountId!,
+        label: cleanOptionalText(b.label, 200),
+        defaultLang: cleanOptionalText(b.defaultLang, 32)
+      })
+    }
+  })
+
+  app.delete('/api/client/accounts/:accountKey', async (req, reply) => {
+    if (!ctxOf(req).isSyncClient) return reply.code(403).send({ error: '需要同步客户端令牌' })
+    const accountKey = (req.params as { accountKey: string }).accountKey
+    const parsed = parseAccountIdentity(accountKey)
+    if (!parsed) return reply.code(400).send({ error: '账号标识无效' })
+    return { account: workspaceAccounts.remove(workspaceOf(req), accountKey, parsed.channel, parsed.accountId) }
   })
 
   app.post('/api/client/logout', async (req) => {
@@ -789,10 +905,21 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     return true
   }
 
+  /**
+   * 客户端代理出口检测：必须带同步客户端令牌，响应只返回本次 TCP 请求的来源 IP。
+   * 客户端以账号 dispatcher 调用它，因此成功即证明该账号代理链路可达；没有任何
+   * “代理失败后直连”的备用请求。
+   */
+  app.get('/api/network/diagnostic', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    reply.header('cache-control', 'no-store')
+    return { ip: req.ip, at: Date.now() }
+  })
+
   app.post('/api/sync', async (req, reply) => {
     if (!requireSync(req, reply)) return
     const payload = req.body as SyncPayload
-    const tenant = ctxOf(req).tenant
+    const tenant = workspaceOf(req)
     const result = repo.ingest(tenant, {
       conversations: payload.conversations ?? [],
       messages: payload.messages ?? [],
@@ -808,16 +935,81 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     return { ok: true, ...result }
   })
 
+  /**
+   * 桌面端从服务器主库增量回填。只接受客户端同步令牌；聊天是所有客户端角色的基础能力。
+   * 由 (updatedAt, externalId) 组成游标，任何设备切换后都能继续从上次位置恢复。
+   */
+  app.get('/api/sync/pull', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const q = req.query as { after?: string; afterId?: string; limit?: string }
+    const after = Math.max(0, Number(q.after) || 0)
+    const afterId = typeof q.afterId === 'string' ? q.afterId.slice(0, 256) : ''
+    const limit = Math.max(1, Math.min(500, Number(q.limit) || 500))
+    const tenant = workspaceOf(req)
+    const pulled = repo.pullMessages(tenant, after, afterId, limit)
+    const cursor = pulled.length > 0
+      ? { updatedAt: pulled[pulled.length - 1]!.syncUpdatedAt, externalId: pulled[pulled.length - 1]!.externalId }
+      : null
+    return { messages: pulled, conversations: repo.conversationsForMessages(tenant, pulled), cursor }
+  })
+
+  app.get('/api/sync/conversations', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const q = req.query as { after?: string; afterId?: string; limit?: string }
+    const after = Math.max(0, Number(q.after) || 0)
+    const afterId = typeof q.afterId === 'string' ? q.afterId.slice(0, 1024) : ''
+    const limit = Math.max(1, Math.min(500, Number(q.limit) || 500))
+    const conversations = repo.pullConversations(workspaceOf(req), after, afterId, limit)
+    const last = conversations.at(-1)
+    return {
+      conversations,
+      cursor: last ? { updatedAt: last.syncUpdatedAt, id: last.id } : null
+    }
+  })
+
+  /** 独立的已读游标流：同一登录账号的多台电脑共享，团队内不同坐席互不干扰。 */
+  app.get('/api/sync/reads', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const q = req.query as { after?: string; afterId?: string; limit?: string }
+    const after = Math.max(0, Number(q.after) || 0)
+    const afterId = typeof q.afterId === 'string' ? q.afterId.slice(0, 512) : ''
+    const limit = Math.max(1, Math.min(500, Number(q.limit) || 500))
+    const reads = repo.pullReads(workspaceOf(req), syncUserOf(req), after, afterId, limit)
+    const last = reads.at(-1)
+    return {
+      reads,
+      cursor: last ? { updatedAt: last.updatedAt, conversationId: last.conversationId } : null
+    }
+  })
+
+  app.put('/api/conversations/:id/read', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const id = (req.params as { id: string }).id
+    if (!id || id.length > 1024) return reply.code(400).send({ error: '会话标识无效' })
+    return { ok: true, ...repo.markRead(workspaceOf(req), syncUserOf(req), id) }
+  })
+
+  /** 多设备并发副作用抢占；同一来信只有一台电脑拿到 claimed=true。 */
+  app.post('/api/sync/claim', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const b = (req.body ?? {}) as { purpose?: string; key?: string }
+    if (!b.purpose || !/^[a-z0-9_-]{1,64}$/i.test(b.purpose) || !b.key || b.key.length > 2048) {
+      return reply.code(400).send({ error: 'claim 参数无效' })
+    }
+    return { claimed: repo.claim(workspaceOf(req), b.purpose, b.key) }
+  })
+
   app.post('/api/media/missing', async (req, reply) => {
     if (!requireSync(req, reply)) return
     const { mediaIds } = req.body as { mediaIds: string[] }
-    const missing = (mediaIds ?? []).filter((id) => !repo.hasMedia(ctxOf(req).tenant, id))
+    const tenant = workspaceOf(req)
+    const missing = (mediaIds ?? []).filter((id) => !repo.hasMedia(tenant, id))
     return { missing }
   })
 
   app.put('/api/media/:mediaId', async (req, reply) => {
     if (!requireSync(req, reply)) return
-    const tenant = ctxOf(req).tenant
+    const tenant = workspaceOf(req)
     const mediaId = (req.params as { mediaId: string }).mediaId
     if (!/^[\w.-]+$/.test(mediaId)) return reply.code(400).send({ error: 'invalid mediaId' })
     const dir = join(config.mediaDir, tenant)
@@ -837,9 +1029,9 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
 
   // ── 查询（需 conversations:read）──
   app.get('/api/conversations', async (req, reply) => {
-    if (!requirePerm(req, reply, 'conversations:read')) return
+    if (!requireConversationRead(req, reply)) return
     const q = req.query as { limit?: string; offset?: string }
-    const tenant = ctxOf(req).tenant
+    const tenant = workspaceOf(req)
     const convs = repo.listConversations(tenant, Number(q.limit) || 100, Number(q.offset) || 0)
     // 附加已落库的意向标签（实时自动打标签结果），无则不带
     const levels = intentRepo.levelsFor(tenant, convs.map((c) => c.id))
@@ -852,16 +1044,19 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   })
 
   app.get('/api/conversations/:id/messages', async (req, reply) => {
-    if (!requirePerm(req, reply, 'conversations:read')) return
+    if (!requireConversationRead(req, reply)) return
     const id = (req.params as { id: string }).id
-    return { messages: repo.listMessages(ctxOf(req).tenant, id, 500) }
+    const q = req.query as { limit?: string; offset?: string }
+    const limit = Math.max(1, Math.min(500, Number(q.limit) || 500))
+    const offset = Math.max(0, Number(q.offset) || 0)
+    return { messages: repo.listMessages(workspaceOf(req), id, limit, offset) }
   })
 
   // 已落库的意向分析（实时自动打标签或按需深度分析的结果），供打开会话即展示
   app.get('/api/conversations/:id/intent', async (req, reply) => {
     if (!requirePerm(req, reply, 'conversations:read')) return
     const id = (req.params as { id: string }).id
-    const s = intentRepo.get(ctxOf(req).tenant, id)
+    const s = intentRepo.get(workspaceOf(req), id)
     return {
       intent: s
         ? {
@@ -883,7 +1078,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (!b.accountId || !b.channelSecret) {
       return reply.code(400).send({ error: 'accountId/channelSecret required' })
     }
-    const tenant = ctxOf(req).tenant
+    const tenant = workspaceOf(req)
     lineRelay.register(tenant, b.accountId, b.channelSecret)
     return {
       ok: true,
@@ -909,7 +1104,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   // 客户端整机批量拉取（推荐）：一次拿到全部账号的事件
   app.get('/api/line/pull-all', async (req, reply) => {
     if (!requireSync(req, reply)) return
-    return { events: lineRelay.pullAll(ctxOf(req).tenant) }
+    return { events: lineRelay.pullAll(workspaceOf(req)) }
   })
 
   // 客户端拉取待处理事件（旧接口，保留兼容单账号调试）
@@ -917,7 +1112,694 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (!requireSync(req, reply)) return
     const accountId = (req.query as { accountId?: string }).accountId
     if (!accountId) return reply.code(400).send({ error: 'accountId required' })
-    return { events: lineRelay.pull(ctxOf(req).tenant, accountId) }
+    return { events: lineRelay.pull(workspaceOf(req), accountId) }
+  })
+
+  // ── Facebook Messenger / Instagram 官方接入 ──
+  // Meta 应用凭证只配置在服务器。桌面端发起授权后打开系统浏览器，回调令牌在这里
+  // 换取并加密保存；客户和桌面渲染进程都不会接触 App Secret / Page Token。
+  const metaOwnerId = (req: FastifyRequest): number => {
+    const ctx = ctxOf(req)
+    return ctx.billingUserId ?? ctx.clientUserId ?? 0
+  }
+  const metaFailure = (reply: FastifyReply, error: unknown) => {
+    const status = error instanceof MetaServiceError ? error.status : 500
+    const message = error instanceof Error ? error.message : String(error)
+    return reply.code(status).send({ error: message })
+  }
+
+  app.post('/api/meta/oauth/start', async (req, reply) => {
+    if (!requireSync(req, reply) || !requireClientPerm(req, reply, 'accounts:manage')) return
+    const b = (req.body ?? {}) as { channel?: string; accountId?: string }
+    if (!isMetaChannel(b.channel) || !b.accountId) {
+      return reply.code(400).send({ error: 'channel/accountId required' })
+    }
+    try {
+      return metaService.beginOauth(ctxOf(req).tenant, metaOwnerId(req), b.channel, b.accountId)
+    } catch (error) {
+      return metaFailure(reply, error)
+    }
+  })
+
+  app.get('/api/meta/account', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const q = req.query as { channel?: string; accountId?: string }
+    if (!isMetaChannel(q.channel) || !q.accountId) {
+      return reply.code(400).send({ error: 'channel/accountId required' })
+    }
+    try {
+      return await metaService.oauthStatus(ctxOf(req).tenant, metaOwnerId(req), q.channel, q.accountId)
+    } catch (error) {
+      return metaFailure(reply, error)
+    }
+  })
+
+  // 新电脑登录同一团队后，可据此恢复已授权的 Meta 账号注册表；响应只有公开摘要。
+  app.get('/api/meta/accounts', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    try {
+      return { accounts: metaService.listAccounts(ctxOf(req).tenant, metaOwnerId(req)) }
+    } catch (error) {
+      return metaFailure(reply, error)
+    }
+  })
+
+  app.delete('/api/meta/account', async (req, reply) => {
+    if (!requireSync(req, reply) || !requireClientPerm(req, reply, 'accounts:manage')) return
+    const q = req.query as { channel?: string; accountId?: string }
+    if (!isMetaChannel(q.channel) || !q.accountId) {
+      return reply.code(400).send({ error: 'channel/accountId required' })
+    }
+    try {
+      metaService.disconnect(ctxOf(req).tenant, metaOwnerId(req), q.channel, q.accountId)
+      return { ok: true }
+    } catch (error) {
+      return metaFailure(reply, error)
+    }
+  })
+
+  app.get('/api/meta/events', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const q = req.query as { channel?: string; accountId?: string }
+    if (!isMetaChannel(q.channel) || !q.accountId) {
+      return reply.code(400).send({ error: 'channel/accountId required' })
+    }
+    try {
+      return {
+        events: metaService.pullEvents(ctxOf(req).tenant, metaOwnerId(req), q.channel, q.accountId)
+      }
+    } catch (error) {
+      return metaFailure(reply, error)
+    }
+  })
+
+  app.get('/api/meta/history', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const q = req.query as { channel?: string; accountId?: string }
+    if (!isMetaChannel(q.channel) || !q.accountId) {
+      return reply.code(400).send({ error: 'channel/accountId required' })
+    }
+    try {
+      return {
+        conversations: await metaService.history(
+          ctxOf(req).tenant,
+          metaOwnerId(req),
+          q.channel,
+          q.accountId
+        )
+      }
+    } catch (error) {
+      return metaFailure(reply, error)
+    }
+  })
+
+  app.get('/api/meta/profile', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const q = req.query as { channel?: string; accountId?: string; userId?: string }
+    if (!isMetaChannel(q.channel) || !q.accountId || !q.userId) {
+      return reply.code(400).send({ error: 'channel/accountId/userId required' })
+    }
+    try {
+      return {
+        profile: await metaService.profile(
+          ctxOf(req).tenant,
+          metaOwnerId(req),
+          q.channel,
+          q.accountId,
+          q.userId
+        )
+      }
+    } catch (error) {
+      return metaFailure(reply, error)
+    }
+  })
+
+  app.post('/api/meta/send', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const b = (req.body ?? {}) as {
+      channel?: string
+      accountId?: string
+      recipientId?: string
+      text?: string
+    }
+    if (!isMetaChannel(b.channel) || !b.accountId || !b.recipientId || !b.text?.trim()) {
+      return reply.code(400).send({ error: 'channel/accountId/recipientId/text required' })
+    }
+    if (b.text.length > 2000) return reply.code(400).send({ error: '消息不能超过 2000 字符' })
+    try {
+      return await metaService.sendText(
+        ctxOf(req).tenant,
+        metaOwnerId(req),
+        b.channel,
+        b.accountId,
+        b.recipientId,
+        b.text
+      )
+    } catch (error) {
+      return metaFailure(reply, error)
+    }
+  })
+
+  app.post('/api/meta/send-media', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const b = (req.body ?? {}) as {
+      channel?: string
+      accountId?: string
+      recipientId?: string
+      mediaType?: string
+      mimeType?: string
+      dataBase64?: string
+    }
+    const mediaTypes: MetaOutboundMediaType[] = ['image', 'video', 'audio', 'document', 'sticker']
+    if (
+      !isMetaChannel(b.channel) || !b.accountId || !b.recipientId ||
+      !b.mediaType || !mediaTypes.includes(b.mediaType as MetaOutboundMediaType) ||
+      !b.mimeType || !b.dataBase64
+    ) {
+      return reply.code(400).send({ error: 'channel/accountId/recipientId/mediaType/mimeType/dataBase64 required' })
+    }
+    try {
+      return await metaService.sendMedia(
+        ctxOf(req).tenant,
+        metaOwnerId(req),
+        b.channel,
+        b.accountId,
+        b.recipientId,
+        b.mediaType as MetaOutboundMediaType,
+        b.mimeType,
+        b.dataBase64
+      )
+    } catch (error) {
+      return metaFailure(reply, error)
+    }
+  })
+
+  // Meta 会通过该短期签名 URL 拉取待发送媒体。无签名、过期或不存在均统一 404。
+  app.get('/meta-media/:file', async (req, reply) => {
+    const file = (req.params as { file?: string }).file || ''
+    const q = req.query as { expires?: string; signature?: string }
+    const media = metaService.resolveStagedMedia(file, q.expires, q.signature)
+    if (!media) return reply.code(404).send({ error: 'not found' })
+    reply.header('cache-control', 'private, max-age=300')
+    reply.header('x-content-type-options', 'nosniff')
+    reply.type(media.mimeType)
+    return reply.send(createReadStream(media.path))
+  })
+
+  // Meta 后台验证 Webhook 时是 GET；Facebook 与 Instagram 共用一个 HTTPS 入口。
+  app.get('/webhook/meta', async (req, reply) => {
+    const q = req.query as {
+      'hub.mode'?: string
+      'hub.verify_token'?: string
+      'hub.challenge'?: string
+    }
+    if (!metaService.verifyWebhookChallenge(q['hub.mode'], q['hub.verify_token'])) {
+      return reply.code(403).type('text/plain').send('verification failed')
+    }
+    return reply.type('text/plain').send(q['hub.challenge'] ?? '')
+  })
+
+  app.post('/webhook/meta', async (req, reply) => {
+    const raw = (req as unknown as { rawBody?: string }).rawBody ?? ''
+    const signature = req.headers['x-hub-signature-256'] as string | undefined
+    if (!metaService.verifyWebhookSignature(raw, signature)) {
+      return reply.code(401).send({ error: 'bad signature' })
+    }
+    const queued = metaService.enqueueWebhook(req.body)
+    return { ok: true, queued }
+  })
+
+  // OAuth 浏览器回调不依赖桌面登录 Cookie；高熵 state 把回调精确绑定到发起授权的团队账号。
+  app.get('/oauth/meta/callback', async (req, reply) => {
+    const q = req.query as { state?: string; code?: string; error?: string; error_description?: string }
+    if (!q.state) return reply.code(400).type('text/html').send(metaOauthHtml({
+      status: 'error', message: '授权回调缺少 state，请回到客户端重试。'
+    }))
+    let result: MetaOauthResult
+    try {
+      result = await metaService.completeOauth(
+        q.state,
+        q.code,
+        q.error_description || q.error
+      )
+    } catch (error) {
+      result = { status: 'error', message: error instanceof Error ? error.message : String(error) }
+    }
+    reply.header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'")
+    return reply.type('text/html').send(metaOauthHtml(result, q.state))
+  })
+
+  app.get('/oauth/meta/select', async (req, reply) => {
+    const q = req.query as { state?: string; resource?: string }
+    let result: MetaOauthResult
+    try {
+      if (!q.state || !q.resource) throw new MetaServiceError('缺少主页选择参数。')
+      result = await metaService.selectOauthResource(q.state, q.resource)
+    } catch (error) {
+      result = { status: 'error', message: error instanceof Error ? error.message : String(error) }
+    }
+    reply.header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'")
+    return reply.type('text/html').send(metaOauthHtml(result))
+  })
+
+  // ── TikTok Business Messaging 官方接入 ──
+  // 每个客户在 TikTok 网页完成自己的企业号授权；短期 access token 与一年期 refresh token
+  // 均加密留在服务器，桌面端只拿账号摘要、会话和事件。
+  const tiktokFailure = (reply: FastifyReply, error: unknown) => {
+    const status = error instanceof TikTokServiceError ? error.status : 500
+    const message = error instanceof Error ? error.message : String(error)
+    return reply.code(status).send({ error: message })
+  }
+
+  app.post('/api/tiktok/oauth/start', async (req, reply) => {
+    if (!requireSync(req, reply) || !requireClientPerm(req, reply, 'accounts:manage')) return
+    const accountId = (req.body as { accountId?: string } | undefined)?.accountId
+    if (!accountId) return reply.code(400).send({ error: 'accountId required' })
+    try {
+      return tiktokService.beginOauth(ctxOf(req).tenant, metaOwnerId(req), accountId)
+    } catch (error) {
+      return tiktokFailure(reply, error)
+    }
+  })
+
+  app.get('/api/tiktok/account', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const accountId = (req.query as { accountId?: string }).accountId
+    if (!accountId) return reply.code(400).send({ error: 'accountId required' })
+    try {
+      return await tiktokService.oauthStatus(ctxOf(req).tenant, metaOwnerId(req), accountId)
+    } catch (error) {
+      return tiktokFailure(reply, error)
+    }
+  })
+
+  app.get('/api/tiktok/accounts', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    try {
+      return { accounts: tiktokService.listAccounts(ctxOf(req).tenant, metaOwnerId(req)) }
+    } catch (error) {
+      return tiktokFailure(reply, error)
+    }
+  })
+
+  app.delete('/api/tiktok/account', async (req, reply) => {
+    if (!requireSync(req, reply) || !requireClientPerm(req, reply, 'accounts:manage')) return
+    const accountId = (req.query as { accountId?: string }).accountId
+    if (!accountId) return reply.code(400).send({ error: 'accountId required' })
+    try {
+      tiktokService.disconnect(ctxOf(req).tenant, metaOwnerId(req), accountId)
+      return { ok: true }
+    } catch (error) {
+      return tiktokFailure(reply, error)
+    }
+  })
+
+  app.get('/api/tiktok/events', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const accountId = (req.query as { accountId?: string }).accountId
+    if (!accountId) return reply.code(400).send({ error: 'accountId required' })
+    try {
+      return { events: tiktokService.pullEvents(ctxOf(req).tenant, metaOwnerId(req), accountId) }
+    } catch (error) {
+      return tiktokFailure(reply, error)
+    }
+  })
+
+  app.get('/api/tiktok/history', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const accountId = (req.query as { accountId?: string }).accountId
+    if (!accountId) return reply.code(400).send({ error: 'accountId required' })
+    try {
+      return { conversations: await tiktokService.history(ctxOf(req).tenant, metaOwnerId(req), accountId) }
+    } catch (error) {
+      return tiktokFailure(reply, error)
+    }
+  })
+
+  app.get('/api/tiktok/profile', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const q = req.query as { accountId?: string; conversationId?: string }
+    if (!q.accountId || !q.conversationId) {
+      return reply.code(400).send({ error: 'accountId/conversationId required' })
+    }
+    try {
+      return {
+        profile: await tiktokService.profile(
+          ctxOf(req).tenant,
+          metaOwnerId(req),
+          q.accountId,
+          q.conversationId
+        )
+      }
+    } catch (error) {
+      return tiktokFailure(reply, error)
+    }
+  })
+
+  app.post('/api/tiktok/send', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const b = (req.body ?? {}) as { accountId?: string; conversationId?: string; text?: string }
+    if (!b.accountId || !b.conversationId || !b.text?.trim()) {
+      return reply.code(400).send({ error: 'accountId/conversationId/text required' })
+    }
+    try {
+      return await tiktokService.sendText(
+        ctxOf(req).tenant,
+        metaOwnerId(req),
+        b.accountId,
+        b.conversationId,
+        b.text
+      )
+    } catch (error) {
+      return tiktokFailure(reply, error)
+    }
+  })
+
+  app.post('/api/tiktok/send-media', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const b = (req.body ?? {}) as {
+      accountId?: string
+      conversationId?: string
+      mediaType?: string
+      mimeType?: string
+      dataBase64?: string
+    }
+    if (
+      !b.accountId || !b.conversationId || b.mediaType !== 'image' ||
+      !b.mimeType || !b.dataBase64
+    ) {
+      return reply.code(400).send({
+        error: 'accountId/conversationId/mediaType=image/mimeType/dataBase64 required'
+      })
+    }
+    try {
+      return await tiktokService.sendImage(
+        ctxOf(req).tenant,
+        metaOwnerId(req),
+        b.accountId,
+        b.conversationId,
+        b.mimeType,
+        b.dataBase64
+      )
+    } catch (error) {
+      return tiktokFailure(reply, error)
+    }
+  })
+
+  // 入站图片/视频必须由服务器携账号 token 向 TikTok 换临时 URL，再携 x-user 下载。
+  // 此接口只返回媒体字节，永不把 token 或临时下载地址交给桌面端。
+  app.get('/api/tiktok/media', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const q = req.query as {
+      accountId?: string
+      conversationId?: string
+      messageId?: string
+      mediaId?: string
+      mediaType?: string
+    }
+    if (
+      !q.accountId || !q.conversationId || !q.messageId || !q.mediaId ||
+      (q.mediaType !== 'IMAGE' && q.mediaType !== 'VIDEO')
+    ) {
+      return reply.code(400).send({
+        error: 'accountId/conversationId/messageId/mediaId/mediaType required'
+      })
+    }
+    try {
+      const media = await tiktokService.downloadMedia(
+        ctxOf(req).tenant,
+        metaOwnerId(req),
+        q.accountId,
+        q.conversationId,
+        q.messageId,
+        q.mediaId,
+        q.mediaType
+      )
+      reply.header('cache-control', 'private, max-age=300')
+      reply.header('x-content-type-options', 'nosniff')
+      reply.type(media.mimeType)
+      return reply.send(media.bytes)
+    } catch (error) {
+      return tiktokFailure(reply, error)
+    }
+  })
+
+  app.post('/webhook/tiktok', async (req, reply) => {
+    const raw = (req as unknown as { rawBody?: string }).rawBody ?? ''
+    const header = req.headers['tiktok-signature']
+    const signature = Array.isArray(header) ? header[0] : header
+    if (!tiktokService.verifyWebhookSignature(raw, signature)) {
+      return reply.code(401).send({ error: 'bad signature' })
+    }
+    return { ok: true, queued: tiktokService.enqueueWebhook(req.body) }
+  })
+
+  app.get('/oauth/tiktok/callback', async (req, reply) => {
+    const q = req.query as {
+      state?: string
+      auth_code?: string
+      code?: string
+      error?: string
+      error_description?: string
+    }
+    if (!q.state) {
+      return reply.code(400).type('text/html').send(tiktokOauthHtml({
+        status: 'error', message: '授权回调缺少 state，请回到客户端重试。'
+      }))
+    }
+    let result: TikTokOauthResult
+    try {
+      result = await tiktokService.completeOauth(
+        q.state,
+        q.auth_code || q.code,
+        q.error_description || q.error
+      )
+    } catch (error) {
+      result = { status: 'error', message: error instanceof Error ? error.message : String(error) }
+    }
+    reply.header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'")
+    return reply.type('text/html').send(tiktokOauthHtml(result))
+  })
+
+  // ── X Direct Messages 官方接入 ──
+  const xFailure = (reply: FastifyReply, error: unknown) => {
+    const status = error instanceof XServiceError ? error.status : 500
+    return reply.code(status).send({ error: error instanceof Error ? error.message : String(error) })
+  }
+
+  app.post('/api/x/oauth/start', async (req, reply) => {
+    if (!requireSync(req, reply) || !requireClientPerm(req, reply, 'accounts:manage')) return
+    const accountId = (req.body as { accountId?: string } | undefined)?.accountId
+    if (!accountId) return reply.code(400).send({ error: 'accountId required' })
+    try {
+      return xService.beginOauth(ctxOf(req).tenant, metaOwnerId(req), accountId)
+    } catch (error) {
+      return xFailure(reply, error)
+    }
+  })
+
+  app.get('/api/x/account', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const accountId = (req.query as { accountId?: string }).accountId
+    if (!accountId) return reply.code(400).send({ error: 'accountId required' })
+    try {
+      return await xService.oauthStatus(ctxOf(req).tenant, metaOwnerId(req), accountId)
+    } catch (error) {
+      return xFailure(reply, error)
+    }
+  })
+
+  app.get('/api/x/accounts', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    return { accounts: xService.listAccounts(ctxOf(req).tenant, metaOwnerId(req)) }
+  })
+
+  app.delete('/api/x/account', async (req, reply) => {
+    if (!requireSync(req, reply) || !requireClientPerm(req, reply, 'accounts:manage')) return
+    const accountId = (req.query as { accountId?: string }).accountId
+    if (!accountId) return reply.code(400).send({ error: 'accountId required' })
+    try {
+      xService.disconnect(ctxOf(req).tenant, metaOwnerId(req), accountId)
+      return { ok: true }
+    } catch (error) {
+      return xFailure(reply, error)
+    }
+  })
+
+  app.get('/api/x/history', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const accountId = (req.query as { accountId?: string }).accountId
+    if (!accountId) return reply.code(400).send({ error: 'accountId required' })
+    try {
+      return { conversations: await xService.history(ctxOf(req).tenant, metaOwnerId(req), accountId) }
+    } catch (error) {
+      return xFailure(reply, error)
+    }
+  })
+
+  app.get('/api/x/profile', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const q = req.query as { accountId?: string; userId?: string }
+    if (!q.accountId || !q.userId) return reply.code(400).send({ error: 'accountId/userId required' })
+    try {
+      return { profile: await xService.profile(ctxOf(req).tenant, metaOwnerId(req), q.accountId, q.userId) }
+    } catch (error) {
+      return xFailure(reply, error)
+    }
+  })
+
+  app.post('/api/x/send', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const b = (req.body ?? {}) as { accountId?: string; conversationId?: string; text?: string }
+    if (!b.accountId || !b.conversationId || !b.text?.trim()) {
+      return reply.code(400).send({ error: 'accountId/conversationId/text required' })
+    }
+    try {
+      return await xService.sendText(ctxOf(req).tenant, metaOwnerId(req), b.accountId, b.conversationId, b.text)
+    } catch (error) {
+      return xFailure(reply, error)
+    }
+  })
+
+  app.post('/api/x/send-media', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const b = (req.body ?? {}) as {
+      accountId?: string
+      conversationId?: string
+      mimeType?: string
+      dataBase64?: string
+      text?: string
+    }
+    if (!b.accountId || !b.conversationId || !b.mimeType || !b.dataBase64) {
+      return reply.code(400).send({ error: 'accountId/conversationId/mimeType/dataBase64 required' })
+    }
+    try {
+      return await xService.sendImage(
+        ctxOf(req).tenant, metaOwnerId(req), b.accountId, b.conversationId, b.mimeType, b.dataBase64, b.text
+      )
+    } catch (error) {
+      return xFailure(reply, error)
+    }
+  })
+
+  app.get('/oauth/x/callback', async (req, reply) => {
+    const q = req.query as { state?: string; code?: string; error?: string; error_description?: string }
+    if (!q.state) {
+      return reply.code(400).type('text/html').send(oauthResultHtml('X', {
+        status: 'error', message: '授权回调缺少 state，请回到客户端重试。'
+      }))
+    }
+    let result: XOauthResult
+    try {
+      result = await xService.completeOauth(q.state, q.code, q.error_description || q.error)
+    } catch (error) {
+      result = { status: 'error', message: error instanceof Error ? error.message : String(error) }
+    }
+    reply.header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'")
+    return reply.type('text/html').send(oauthResultHtml('X', result))
+  })
+
+  // ── Snapchat Public Profile Messaging 官方接入 ──
+  const snapchatFailure = (reply: FastifyReply, error: unknown) => {
+    const status = error instanceof SnapchatServiceError ? error.status : 500
+    return reply.code(status).send({ error: error instanceof Error ? error.message : String(error) })
+  }
+
+  app.post('/api/snapchat/oauth/start', async (req, reply) => {
+    if (!requireSync(req, reply) || !requireClientPerm(req, reply, 'accounts:manage')) return
+    const accountId = (req.body as { accountId?: string } | undefined)?.accountId
+    if (!accountId) return reply.code(400).send({ error: 'accountId required' })
+    try {
+      return snapchatService.beginOauth(ctxOf(req).tenant, metaOwnerId(req), accountId)
+    } catch (error) {
+      return snapchatFailure(reply, error)
+    }
+  })
+
+  app.get('/api/snapchat/account', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const accountId = (req.query as { accountId?: string }).accountId
+    if (!accountId) return reply.code(400).send({ error: 'accountId required' })
+    try {
+      return await snapchatService.oauthStatus(ctxOf(req).tenant, metaOwnerId(req), accountId)
+    } catch (error) {
+      return snapchatFailure(reply, error)
+    }
+  })
+
+  app.get('/api/snapchat/accounts', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    return { accounts: snapchatService.listAccounts(ctxOf(req).tenant, metaOwnerId(req)) }
+  })
+
+  app.delete('/api/snapchat/account', async (req, reply) => {
+    if (!requireSync(req, reply) || !requireClientPerm(req, reply, 'accounts:manage')) return
+    const accountId = (req.query as { accountId?: string }).accountId
+    if (!accountId) return reply.code(400).send({ error: 'accountId required' })
+    try {
+      snapchatService.disconnect(ctxOf(req).tenant, metaOwnerId(req), accountId)
+      return { ok: true }
+    } catch (error) {
+      return snapchatFailure(reply, error)
+    }
+  })
+
+  app.post('/api/snapchat/creators/connect', async (req, reply) => {
+    if (!requireSync(req, reply) || !requireClientPerm(req, reply, 'accounts:manage')) return
+    const b = (req.body ?? {}) as { accountId?: string; creatorProfileIds?: string[] }
+    if (!b.accountId || !Array.isArray(b.creatorProfileIds)) {
+      return reply.code(400).send({ error: 'accountId/creatorProfileIds required' })
+    }
+    try {
+      return await snapchatService.connectCreators(
+        ctxOf(req).tenant, metaOwnerId(req), b.accountId, b.creatorProfileIds
+      )
+    } catch (error) {
+      return snapchatFailure(reply, error)
+    }
+  })
+
+  app.get('/api/snapchat/history', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const accountId = (req.query as { accountId?: string }).accountId
+    if (!accountId) return reply.code(400).send({ error: 'accountId required' })
+    try {
+      return { conversations: await snapchatService.history(ctxOf(req).tenant, metaOwnerId(req), accountId) }
+    } catch (error) {
+      return snapchatFailure(reply, error)
+    }
+  })
+
+  app.post('/api/snapchat/send', async (req, reply) => {
+    if (!requireSync(req, reply)) return
+    const b = (req.body ?? {}) as { accountId?: string; conversationId?: string; text?: string }
+    if (!b.accountId || !b.conversationId || !b.text?.trim()) {
+      return reply.code(400).send({ error: 'accountId/conversationId/text required' })
+    }
+    try {
+      return await snapchatService.sendText(
+        ctxOf(req).tenant, metaOwnerId(req), b.accountId, b.conversationId, b.text
+      )
+    } catch (error) {
+      return snapchatFailure(reply, error)
+    }
+  })
+
+  app.get('/oauth/snapchat/callback', async (req, reply) => {
+    const q = req.query as { state?: string; code?: string; error?: string; error_description?: string }
+    if (!q.state) {
+      return reply.code(400).type('text/html').send(oauthResultHtml('Snapchat', {
+        status: 'error', message: '授权回调缺少 state，请回到客户端重试。'
+      }))
+    }
+    let result: SnapchatOauthResult
+    try {
+      result = await snapchatService.completeOauth(q.state, q.code, q.error_description || q.error)
+    } catch (error) {
+      result = { status: 'error', message: error instanceof Error ? error.message : String(error) }
+    }
+    reply.header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'")
+    return reply.type('text/html').send(oauthResultHtml('Snapchat', result))
   })
 
   // ── 引流工单 / 分享链接 / 重粉库 ──
@@ -930,7 +1812,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
 
   app.get('/api/campaigns', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
-    return { campaigns: campaignRepo.listCampaigns(ctxOf(req).tenant) }
+    return { campaigns: campaignRepo.listCampaigns(workspaceOf(req)) }
   })
 
   app.post('/api/campaigns', async (req, reply) => {
@@ -948,7 +1830,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
       return reply.code(400).send({ error: '结束时间必须晚于开始时间' })
     }
     const campaign = campaignRepo.createCampaign(
-      ctxOf(req).tenant,
+      workspaceOf(req),
       {
         name: b.name.trim(),
         accountIds: b.accountIds,
@@ -957,6 +1839,8 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
         totalTarget: b.totalTarget,
         accessPasswordEnabled: b.accessPasswordEnabled === true,
         accessPassword: b.accessPassword,
+        // 旧客户端未传时维持历史行为；新版客户端会明确提交开关值。
+        allowFanData: b.allowFanData !== false,
         accountTargets: b.accountTargets,
         accountTargetsManual: b.accountTargetsManual === true,
         resetTime: b.resetTime,
@@ -979,7 +1863,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (!requireCampaign(req, reply)) return
     const id = (req.params as { id: string }).id
     const patch = (req.body ?? {}) as Partial<CampaignInput> & { endAt?: number | null }
-    const existing = campaignRepo.getCampaign(ctxOf(req).tenant, id)
+    const existing = campaignRepo.getCampaign(workspaceOf(req), id)
     if (!existing) return reply.code(404).send({ error: 'not found' })
     if (patch.name !== undefined && !patch.name.trim()) {
       return reply.code(400).send({ error: '工单名称不能为空' })
@@ -999,21 +1883,21 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (end !== undefined && end <= start) {
       return reply.code(400).send({ error: '结束时间必须晚于开始时间' })
     }
-    campaignRepo.updateCampaign(ctxOf(req).tenant, id, patch)
-    return { ok: true, campaign: campaignRepo.getCampaign(ctxOf(req).tenant, id) }
+    campaignRepo.updateCampaign(workspaceOf(req), id, patch)
+    return { ok: true, campaign: campaignRepo.getCampaign(workspaceOf(req), id) }
   })
 
   app.delete('/api/campaigns/:id', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
     const id = (req.params as { id: string }).id
-    const ok = campaignRepo.deleteCampaign(ctxOf(req).tenant, id)
+    const ok = campaignRepo.deleteCampaign(workspaceOf(req), id)
     return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
   })
 
   /** 登录态下的统计预览（与公开看板同一份数据） */
   app.get('/api/campaigns/:id/stats', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
-    const tenant = ctxOf(req).tenant
+    const tenant = workspaceOf(req)
     const campaign = campaignRepo.getCampaign(tenant, (req.params as { id: string }).id)
     if (!campaign) return reply.code(404).send({ error: 'not found' })
     return { campaign, stats: campaignRepo.statsOf(tenant, campaign) }
@@ -1023,12 +1907,13 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   app.get('/api/campaigns/:id/links', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
     const id = (req.params as { id: string }).id
-    return { links: campaignRepo.listLinks(ctxOf(req).tenant, id), publicBase: publicBase(ctxOf(req).tenant) }
+    const tenant = workspaceOf(req)
+    return { links: campaignRepo.listLinks(tenant, id), publicBase: publicBase(tenant) }
   })
 
   app.post('/api/campaigns/:id/links', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
-    const tenant = ctxOf(req).tenant
+    const tenant = workspaceOf(req)
     const id = (req.params as { id: string }).id
     if (!campaignRepo.getCampaign(tenant, id)) return reply.code(404).send({ error: 'not found' })
     const b = (req.body ?? {}) as { label?: string; expiresAt?: number | null }
@@ -1043,28 +1928,28 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   app.post('/api/campaigns/links/:token/revoke', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
     const token = (req.params as { token: string }).token
-    const ok = campaignRepo.revokeLink(ctxOf(req).tenant, token)
+    const ok = campaignRepo.revokeLink(workspaceOf(req), token)
     return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
   })
 
   app.post('/api/campaigns/links/:token/restore', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
     const token = (req.params as { token: string }).token
-    const ok = campaignRepo.restoreLink(ctxOf(req).tenant, token)
+    const ok = campaignRepo.restoreLink(workspaceOf(req), token)
     return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
   })
 
   app.delete('/api/campaigns/links/:token', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
     const token = (req.params as { token: string }).token
-    const ok = campaignRepo.deleteLink(ctxOf(req).tenant, token)
+    const ok = campaignRepo.deleteLink(workspaceOf(req), token)
     return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
   })
 
   // ── 推广入口链接（保存多条区分来源；campaigns:manage）──
   app.get('/api/entry-links', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
-    return { links: campaignRepo.listEntryLinks(ctxOf(req).tenant) }
+    return { links: campaignRepo.listEntryLinks(workspaceOf(req)) }
   })
 
   app.post('/api/entry-links', async (req, reply) => {
@@ -1082,7 +1967,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
       return reply.code(400).send({ error: '渠道、账号、句柄与追踪码必填' })
     }
     return {
-      link: campaignRepo.createEntryLink(ctxOf(req).tenant, {
+      link: campaignRepo.createEntryLink(workspaceOf(req), {
         name: b.name.trim(),
         channel: b.channel,
         accountId: b.accountId,
@@ -1095,14 +1980,14 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
 
   app.delete('/api/entry-links/:id', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
-    const ok = campaignRepo.deleteEntryLink(ctxOf(req).tenant, (req.params as { id: string }).id)
+    const ok = campaignRepo.deleteEntryLink(workspaceOf(req), (req.params as { id: string }).id)
     return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
   })
 
   // ── 重粉库 ──
   app.get('/api/fan-libraries', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
-    return { libraries: campaignRepo.listLibraries(ctxOf(req).tenant) }
+    return { libraries: campaignRepo.listLibraries(workspaceOf(req)) }
   })
 
   /** 导入外部名单：脏格式在这里归一化，问题行原样回报给用户 */
@@ -1116,7 +2001,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     }
     if (!b.name?.trim()) return reply.code(400).send({ error: '库名称必填' })
     if (!b.channel || !isLibraryChannel(b.channel)) {
-      return reply.code(400).send({ error: '平台不支持建库（仅 whatsapp/telegram/line）' })
+      return reply.code(400).send({ error: '平台不支持建库（支持 WhatsApp/Telegram/LINE/KakaoTalk/Messenger/Instagram）' })
     }
     if (!b.contacts) return reply.code(400).send({ error: '名单内容必填' })
     const parsed = normalizeContactList(b.channel, b.contacts, { lineProvider: b.lineProvider })
@@ -1126,7 +2011,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
       const more = parsed.errors.length > 3 ? ` 等 ${parsed.errors.length} 行` : ''
       return reply.code(400).send({ error: `没有解析出有效标识：${why}${more}`, detail: parsed })
     }
-    const tenant = ctxOf(req).tenant
+    const tenant = workspaceOf(req)
     const library = campaignRepo.createLibrary(tenant, b.name.trim(), b.channel, 'import')
     const added = campaignRepo.addEntries(tenant, library.id, parsed.contactIds)
     return { library: { ...library, entryCount: added }, added, parsed }
@@ -1144,9 +2029,9 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     }
     if (!b.name?.trim()) return reply.code(400).send({ error: '库名称必填' })
     if (!b.channel || !isLibraryChannel(b.channel)) {
-      return reply.code(400).send({ error: '平台不支持建库（仅 whatsapp/telegram/line）' })
+      return reply.code(400).send({ error: '平台不支持建库（支持 WhatsApp/Telegram/LINE/KakaoTalk/Messenger/Instagram）' })
     }
-    const r = campaignRepo.exportToLibrary(ctxOf(req).tenant, b.name.trim(), b.channel, {
+    const r = campaignRepo.exportToLibrary(workspaceOf(req), b.name.trim(), b.channel, {
       accountIds: b.accountIds,
       from: b.from,
       to: b.to
@@ -1157,7 +2042,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   /** 追加名单到已有库 */
   app.post('/api/fan-libraries/:id/entries', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
-    const tenant = ctxOf(req).tenant
+    const tenant = workspaceOf(req)
     const id = (req.params as { id: string }).id
     const library = campaignRepo.getLibrary(tenant, id)
     if (!library) return reply.code(404).send({ error: 'not found' })
@@ -1175,7 +2060,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
 
   app.delete('/api/fan-libraries/:id', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
-    const ok = campaignRepo.deleteLibrary(ctxOf(req).tenant, (req.params as { id: string }).id)
+    const ok = campaignRepo.deleteLibrary(workspaceOf(req), (req.params as { id: string }).id)
     return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
   })
 
@@ -1193,6 +2078,13 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
       return false
     }
     return true
+  }
+
+  /** 粉丝身份明细和逐账号趋势必须受工单级开关保护，不能只靠网页隐藏按钮。 */
+  const requirePublicFanData = (reply: FastifyReply, campaign: Campaign): boolean => {
+    if (campaign.allowFanData) return true
+    void reply.code(403).send({ error: 'fan_data_disabled' })
+    return false
   }
 
   app.get('/public/campaign/:token', async (req, reply) => {
@@ -1239,6 +2131,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
         resetTime: `${r.campaign.resetTime}:00`,
         totalTarget: r.campaign.totalTarget,
         accessPasswordEnabled: r.campaign.accessPasswordEnabled,
+        allowFanData: r.campaign.allowFanData,
         accountTargets: r.campaign.accountTargets,
         startAt: r.campaign.startAt,
         endAt: r.campaign.endAt,
@@ -1259,6 +2152,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (!r.ok) return reply.code(404).send({ error: r.reason })
     if (!regionAllowed(req.ip, { allowCn: r.campaign.allowCnIp, allowHk: r.campaign.allowHkIp })) return reply.code(403).send({ error: 'region_blocked' })
     if (!requirePublicPassword(req, reply, r.tenant, r.campaign)) return
+    if (!requirePublicFanData(reply, r.campaign)) return
     return { fans: campaignRepo.accountFansOf(r.tenant, r.campaign, accountId) }
   })
 
@@ -1299,6 +2193,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (!r.ok) return reply.code(404).send({ error: r.reason })
     if (!regionAllowed(req.ip, { allowCn: r.campaign.allowCnIp, allowHk: r.campaign.allowHkIp })) return reply.code(403).send({ error: 'region_blocked' })
     if (!requirePublicPassword(req, reply, r.tenant, r.campaign)) return
+    if (!requirePublicFanData(reply, r.campaign)) return
     return { days: campaignRepo.accountTrendOf(r.tenant, r.campaign, accountId) }
   })
 
@@ -1455,7 +2350,10 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   app.get('/api/media/:mediaId', async (req, reply) => {
     const mediaId = (req.params as { mediaId: string }).mediaId
     if (!/^[\w.\-]+$/.test(mediaId)) return reply.code(400).send({ error: 'bad id' })
-    const record = repo.getMedia(ctxOf(req).tenant, mediaId)
+    const ctx = ctxOf(req)
+    const record = ctx.principal
+      ? repo.getMediaForAdmin(ctx.tenant, mediaId)
+      : repo.getMedia(workspaceOf(req), mediaId)
     if (!record) return reply.code(404).send({ error: 'not found' })
     reply.type(record.mimeType || 'application/octet-stream')
     return reply.send(createReadStream(record.path))
@@ -1564,4 +2462,68 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   })
 
   return app
+}
+
+const WORKSPACE_CHANNELS = new Set([
+  'whatsapp', 'telegram', 'telegram_bot', 'line', 'kakaotalk',
+  'facebook', 'instagram', 'tiktok', 'x', 'snapchat'
+])
+
+function parseAccountIdentity(accountKey: string): { channel: string; accountId: string } | null {
+  const separator = accountKey.indexOf(':')
+  if (separator <= 0) return null
+  const channel = accountKey.slice(0, separator)
+  const accountId = accountKey.slice(separator + 1)
+  if (!WORKSPACE_CHANNELS.has(channel) || !/^[a-zA-Z0-9_-]{1,128}$/.test(accountId)) return null
+  return { channel, accountId }
+}
+
+function validAccountIdentity(accountKey: string, channel?: string, accountId?: string): boolean {
+  const parsed = parseAccountIdentity(accountKey)
+  return !!parsed && parsed.channel === channel && parsed.accountId === accountId
+}
+
+function cleanOptionalText(value: unknown, max: number): string | undefined {
+  if (typeof value !== 'string') return undefined
+  const cleaned = value.trim().slice(0, max)
+  return cleaned || undefined
+}
+
+/** 极简、无脚本的 OAuth 完成页。选择项只带随机 state 和资产 ID，不携带任何访问令牌。 */
+function metaOauthHtml(result: MetaOauthResult, state?: string): string {
+  const ok = result.status !== 'error'
+  const choices = result.status === 'selecting' && state
+    ? `<div class="choices">${(result.resources ?? []).map((resource) => {
+        const subtitle = resource.handle ? `@${escapeHtml(resource.handle)}` : escapeHtml(resource.id)
+        const href = `/oauth/meta/select?state=${encodeURIComponent(state)}&resource=${encodeURIComponent(resource.id)}`
+        return `<a href="${href}"><strong>${escapeHtml(resource.name)}</strong><span>${subtitle}</span></a>`
+      }).join('')}</div>`
+    : ''
+  const closeHint = result.status === 'connected'
+    ? '<p class="hint">可以关闭本页并返回 OmniChat，客户端会自动连接。</p>'
+    : result.status === 'error'
+      ? '<p class="hint">请返回 OmniChat 重新发起授权；若仍失败，请检查 Meta 应用权限与回调地址。</p>'
+      : '<p class="hint">选择后会立即完成连接。</p>'
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OmniChat Meta 授权</title><style>
+    :root{color-scheme:light}*{box-sizing:border-box}body{margin:0;background:#f4f6fa;color:#172033;font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:grid;min-height:100vh;place-items:center;padding:24px}.card{width:min(560px,100%);background:#fff;border:1px solid #e5e9f0;border-radius:20px;box-shadow:0 18px 50px #24324a1a;padding:34px}.mark{width:54px;height:54px;border-radius:16px;display:grid;place-items:center;background:${ok ? '#e8f8ef' : '#fff0f0'};color:${ok ? '#168a4f' : '#c73939'};font-size:28px;font-weight:700}h1{font-size:23px;margin:20px 0 8px}p{margin:0}.hint{color:#667085;margin-top:12px}.choices{display:grid;gap:10px;margin-top:22px}.choices a{text-decoration:none;color:inherit;border:1px solid #dce3ee;border-radius:13px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;transition:.15s}.choices a:hover{border-color:#1877f2;background:#f5f9ff}.choices span{color:#697386;font-size:14px}</style></head><body><main class="card"><div class="mark">${ok ? '✓' : '!'}</div><h1>${escapeHtml(result.status === 'selecting' ? '选择要接入的账号' : ok ? '授权完成' : '授权失败')}</h1><p>${escapeHtml(result.message)}</p>${choices}${closeHint}</main></body></html>`
+}
+
+/** TikTok OAuth 完成页不运行脚本，也不回显 code、token 或业务账号内部 ID。 */
+function tiktokOauthHtml(result: TikTokOauthResult): string {
+  const ok = result.status === 'connected'
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OmniChat TikTok 授权</title><style>
+    :root{color-scheme:light}*{box-sizing:border-box}body{margin:0;background:#f4f6fa;color:#172033;font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:grid;min-height:100vh;place-items:center;padding:24px}.card{width:min(520px,100%);background:#fff;border:1px solid #e5e9f0;border-radius:20px;box-shadow:0 18px 50px #24324a1a;padding:34px}.mark{width:54px;height:54px;border-radius:16px;display:grid;place-items:center;background:${ok ? '#e8f8ef' : '#fff0f0'};color:${ok ? '#168a4f' : '#c73939'};font-size:28px;font-weight:700}h1{font-size:23px;margin:20px 0 8px}p{margin:0}.hint{color:#667085;margin-top:12px}</style></head><body><main class="card"><div class="mark">${ok ? '✓' : '!'}</div><h1>${ok ? 'TikTok 授权完成' : 'TikTok 授权失败'}</h1><p>${escapeHtml(result.message)}</p><p class="hint">${ok ? '可以关闭本页并返回 OmniChat，客户端会自动连接。' : '请返回 OmniChat 重新发起授权，并检查企业号及应用审核状态。'}</p></main></body></html>`
+}
+
+/** X / Snapchat 共用的无脚本 OAuth 结果页；不会回显 code 或任何令牌。 */
+function oauthResultHtml(provider: 'X' | 'Snapchat', result: XOauthResult | SnapchatOauthResult): string {
+  const ok = result.status === 'connected'
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OmniChat ${provider} 授权</title><style>
+    :root{color-scheme:light}*{box-sizing:border-box}body{margin:0;background:#f4f6fa;color:#172033;font:16px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;display:grid;min-height:100vh;place-items:center;padding:24px}.card{width:min(520px,100%);background:#fff;border:1px solid #e5e9f0;border-radius:20px;box-shadow:0 18px 50px #24324a1a;padding:34px}.mark{width:54px;height:54px;border-radius:16px;display:grid;place-items:center;background:${ok ? '#e8f8ef' : '#fff0f0'};color:${ok ? '#168a4f' : '#c73939'};font-size:28px;font-weight:700}h1{font-size:23px;margin:20px 0 8px}p{margin:0}.hint{color:#667085;margin-top:12px}</style></head><body><main class="card"><div class="mark">${ok ? '✓' : '!'}</div><h1>${provider} 授权${ok ? '完成' : '失败'}</h1><p>${escapeHtml(result.message)}</p><p class="hint">${ok ? '可以关闭本页并返回 OmniChat，客户端会自动连接。' : '请返回 OmniChat 重新发起授权，并检查应用权限与审核状态。'}</p></main></body></html>`
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>'"]/g, (char) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+  })[char]!)
 }

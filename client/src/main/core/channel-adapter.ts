@@ -7,6 +7,13 @@ export interface ConversationUpsert {
   externalChatId: string
   title?: string
   isGroup: boolean
+  contactId?: string
+  /** 平台公开用户名；与内部 conversation/contact id 分开保存。 */
+  publicId?: string
+  /** 登录时从平台会话列表带回的摘要；不伪造历史消息。 */
+  lastMessageAt?: number
+  lastMessagePreview?: string
+  unreadCount?: number
 }
 
 /** 群组摘要，用于群组列表和创建后的会话登记。 */
@@ -37,6 +44,8 @@ export interface OutboundMedia {
 export interface AdapterEvents extends Record<string, unknown[]> {
   /** 收到新消息（含本账号在手机端发出的消息） */
   message: [UnifiedMessage]
+  /** 登录快照中的历史消息：静默入库，不翻译、不累计未读、不弹通知 */
+  historyMessage: [UnifiedMessage]
   /** 已上报消息的后续更新（如媒体下载完成补上 mediaId） */
   messageUpdate: [UnifiedMessage]
   /** 会话元信息更新 */
@@ -74,6 +83,8 @@ export abstract class ChannelAdapter extends TypedEmitter<AdapterEvents> {
   fetchSelfAvatar?(): Promise<string | undefined>
   /** 主动解析会话显示名（群名/备注等），解析不到返回 undefined（可选能力） */
   fetchTitle?(externalChatId: string): Promise<string | undefined>
+  /** 解析平台公开账号标识（如 LINE 官方账号的 @id）；普通用户不可公开时返回 undefined。 */
+  fetchPublicId?(externalChatId: string): Promise<string | undefined>
   /**
    * 解析该会话对应客户的规范唯一标识（跨己方账号稳定，如 wa:+17759276114）。
    * 群聊/机器人等无自然人身份的会话返回 undefined（可选能力）。
@@ -94,6 +105,9 @@ export abstract class ChannelAdapter extends TypedEmitter<AdapterEvents> {
 
   /** 切换登录方式（如 Telegram 在扫码与手机号之间切换），会重启登录流程 */
   setLoginMode?(mode: string): Promise<void>
+
+  /** 打开服务器托管的 OAuth 授权流程（Meta / TikTok 等平台）；令牌不会进入桌面端。 */
+  beginOAuth?(): Promise<void>
 
   protected makeState(partial: Omit<ChannelState, 'kind' | 'accountId'>): ChannelState {
     return { kind: this.kind, accountId: this.accountId, ...partial }

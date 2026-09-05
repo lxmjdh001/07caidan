@@ -1,5 +1,13 @@
 import type { ChannelState, Conversation, UnifiedMessage } from './domain'
 import type { AppSettings } from './settings'
+import type {
+  AccountNetworkState,
+  ConfigureAccountNetworkInput,
+  ConfigureAccountNetworkResult,
+  ProxyProbe,
+  SaveProxyAssetInput,
+  SaveProxyAssetResult
+} from './network'
 
 /** 主进程 → 渲染进程 推送事件所用的 IPC channel 名 */
 export const OMNI_EVENT_CHANNEL = 'omni:event'
@@ -11,11 +19,20 @@ export const IPC_METHODS = {
   startChannel: 'omni:startChannel',
   refreshChannelProfile: 'omni:refreshChannelProfile',
   submitAuthInput: 'omni:submitAuthInput',
+  beginOAuth: 'omni:beginOAuth',
   setLoginMode: 'omni:setLoginMode',
   logoutChannel: 'omni:logoutChannel',
   addAccount: 'omni:addAccount',
   removeAccount: 'omni:removeAccount',
   setAccountEnabled: 'omni:setAccountEnabled',
+  listAccountNetworks: 'omni:listAccountNetworks',
+  testProxy: 'omni:testProxy',
+  saveProxyAsset: 'omni:saveProxyAsset',
+  deleteProxyAsset: 'omni:deleteProxyAsset',
+  unlinkAccountProxy: 'omni:unlinkAccountProxy',
+  setProxyAssetBindings: 'omni:setProxyAssetBindings',
+  testAccountProxy: 'omni:testAccountProxy',
+  configureAccountNetwork: 'omni:configureAccountNetwork',
   listGroups: 'omni:listGroups',
   createGroup: 'omni:createGroup',
   listConversations: 'omni:listConversations',
@@ -64,6 +81,7 @@ export type OmniEvent =
   | { type: 'conversation:removed'; conversationId: string }
   | { type: 'channel:state'; state: ChannelState }
   | { type: 'channel:removed'; key: string }
+  | { type: 'network:state'; state: AccountNetworkState }
   /** 用户点击系统通知 → 打开该会话 */
   | { type: 'conversation:open'; conversationId: string }
   /** 自动更新状态变化 */
@@ -78,7 +96,7 @@ export interface TranslatorInfo {
 export interface ChannelPluginInfo {
   kind: string
   displayName: string
-  authType: 'qr' | 'credentials' | 'phone_code'
+  authType: 'qr' | 'credentials' | 'phone_code' | 'oauth'
   credentialFields?: Array<{
     key: string
     label: string
@@ -132,6 +150,8 @@ export interface OmniApi {
   startChannel(key: string): Promise<void>
   /** 提交交互式登录输入（Telegram 普通账号的手机号/验证码/两步密码） */
   submitAuthInput(key: string, value: string): Promise<void>
+  /** 在该账号独立指纹与固定代理的内置隔离窗口完成 OAuth 授权。 */
+  beginOAuth(key: string): Promise<void>
   /** 切换登录方式（Telegram：'qr' 扫码 / 'phone' 手机号），会重启登录流程 */
   setLoginMode(key: string, mode: 'qr' | 'phone'): Promise<void>
   logoutChannel(key: string): Promise<void>
@@ -141,6 +161,25 @@ export interface OmniApi {
   removeAccount(key: string): Promise<void>
   /** 启用或禁用账号的连接与消息接收；禁用不会清除登录凭证。 */
   setAccountEnabled(key: string, enabled: boolean): Promise<void>
+  /** 查询每个平台账号的独立代理/断网隔离状态。 */
+  listAccountNetworks(): Promise<AccountNetworkState[]>
+  /** 检测独立代理资产，不要求选择账号，不保存任何数据。 */
+  testProxy(proxyUrl: string): Promise<ProxyProbe>
+  /** 新增或编辑独立代理资产；普通保存不等待网络检测。 */
+  saveProxyAsset(input: SaveProxyAssetInput): Promise<SaveProxyAssetResult>
+  /** 删除代理资产；已关联账号会先安全断开并解除关联。 */
+  deleteProxyAsset(id: string): Promise<AppSettings>
+  /** 解除账号与代理资产的关联，并立即清除旧网络门禁状态。 */
+  unlinkAccountProxy(key: string): Promise<AppSettings>
+  /** 一次性保存某条代理的全部账号关联；支持跨平台、多账号并原子更新配置。 */
+  setProxyAssetBindings(assetId: string, accountKeys: string[]): Promise<AppSettings>
+  /** 只检测候选代理，不保存配置、不登录平台，也不改变当前账号连接。 */
+  testAccountProxy(key: string, proxyUrl: string): Promise<import('./network').AccountProxyTestResult>
+  /** 保存账号代理并按需连接；skipTest=true 时直接由平台连接判断是否可用。 */
+  configureAccountNetwork(
+    key: string,
+    input: ConfigureAccountNetworkInput
+  ): Promise<ConfigureAccountNetworkResult>
   listGroups(key: string): Promise<Conversation[]>
   createGroup(key: string, subject: string, participantIds: string[]): Promise<Conversation>
   listConversations(): Promise<Conversation[]>

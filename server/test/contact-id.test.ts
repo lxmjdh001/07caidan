@@ -72,6 +72,43 @@ describe('LINE 归一化', () => {
   })
 })
 
+describe('KakaoTalk 归一化', () => {
+  test('数字用户 id 与标准标识归一到同一值', () => {
+    assert.equal(ok(normalizeContactId('kakaotalk', '123456789')), 'kakao:123456789')
+    assert.equal(ok(normalizeContactId('kakaotalk', 'kakao:123456789')), 'kakao:123456789')
+    assert.equal(normalizeContactId('kakaotalk', '@nickname').ok, false)
+  })
+})
+
+describe('服务器托管渠道归一化', () => {
+  test('客户标识必须保留业务资产作用域', () => {
+    assert.equal(
+      ok(normalizeContactId('facebook', 'facebook:page100:psid200')),
+      'facebook:page100:psid200'
+    )
+    assert.equal(
+      ok(normalizeContactId('instagram', 'instagram:ig100:igsid200')),
+      'instagram:ig100:igsid200'
+    )
+    assert.equal(
+      ok(normalizeContactId('tiktok', 'tiktok:business100:user-200')),
+      'tiktok:business100:user-200'
+    )
+    assert.equal(normalizeContactId('facebook', 'psid200').ok, false)
+    assert.equal(normalizeContactId('instagram', '@public_name').ok, false)
+    assert.equal(normalizeContactId('tiktok', '@public_name').ok, false)
+  })
+
+  test('X 使用全局数字 ID，Snapchat 保留品牌作用域', () => {
+    assert.equal(ok(normalizeContactId('x', '123456789')), 'x:123456789')
+    assert.equal(ok(normalizeContactId('x', 'x:123456789')), 'x:123456789')
+    assert.equal(normalizeContactId('x', '@alice').ok, false)
+    const scoped = 'snapchat:brand-profile-0001:creator-profile-0001'
+    assert.equal(ok(normalizeContactId('snapchat', scoped)), scoped)
+    assert.equal(normalizeContactId('snapchat', 'creator-profile-0001').ok, false)
+  })
+})
+
 describe('批量归一化', () => {
   test('换行与逗号混排，自动去重并统计问题行', () => {
     const r = normalizeContactList(
@@ -103,6 +140,12 @@ describe('channelOfContactId', () => {
     assert.equal(channelOfContactId('wa:+861'), 'whatsapp')
     assert.equal(channelOfContactId('tg:1'), 'telegram')
     assert.equal(channelOfContactId('line:p:U1'), 'line')
+    assert.equal(channelOfContactId('kakao:123'), 'kakaotalk')
+    assert.equal(channelOfContactId('facebook:p:u'), 'facebook')
+    assert.equal(channelOfContactId('instagram:i:u'), 'instagram')
+    assert.equal(channelOfContactId('tiktok:b:u'), 'tiktok')
+    assert.equal(channelOfContactId('x:123'), 'x')
+    assert.equal(channelOfContactId('snapchat:b:c'), 'snapchat')
     assert.equal(channelOfContactId('weird'), undefined)
   })
 })

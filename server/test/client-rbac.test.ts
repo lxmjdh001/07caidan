@@ -48,7 +48,7 @@ describe('effectiveClientPermissions（角色 ∪ 直授，去重 + 丢非法）
 
 describe('CLIENT_ROLE_PRESETS', () => {
   test('boss 全权、agent 纯聊天（无任何管理权限）', () => {
-    assert.deepEqual([...CLIENT_ROLE_PRESETS.boss].sort(), [...CLIENT_PERMISSIONS].sort())
+    assert.deepEqual([...(CLIENT_ROLE_PRESETS.boss ?? [])].sort(), [...CLIENT_PERMISSIONS].sort())
     assert.deepEqual(CLIENT_ROLE_PRESETS.agent, [])
   })
 })

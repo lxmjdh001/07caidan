@@ -28,6 +28,16 @@ OMNI_TOKENS=your-token ANTHROPIC_API_KEY=sk-... npm start
 | `OMNI_ADMIN_TENANT` | 第一个同步令牌 | 管理员可见的租户 |
 | `ANTHROPIC_API_KEY` | — | 缺失时 AI 分析接口返回 501 |
 | `OMNI_ANALYSIS_MODEL` | `claude-opus-5` | 意向分析模型 |
+| `META_APP_ID` / `META_APP_SECRET` | — | Facebook Login / Messenger 应用凭证 |
+| `META_INSTAGRAM_APP_ID` / `META_INSTAGRAM_APP_SECRET` | — | Instagram Login 应用凭证 |
+| `META_WEBHOOK_VERIFY_TOKEN` | — | Meta Webhook 校验串 |
+| `META_TOKEN_ENCRYPTION_KEY` | — | 服务器令牌加密密钥（至少 32 个随机字符） |
+| `TIKTOK_APP_ID` / `TIKTOK_APP_SECRET` | — | TikTok API for Business 应用凭证 |
+| `TIKTOK_TOKEN_ENCRYPTION_KEY` | — | TikTok 两种令牌的加密密钥（至少 32 个随机字符） |
+| `X_CLIENT_ID` / `X_CLIENT_SECRET` | — | X OAuth 2.0 应用凭证 |
+| `X_TOKEN_ENCRYPTION_KEY` | — | X access/refresh token 加密密钥（至少 32 个随机字符） |
+| `SNAPCHAT_CLIENT_ID` / `SNAPCHAT_CLIENT_SECRET` | — | Snapchat Public Profile API 应用凭证 |
+| `SNAPCHAT_TOKEN_ENCRYPTION_KEY` | — | Snapchat 令牌/会话 token 加密密钥（至少 32 个随机字符） |
 
 ## 认证与 RBAC
 
@@ -52,6 +62,25 @@ OMNI_TOKENS=your-token ANTHROPIC_API_KEY=sk-... npm start
 | POST | `/api/media/missing` · PUT `/api/media/:id` | 同步令牌 |
 | GET | `/api/conversations` · `/api/conversations/:id/messages` | conversations:read |
 | POST | `/api/analyze/conversation/:id` · `/api/analyze/contact/:contactId` | analyze:run |
+| POST | `/api/meta/oauth/start` | 同步客户端 + accounts:manage |
+| GET | `/api/meta/accounts` · `/api/meta/account` · `/api/meta/events` | 同步客户端 |
+| POST | `/api/meta/send` | 同步客户端 |
+| GET/POST | `/webhook/meta` | Meta challenge / HMAC 签名 |
+| POST | `/api/tiktok/oauth/start` | 同步客户端 + accounts:manage |
+| GET | `/api/tiktok/accounts` · `/api/tiktok/account` · `/api/tiktok/events` | 同步客户端 |
+| GET | `/api/tiktok/history` · `/api/tiktok/profile` · `/api/tiktok/media` | 同步客户端 |
+| POST | `/api/tiktok/send` · `/api/tiktok/send-media` | 同步客户端 |
+| POST | `/webhook/tiktok` | TikTok 时间戳 HMAC 签名 |
+| POST | `/api/x/oauth/start` · `/api/snapchat/oauth/start` | 同步客户端 + accounts:manage |
+| GET | `/api/x/accounts` · `/api/x/account` · `/api/x/history` · `/api/x/profile` | 同步客户端 |
+| POST | `/api/x/send` · `/api/x/send-media` | 同步客户端 |
+| GET | `/api/snapchat/accounts` · `/api/snapchat/account` · `/api/snapchat/history` | 同步客户端 |
+| POST | `/api/snapchat/creators/connect` | 同步客户端 + accounts:manage |
+| POST | `/api/snapchat/send` | 同步客户端 |
+
+Messenger / Instagram 的详细配置见 [`docs/meta-integration.md`](../docs/meta-integration.md)。
+TikTok 的详细配置见 [`docs/tiktok-integration.md`](../docs/tiktok-integration.md)。
+X / Snapchat 的详细配置见 [`docs/x-snapchat-integration.md`](../docs/x-snapchat-integration.md)。
 
 意向分析返回：`{ intentLevel, summary, signals[], suggestedAction }`。
 

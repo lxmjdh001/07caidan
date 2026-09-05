@@ -51,6 +51,18 @@ function platformLabel(channel: string, removedLabel: string): string {
       return 'Telegram Bot'
     case 'line':
       return 'LINE'
+    case 'kakaotalk':
+      return 'KakaoTalk'
+    case 'facebook':
+      return 'Facebook Messenger'
+    case 'instagram':
+      return 'Instagram'
+    case 'tiktok':
+      return 'TikTok'
+    case 'x':
+      return 'X'
+    case 'snapchat':
+      return 'Snapchat'
     case 'removed':
       return removedLabel
     default:
@@ -435,6 +447,7 @@ function CampaignForm({
   const [allowHk, setAllowHk] = useState(editing?.allowHkIp ?? false)
   const [accessPasswordEnabled, setAccessPasswordEnabled] = useState(editing?.accessPasswordEnabled ?? false)
   const [accessPassword, setAccessPassword] = useState('')
+  const [allowFanData, setAllowFanData] = useState(editing?.allowFanData ?? true)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -582,6 +595,7 @@ function CampaignForm({
         accountTargetsManual: customTargets,
         accessPasswordEnabled,
         ...(accessPassword ? { accessPassword } : {}),
+        allowFanData,
         // 只提交与所选账号同平台的库，避免改过账号后留下永不命中的脏规则
         dedupLibraryIds: libIds.filter((id) => usableLibs.some((l) => l.id === id)),
         sourceCodes: sources.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean),
@@ -735,6 +749,14 @@ function CampaignForm({
             />
             <span className="field-hint">{t('campaign.accessPasswordHint')}</span>
           </>}
+        </div>
+
+        <div className="field">
+          <label className="check-row">
+            <input type="checkbox" checked={allowFanData} onChange={(e) => setAllowFanData(e.target.checked)} />
+            <span>{t('campaign.allowFanData')}</span>
+          </label>
+          <span className="field-hint">{t('campaign.allowFanDataHint')}</span>
         </div>
       </section>
 

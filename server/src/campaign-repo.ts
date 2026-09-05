@@ -37,6 +37,8 @@ export interface Campaign {
   totalTarget: number
   /** 分享页是否启用访问密码；密码哈希不返回 */
   accessPasswordEnabled: boolean
+  /** 分享页是否允许查看粉丝详情与进粉趋势。 */
+  allowFanData: boolean
   /** accountId → 该账号目标数 */
   accountTargets: Record<string, number>
   accountTargetsManual: boolean
@@ -107,6 +109,7 @@ export interface CampaignInput {
   totalTarget?: number
   accessPasswordEnabled?: boolean
   accessPassword?: string
+  allowFanData?: boolean
   accountTargets?: Record<string, number>
   accountTargetsManual?: boolean
   resetTime?: string
@@ -159,6 +162,8 @@ export class CampaignRepo {
       totalTarget: normalizeTarget(input.totalTarget),
       accessPasswordEnabled: input.accessPasswordEnabled ? 1 : 0,
       accessPasswordHash: input.accessPasswordEnabled && input.accessPassword ? hashPassword(input.accessPassword) : null,
+      // 兼容未携带该字段的旧客户端与已有行为；新版客户端会显式提交开关值。
+      allowFanData: input.allowFanData === false ? 0 : 1,
       accountTargets: JSON.stringify(
         input.accountTargets === undefined
           ? distributeAccountTargets(input.accountIds, input.totalTarget)
@@ -221,6 +226,7 @@ export class CampaignRepo {
     } else if (patch.accessPassword) {
       set.accessPasswordHash = hashPassword(patch.accessPassword)
     }
+    if (patch.allowFanData !== undefined) set.allowFanData = patch.allowFanData ? 1 : 0
     if (patch.accountTargets !== undefined) {
       set.accountTargets = JSON.stringify(normalizeAccountTargets(patch.accountTargets))
     }
@@ -834,6 +840,7 @@ function toCampaign(r: typeof campaigns.$inferSelect): Campaign {
     accountProfiles: parseJsonProfiles(r.accountProfiles),
     totalTarget: normalizeTarget(r.totalTarget),
     accessPasswordEnabled: r.accessPasswordEnabled === 1,
+    allowFanData: r.allowFanData === 1,
     accountTargets: parseJsonNumberObject(r.accountTargets),
     accountTargetsManual: r.accountTargetsManual === 1,
     resetTime: normalizeResetTime(r.resetTime),

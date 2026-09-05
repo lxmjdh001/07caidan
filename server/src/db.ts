@@ -19,8 +19,12 @@ export function openDb(dbPath: string): Db {
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS conversations (
       tenant TEXT NOT NULL, id TEXT NOT NULL, channel TEXT NOT NULL,
-      account_id TEXT NOT NULL, contact_id TEXT, title TEXT NOT NULL,
+      account_id TEXT NOT NULL, contact_id TEXT, public_id TEXT, title TEXT NOT NULL,
       is_group INTEGER NOT NULL DEFAULT 0,
+      avatar_media_id TEXT, detected_lang TEXT, lang_override TEXT,
+      auto_reply INTEGER NOT NULL DEFAULT 0, pinned INTEGER NOT NULL DEFAULT 0,
+      muted INTEGER NOT NULL DEFAULT 0, customer_note TEXT NOT NULL DEFAULT '',
+      last_message_preview TEXT NOT NULL DEFAULT '',
       lead_source_code TEXT, lead_source_via TEXT,
       last_message_at INTEGER NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL, PRIMARY KEY (tenant, id)
@@ -38,9 +42,31 @@ export function openDb(dbPath: string): Db {
       author_name TEXT, body_type TEXT NOT NULL, text TEXT, media_type TEXT,
       media_id TEXT, mime_type TEXT, file_name TEXT, caption TEXT, duration_sec INTEGER,
       translation_text TEXT, translation_lang TEXT, timestamp INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
       PRIMARY KEY (tenant, external_id)
     );
     CREATE INDEX IF NOT EXISTS idx_messages_conv ON messages (tenant, conversation_id, timestamp);
+
+    CREATE TABLE IF NOT EXISTS conversation_reads (
+      tenant TEXT NOT NULL, user_id INTEGER NOT NULL, conversation_id TEXT NOT NULL,
+      read_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, user_id, conversation_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_conversation_reads_sync
+      ON conversation_reads (tenant, user_id, updated_at, conversation_id);
+
+    CREATE TABLE IF NOT EXISTS workspace_accounts (
+      tenant TEXT NOT NULL, account_key TEXT NOT NULL, channel TEXT NOT NULL,
+      account_id TEXT NOT NULL, label TEXT, default_lang TEXT,
+      deleted INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, account_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS sync_claims (
+      tenant TEXT NOT NULL, purpose TEXT NOT NULL, claim_key TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, purpose, claim_key)
+    );
 
     CREATE TABLE IF NOT EXISTS media (
       tenant TEXT NOT NULL, media_id TEXT NOT NULL, mime_type TEXT,
@@ -125,6 +151,110 @@ export function openDb(dbPath: string): Db {
     );
     CREATE INDEX IF NOT EXISTS idx_line_events ON line_events (tenant, account_id);
 
+    CREATE TABLE IF NOT EXISTS meta_accounts (
+      tenant TEXT NOT NULL, owner_id INTEGER NOT NULL DEFAULT 0,
+      channel TEXT NOT NULL, account_id TEXT NOT NULL,
+      asset_id TEXT NOT NULL, page_id TEXT NOT NULL,
+      display_name TEXT NOT NULL, handle TEXT, avatar_url TEXT,
+      access_token TEXT NOT NULL, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, owner_id, channel, account_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_meta_accounts_asset ON meta_accounts (channel, asset_id);
+    CREATE INDEX IF NOT EXISTS idx_meta_accounts_page ON meta_accounts (channel, page_id);
+    CREATE TABLE IF NOT EXISTS meta_oauth_states (
+      state TEXT PRIMARY KEY, tenant TEXT NOT NULL, owner_id INTEGER NOT NULL DEFAULT 0,
+      channel TEXT NOT NULL, account_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'authorizing', error TEXT,
+      data TEXT NOT NULL DEFAULT '', expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_meta_oauth_account
+      ON meta_oauth_states (tenant, owner_id, channel, account_id);
+    CREATE TABLE IF NOT EXISTS meta_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, tenant TEXT NOT NULL,
+      owner_id INTEGER NOT NULL DEFAULT 0, channel TEXT NOT NULL,
+      account_id TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_meta_events
+      ON meta_events (tenant, owner_id, channel, account_id);
+
+    CREATE TABLE IF NOT EXISTS tiktok_accounts (
+      tenant TEXT NOT NULL, owner_id INTEGER NOT NULL DEFAULT 0,
+      account_id TEXT NOT NULL, business_id TEXT NOT NULL,
+      display_name TEXT NOT NULL, handle TEXT, avatar_url TEXT,
+      access_token TEXT NOT NULL, refresh_token TEXT NOT NULL,
+      access_token_expires_at INTEGER NOT NULL, refresh_token_expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, owner_id, account_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_tiktok_accounts_business ON tiktok_accounts (business_id);
+    CREATE TABLE IF NOT EXISTS tiktok_oauth_states (
+      state TEXT PRIMARY KEY, tenant TEXT NOT NULL, owner_id INTEGER NOT NULL DEFAULT 0,
+      account_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'authorizing', error TEXT,
+      expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_tiktok_oauth_account
+      ON tiktok_oauth_states (tenant, owner_id, account_id);
+    CREATE TABLE IF NOT EXISTS tiktok_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, tenant TEXT NOT NULL,
+      owner_id INTEGER NOT NULL DEFAULT 0, account_id TEXT NOT NULL,
+      payload TEXT NOT NULL, created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_tiktok_events
+      ON tiktok_events (tenant, owner_id, account_id);
+
+    CREATE TABLE IF NOT EXISTS x_accounts (
+      tenant TEXT NOT NULL, owner_id INTEGER NOT NULL DEFAULT 0,
+      account_id TEXT NOT NULL, user_id TEXT NOT NULL,
+      display_name TEXT NOT NULL, handle TEXT, avatar_url TEXT,
+      access_token TEXT NOT NULL, refresh_token TEXT NOT NULL,
+      access_token_expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, owner_id, account_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_x_accounts_user ON x_accounts (user_id);
+    CREATE TABLE IF NOT EXISTS x_oauth_states (
+      state TEXT PRIMARY KEY, tenant TEXT NOT NULL, owner_id INTEGER NOT NULL DEFAULT 0,
+      account_id TEXT NOT NULL, code_verifier TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'authorizing', error TEXT,
+      expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_x_oauth_account
+      ON x_oauth_states (tenant, owner_id, account_id);
+
+    CREATE TABLE IF NOT EXISTS snapchat_accounts (
+      tenant TEXT NOT NULL, owner_id INTEGER NOT NULL DEFAULT 0,
+      account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
+      display_name TEXT NOT NULL, handle TEXT, avatar_url TEXT,
+      access_token TEXT NOT NULL, refresh_token TEXT NOT NULL,
+      access_token_expires_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, owner_id, account_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_snapchat_accounts_profile ON snapchat_accounts (profile_id);
+    CREATE TABLE IF NOT EXISTS snapchat_oauth_states (
+      state TEXT PRIMARY KEY, tenant TEXT NOT NULL, owner_id INTEGER NOT NULL DEFAULT 0,
+      account_id TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'authorizing', error TEXT,
+      expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_snapchat_oauth_account
+      ON snapchat_oauth_states (tenant, owner_id, account_id);
+    CREATE TABLE IF NOT EXISTS snapchat_conversations (
+      tenant TEXT NOT NULL, owner_id INTEGER NOT NULL DEFAULT 0,
+      account_id TEXT NOT NULL, conversation_id TEXT NOT NULL,
+      conversation_token TEXT NOT NULL, creator_profile_id TEXT NOT NULL,
+      creator_name TEXT NOT NULL, creator_handle TEXT, avatar_url TEXT,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, owner_id, account_id, conversation_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_snapchat_conversations_creator
+      ON snapchat_conversations (tenant, owner_id, account_id, creator_profile_id);
+    CREATE TABLE IF NOT EXISTS snapchat_sent_messages (
+      tenant TEXT NOT NULL, owner_id INTEGER NOT NULL DEFAULT 0,
+      account_id TEXT NOT NULL, message_id TEXT NOT NULL, created_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, owner_id, account_id, message_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_snapchat_sent_created ON snapchat_sent_messages (created_at);
+
     CREATE TABLE IF NOT EXISTS campaigns (
       tenant TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL,
       account_ids TEXT NOT NULL DEFAULT '[]',
@@ -133,6 +263,7 @@ export function openDb(dbPath: string): Db {
       total_target INTEGER NOT NULL DEFAULT 0,
       access_password_enabled INTEGER NOT NULL DEFAULT 0,
       access_password_hash TEXT,
+      allow_fan_data INTEGER NOT NULL DEFAULT 1,
       account_targets TEXT NOT NULL DEFAULT '{}',
       account_targets_manual INTEGER NOT NULL DEFAULT 0,
       reset_time TEXT NOT NULL DEFAULT '00:00',
@@ -347,6 +478,7 @@ function migrate(sqlite: BetterSqlite3.Database): void {
     ['campaigns', 'total_target', 'INTEGER NOT NULL DEFAULT 0'],
     ['campaigns', 'access_password_enabled', 'INTEGER NOT NULL DEFAULT 0'],
     ['campaigns', 'access_password_hash', 'TEXT'],
+    ['campaigns', 'allow_fan_data', 'INTEGER NOT NULL DEFAULT 1'],
     ['campaigns', 'account_targets', `TEXT NOT NULL DEFAULT '{}'`],
     ['campaigns', 'account_targets_manual', 'INTEGER NOT NULL DEFAULT 0'],
     ['campaigns', 'reset_time', `TEXT NOT NULL DEFAULT '00:00'`],
@@ -358,6 +490,15 @@ function migrate(sqlite: BetterSqlite3.Database): void {
     ['campaigns', 'allow_hk_ip', 'INTEGER NOT NULL DEFAULT 0'],
     ['conversations', 'lead_source_code', 'TEXT'],
     ['conversations', 'lead_source_via', 'TEXT'],
+    ['conversations', 'public_id', 'TEXT'],
+    ['conversations', 'avatar_media_id', 'TEXT'],
+    ['conversations', 'detected_lang', 'TEXT'],
+    ['conversations', 'lang_override', 'TEXT'],
+    ['conversations', 'auto_reply', 'INTEGER NOT NULL DEFAULT 0'],
+    ['conversations', 'pinned', 'INTEGER NOT NULL DEFAULT 0'],
+    ['conversations', 'muted', 'INTEGER NOT NULL DEFAULT 0'],
+    ['conversations', 'customer_note', "TEXT NOT NULL DEFAULT ''"],
+    ['conversations', 'last_message_preview', "TEXT NOT NULL DEFAULT ''"],
     ['client_users', 'owner_id', 'INTEGER'],
     ['client_users', 'role', "TEXT NOT NULL DEFAULT 'boss'"],
     ['client_users', 'permissions', "TEXT NOT NULL DEFAULT '[]'"],
@@ -366,12 +507,18 @@ function migrate(sqlite: BetterSqlite3.Database): void {
     ['client_sessions', 'device_id', 'TEXT'],
     ['client_sessions', 'device_name', 'TEXT'],
     ['client_sessions', 'last_seen_at', 'INTEGER'],
-    ['client_sessions', 'created_at', 'INTEGER']
+    ['client_sessions', 'created_at', 'INTEGER'],
+    ['messages', 'updated_at', 'INTEGER NOT NULL DEFAULT 0']
   ] as const
 
   for (const [table, column, definition] of columns) {
     if (!tableExists(sqlite, table) || columnExists(sqlite, table, column)) continue
     sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`)
+  }
+  // 历史消息没有服务端写入时间，以原始消息时间作为首次回填游标。新消息会使用真实写入时间。
+  if (tableExists(sqlite, 'messages') && columnExists(sqlite, 'messages', 'updated_at')) {
+    sqlite.exec('UPDATE messages SET updated_at = timestamp WHERE updated_at = 0')
+    sqlite.exec('CREATE INDEX IF NOT EXISTS idx_messages_sync ON messages (tenant, updated_at, external_id)')
   }
 }
 

@@ -16,9 +16,15 @@
  * 全局设置里填自己的 api_id 做隔离 —— 这也是保留覆盖入口的原因。
  */
 
-/** 构建时注入的内置凭证；未注入时为空，回落到用户配置 */
-export const BUILTIN_TG_API_ID = process.env.OMNI_TG_API_ID ?? ''
-export const BUILTIN_TG_API_HASH = process.env.OMNI_TG_API_HASH ?? ''
+/** electron.vite.config.ts 仅向主进程 bundle 注入这两个编译期常量。 */
+declare const __OMNI_TG_API_ID__: string | undefined
+declare const __OMNI_TG_API_HASH__: string | undefined
+
+/** 构建时注入的内置凭证；未注入时为空，回落到用户配置。 */
+export const BUILTIN_TG_API_ID =
+  typeof __OMNI_TG_API_ID__ === 'string' ? __OMNI_TG_API_ID__ : ''
+export const BUILTIN_TG_API_HASH =
+  typeof __OMNI_TG_API_HASH__ === 'string' ? __OMNI_TG_API_HASH__ : ''
 
 export interface TgApiApp {
   apiId?: number

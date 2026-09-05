@@ -2,6 +2,7 @@ import type { MessageKey } from './zh-CN'
 
 /** Tiếng Việt */
 export const vi: Partial<Record<MessageKey, string>> = {
+  'account.proxyConfig': 'Cấu hình proxy',
   // ── Bổ sung (~209 khóa, tiếng Việt) ──
   'chat.intentHigh': 'Ý định cao',
   'chat.intentMedium': 'Ý định vừa',
@@ -233,7 +234,7 @@ export const vi: Partial<Record<MessageKey, string>> = {
   'chat.previewLabel': 'Xem trước khi gửi',
   'chat.confirmSend': 'Xác nhận và gửi',
   'channel.whatsapp': 'WhatsApp',
-  'channel.telegram': 'Telegram (sắp hỗ trợ)',
+  'channel.telegram': 'Telegram',
   'channel.line': 'LINE (sắp hỗ trợ)',
   'rail.allChats': 'Tất cả tin nhắn',
   'rail.accounts': 'Tài khoản',
@@ -248,6 +249,8 @@ export const vi: Partial<Record<MessageKey, string>> = {
   'account.deviceAuto': 'Tự động (khác nhau theo tài khoản)',
   'account.deviceHint': 'Tên hiển thị trong "Thiết bị đã liên kết", tách biệt theo từng tài khoản. Cần đăng nhập lại để áp dụng.',
   'account.saveConnect': 'Lưu và kết nối',
+  'account.oauthConnect': 'Ủy quyền web và kết nối',
+  'account.oauthHint': 'Ủy quyền trên trang đăng nhập chính thức. Mật khẩu và mã truy cập không được lưu trên thiết bị này.',
   'account.advanced': 'Nâng cao (thường không cần sửa)',
   'campaign.title': 'Chiến dịch',
   'campaign.tabCampaigns': 'Chiến dịch',
@@ -336,6 +339,7 @@ export const vi: Partial<Record<MessageKey, string>> = {
   'picker.title': 'Chọn nền tảng để thêm',
   'picker.qr': 'Đăng nhập bằng mã QR',
   'picker.credentials': 'Đăng nhập bằng khóa',
+  'picker.oauth': 'Ủy quyền web',
   'status.need_credentials': 'Cần nhập thông tin xác thực',
   'status.waiting_phone': 'Đang chờ nhập số điện thoại',
   'status.waiting_code': 'Đang chờ nhập mã xác minh',
@@ -422,8 +426,8 @@ export const vi: Partial<Record<MessageKey, string>> = {
   'settings.customKey': 'API Key (không bắt buộc)',
   'settings.customHint': 'Giao ước: POST JSON {"text","target_lang"} → {"text","source_lang"?}',
   'settings.account': 'Tài khoản',
-  'settings.proxy': 'Proxy (socks5:// hoặc http://, để trống là kết nối trực tiếp)',
-  'settings.proxyHint': 'Áp dụng ở lần kết nối lại tiếp theo',
+  'settings.proxy': 'Proxy riêng cho tài khoản (bắt buộc trước khi đăng nhập)',
+  'settings.proxyHint': 'Kiểm tra IP thoát khi lưu; nếu proxy ngắt sẽ cô lập, không kết nối trực tiếp',
   'settings.logout': 'Đăng xuất',
   'settings.logoutConfirm': 'Đăng xuất? Thông tin đăng nhập trên máy sẽ bị xóa.',
   'settings.removeAccount': 'Xóa tài khoản',

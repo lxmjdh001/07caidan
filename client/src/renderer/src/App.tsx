@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { parseConversationId, type ChannelState, type Conversation, type UnifiedMessage } from '@shared/domain'
+import { parseConversationId, type ChannelKind, type ChannelState, type Conversation, type UnifiedMessage } from '@shared/domain'
 import type { AppSettings } from '@shared/settings'
+import type { AccountNetworkState } from '@shared/network'
 import type { ChannelPluginInfo, OutboundPreview, TranslatorInfo } from '@shared/ipc'
 import { AccountList, type AccountRow } from './components/AccountList'
 import { AccountModal } from './components/AccountModal'
@@ -13,12 +14,15 @@ import { CampaignPage } from './pages/CampaignPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { HomePage } from './pages/HomePage'
 import { ManagementPage } from './pages/ManagementPage'
+import { ProxyPage } from './pages/ProxyPage'
+import { QuickMessagesPage } from './pages/QuickMessagesPage'
 import { ChannelPicker } from './components/ChannelPicker'
 import { ChatView } from './components/ChatView'
 import { ConversationList } from './components/ConversationList'
 import { QrPanel } from './components/QrPanel'
 import { TopToolbar } from './components/TopToolbar'
 import { I18nProvider, localeDir, resolveLocale, type Locale, useI18n } from './i18n'
+import { shouldShowLoginPanel } from './login-flow'
 import type { ThemeMode } from '@shared/settings'
 import { Check, LogOut, X } from 'lucide-react'
 import './quit-modal.css'
@@ -36,7 +40,11 @@ function accountPresence(status?: ChannelState['status']): 'online' | 'offline' 
   return 'offline'
 }
 
-type MainView = 'home' | 'chat' | 'campaigns' | 'billing' | 'support' | 'settings' | 'team' | 'management'
+function supportsGroupManagement(accountKey: string): boolean {
+  return accountKey.startsWith('whatsapp:') || accountKey.startsWith('telegram:')
+}
+
+type MainView = 'home' | 'chat' | 'campaigns' | 'billing' | 'support' | 'settings' | 'team' | 'management' | 'proxy' | 'quick-messages'
 
 export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element {
   const { t } = useI18n()
@@ -47,6 +55,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   /** null = 全部消息；否则为 channel key（如 whatsapp:main），只看该账号 */
   const [activeAccountKey, setActiveAccountKey] = useState<string | null>(null)
   const [settings, setSettings] = useState<AppSettings | null>(null)
+  const [networks, setNetworks] = useState<Record<string, AccountNetworkState>>({})
   const [translators, setTranslators] = useState<TranslatorInfo[]>([])
   /** 主视图：聊天 / 工单 / 设置。工单与设置做成整页，弹窗里放不下 */
   const [view, setView] = useState<MainView>('home')
@@ -111,18 +120,20 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   }, [view])
 
   const refreshData = useCallback(async () => {
-    const [channelList, conversationList, currentSettings, translatorList, pluginList] = await Promise.all([
+    const [channelList, conversationList, currentSettings, translatorList, pluginList, networkList] = await Promise.all([
       api.listChannels(),
       api.listConversations(),
       api.getSettings(),
       api.listTranslators(),
-      api.listChannelPlugins()
+      api.listChannelPlugins(),
+      api.listAccountNetworks()
     ])
     setChannels(Object.fromEntries(channelList.map((s) => [`${s.kind}:${s.accountId}`, s])))
     setConversations(conversationList)
     setSettings(currentSettings)
     setTranslators(translatorList)
     setPlugins(pluginList)
+    setNetworks(Object.fromEntries(networkList.map((state) => [state.accountKey, state])))
     setHomeRefreshKey((key) => key + 1)
   }, [])
 
@@ -156,6 +167,9 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
     void api.getSettings().then(setSettings)
     void api.listTranslators().then(setTranslators)
     void api.listChannelPlugins().then(setPlugins)
+    void api.listAccountNetworks().then((list) => {
+      setNetworks(Object.fromEntries(list.map((state) => [state.accountKey, state])))
+    })
 
     return api.onEvent((evt) => {
       switch (evt.type) {
@@ -164,6 +178,11 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             ...prev,
             [`${evt.state.kind}:${evt.state.accountId}`]: evt.state
           }))
+          // Kakao 开始认证后主进程会立即清除一次性密码，并在成功后写入会话令牌。
+          // 每次状态推进都刷新渲染进程副本，避免账号弹窗继续持有旧密码。
+          if (evt.state.kind === 'kakaotalk') {
+            void api.getSettings().then(setSettings)
+          }
           break
         case 'conversation:open':
           // 点击系统通知跳转过来：切回聊天视图并打开该会话
@@ -177,6 +196,14 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             delete next[evt.key]
             return next
           })
+          setNetworks((prev) => {
+            const next = { ...prev }
+            delete next[evt.key]
+            return next
+          })
+          break
+        case 'network:state':
+          setNetworks((prev) => ({ ...prev, [evt.state.accountKey]: evt.state }))
           break
         case 'conversation:updated':
           upsertConversation(evt.conversation)
@@ -417,18 +444,21 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
       const key = await api.addAccount(kind)
       // 新账号已写入 settings.accounts（账号注册表），但 stopped 态不发 channel:state 事件，
       // 刷新一次设置让账号数即时反映到配额软门（否则会话内可连加越过上限）。
-      setSettings(await api.getSettings())
+      const [nextSettings, channelList, networkList] = await Promise.all([
+        api.getSettings(),
+        api.listChannels(),
+        api.listAccountNetworks()
+      ])
+      setSettings(nextSettings)
+      setChannels(Object.fromEntries(channelList.map((state) => [`${state.kind}:${state.accountId}`, state])))
+      setNetworks(Object.fromEntries(networkList.map((state) => [state.accountKey, state])))
       setActiveAccountKey(key)
       setActiveId(null)
-      // 非扫码类平台（填凭证 / 手机号验证码）新建后直接打开账号设置，
-      // 否则用户点完只多出一个 stopped 账号、界面上看不出任何反应
-      const plugin = plugins.find((p) => p.kind === kind)
-      if (plugin && plugin.authType !== 'qr') setAccountModalKey(key)
-      // 手机号验证码类（Telegram 普通账号）应用凭证已内置，直接连接，
-      // 弹窗里马上出现「手机号」输入框，用户不用先点一次保存
-      if (plugin?.authType === 'phone_code') await api.startChannel(key)
+      // 新增账号只创建独立窗口与设备指纹，不强制打断用户填写代理。
+      // 代理由账号右键菜单或聊天区右侧菜单按需打开；真正登录前仍执行网络门禁。
+      navigateTo('chat')
     },
-    [plugins]
+    [navigateTo]
   )
 
   // 未显式设置时按系统语言推断；navigator.language 在 Electron 渲染进程里就是系统语言
@@ -525,7 +555,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   )
 
   const refreshGroups = useCallback(async (): Promise<void> => {
-    if (!activeAccountKey || !activeAccountKey.startsWith('whatsapp:')) return
+    if (!activeAccountKey || !supportsGroupManagement(activeAccountKey)) return
     try {
       const listGroups = (api as typeof api & { listGroups?: typeof api.listGroups }).listGroups
       if (!listGroups) {
@@ -543,7 +573,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   }, [activeAccountKey])
 
   const createGroup = useCallback(async (subject: string, participantIds: string[]): Promise<void> => {
-    if (!activeAccountKey || !activeAccountKey.startsWith('whatsapp:')) return
+    if (!activeAccountKey || !supportsGroupManagement(activeAccountKey)) return
     try {
       const createGroupApi = (api as typeof api & { createGroup?: typeof api.createGroup }).createGroup
       if (!createGroupApi) {
@@ -588,11 +618,10 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
         (other.accountId !== c.accountId || other.channel !== c.channel)
     )
   }, [conversations, activeConversation])
-  // 选中具体账号且它在等扫码 → 聊天区显示二维码
+  // 选中具体账号且登录尚未完成 → 聊天区持续显示登录面板。
+  // Telegram 扫码后还可能要求两步验证密码，不能在二维码消失时切到聊天页。
   const qrState = activeAccountKey ? channels[activeAccountKey] : undefined
-  // 扫码等待、或已生成手机号配对码，都展示登录面板
-  const showQr =
-    qrState?.status === 'waiting_qr' || qrState?.status === 'waiting_pairing_code'
+  const showQr = shouldShowLoginPanel(qrState?.status)
 
   const can = (perm: string): boolean =>
     permissions === undefined || permissions.includes(perm)
@@ -633,6 +662,19 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             accounts={accountRows}
             totalUnread={totalUnread}
             activeKey={activeAccountKey}
+            platformOrder={settings?.platformOrder ?? [
+              'whatsapp',
+              'telegram',
+              'telegram_bot',
+              'line',
+              'kakaotalk',
+              'facebook',
+              'instagram',
+              'tiktok',
+              'x',
+              'snapchat'
+            ]}
+            onPlatformOrderChange={(platformOrder: ChannelKind[]) => void saveSettings({ platformOrder })}
             onSelect={(key) => {
               navigateTo('chat')
               selectAccount(key)
@@ -644,13 +686,22 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
                   !settings.accounts[key]?.disabled &&
                   (st.status === 'stopped' || st.status === 'logged_out' || st.status === 'error')
                 ) {
-                  void api.startChannel(key)
+                  if (settings.accounts[key]?.proxyUrl) {
+                    void api.startChannel(key)
+                  }
                 }
               }
             }}
             onAccountSettings={(key) => { setFocusProxyKey(null); setAccountModalKey(key) }}
+            onProxySettings={(key) => { setFocusProxyKey(key); setAccountModalKey(key) }}
             onReconnect={(key) => {
-              if (settings && !settings.accounts[key]?.disabled) void api.startChannel(key)
+              if (!settings || settings.accounts[key]?.disabled) return
+              if (!settings.accounts[key]?.proxyUrl) {
+                setFocusProxyKey(key)
+                setAccountModalKey(key)
+              } else {
+                void api.startChannel(key)
+              }
             }}
             onToggleEnabled={(key, enabled) => void toggleAccountEnabled(key, enabled)}
             onMarkAccountRead={(key) => {
@@ -672,7 +723,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             onOpenSupport={() => navigateTo(view === 'support' ? 'chat' : 'support')}
             onOpenManagement={() => navigateTo(view === 'management' ? 'chat' : 'management')}
             onQuitApplication={() => setQuitConfirmOpen(true)}
-            activeView={view === 'home' ? 'chat' : view}
+            activeView={view === 'home' ? 'chat' : view === 'proxy' || view === 'quick-messages' ? 'management' : view}
             showBilling={can('billing:manage')}
             allowAddAccount={can('accounts:manage')}
             atAccountQuota={atAccountQuota}
@@ -688,6 +739,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
                   channels={channels}
                   plugins={plugins}
                   onOpenApp={(kind) => {
+                    const plugin = plugins.find((candidate) => candidate.kind === kind)
                     const existing = Object.keys(channels).find((key) => key.startsWith(`${kind}:`))
                     if (existing) {
                       setActiveAccountKey(existing)
@@ -695,21 +747,26 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
                       navigateTo('chat')
                       const state = channels[existing]
                       if (state && !settings?.accounts[existing]?.disabled && ['stopped', 'logged_out', 'error'].includes(state.status)) {
-                        void api.startChannel(existing)
+                        if (!settings.accounts[existing]?.proxyUrl) {
+                          return
+                        } else if (plugin?.authType === 'oauth') {
+                          setAccountModalKey(existing)
+                        } else {
+                          void api.startChannel(existing)
+                        }
                       }
                       return
                     }
-                    void api.addAccount(kind).then((key) => {
-                      setActiveAccountKey(key)
-                      setActiveId(null)
-                      navigateTo('chat')
-                      void refreshData()
-                    })
+                    navigateTo('chat')
+                    void addAccountOfKind(kind)
                   }}
                   onOpenManagement={() => navigateTo('management')}
+                  onOpenProxy={() => navigateTo('proxy')}
                   onOpenSubaccounts={() => navigateTo('team')}
                   onOpenWorkorders={() => navigateTo('campaigns')}
+                  onOpenQuickMessages={() => navigateTo('quick-messages')}
                   canSubaccounts={can('team:manage')}
+                  canProxy={can('accounts:manage')}
                   canWorkorders={can('campaigns:manage')}
                   onRefresh={() => void refreshData()}
                 />
@@ -718,9 +775,34 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
           ) : view === 'management' ? (
             <ManagementPage
               canSubaccounts={can('team:manage')}
+              canProxy={can('accounts:manage')}
               canWorkorders={can('campaigns:manage')}
               onOpenSubaccounts={() => navigateTo('team')}
+              onOpenProxy={() => navigateTo('proxy')}
               onOpenWorkorders={() => navigateTo('campaigns')}
+              onOpenQuickMessages={() => navigateTo('quick-messages')}
+            />
+          ) : view === 'proxy' && settings ? (
+            <ProxyPage
+              settings={settings}
+              channels={channels}
+              networks={networks}
+              onSettings={setSettings}
+              onOpenAccount={(key) => {
+                setActiveAccountKey(key)
+                setActiveId(null)
+                navigateTo('chat')
+                const plugin = plugins.find((candidate) => candidate.kind === key.split(':')[0])
+                if (plugin?.authType === 'credentials' || plugin?.authType === 'oauth') {
+                  setFocusProxyKey(null)
+                  setAccountModalKey(key)
+                }
+              }}
+            />
+          ) : view === 'quick-messages' && settings ? (
+            <QuickMessagesPage
+              quickReplies={settings.quickReplies}
+              onSave={async (quickReplies) => { await saveSettings({ quickReplies }) }}
             />
           ) : view === 'campaigns' ? (
             <CampaignPage accounts={accountOptions} />
@@ -769,6 +851,10 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
                       accountKey={activeAccountKey ?? undefined}
                       qrDataUrl={qrState?.qrDataUrl}
                       pairingCode={qrState?.pairingCode}
+                      kind={qrState?.kind}
+                      verificationCode={qrState?.verificationCode}
+                      status={qrState?.status}
+                      detail={qrState?.detail}
                     />
                   </div>
                 ) : (
@@ -783,6 +869,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
                     onPreview={previewOutbound}
                     confirmBeforeSend={settings?.translation.confirmBeforeSend ?? true}
                     quickReplies={settings?.quickReplies ?? []}
+                    onManageQuickReplies={() => navigateTo('quick-messages')}
                     onOpenProxySettings={(key) => { setFocusProxyKey(key); setAccountModalKey(key) }}
                   />
                 )}
@@ -804,6 +891,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
         )}
         {accountModalKey && settings && (
           <AccountModal
+            key={`${accountModalKey}:${focusProxyKey === accountModalKey ? 'proxy' : 'edit'}`}
             accountKey={accountModalKey}
             plugin={plugins.find((p) => p.kind === accountModalKey.split(':')[0])}
             state={channels[accountModalKey]}
@@ -811,6 +899,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             onSave={async (key, config) => {
               await saveSettings({ accounts: { [key]: config } })
             }}
+            onSettings={setSettings}
             onLogout={(key) => api.logoutChannel(key)}
             onRemove={removeAccount}
             onClose={() => { setFocusProxyKey(null); setAccountModalKey(null) }}

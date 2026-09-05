@@ -19,7 +19,7 @@ const REQUIRED_COMPLETE = ['zh-CN', 'en', 'zh-TW', 'ja', 'ko', 'th', 'vi', 'id',
 
 const canonical = extractKeys(readFileSync(join(localesDir, 'zh-CN.ts'), 'utf8'))
 const files = readdirSync(localesDir)
-  .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
+  .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts') && !f.startsWith('._'))
   .map((f) => f.replace(/\.ts$/, ''))
   .sort()
 

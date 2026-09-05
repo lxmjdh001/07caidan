@@ -2,7 +2,6 @@ import { rm } from 'node:fs/promises'
 import {
   DisconnectReason,
   downloadMediaMessage,
-  fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
   makeWASocket,
   useMultiFileAuthState,
@@ -15,7 +14,14 @@ import type { ChannelStatus, UnifiedMessage } from '@shared/domain'
 import { ChannelAdapter, type GroupSummary, type OutboundMedia, type OutboundResult } from '../../core/channel-adapter'
 import { noopLogger, type Logger } from '../../core/logger'
 import { extFromMime } from '../../core/mime'
-import { createProxyAgent } from '../../core/proxy'
+import {
+  createRequiredDispatcher,
+  createRequiredProxyAgent,
+  redactProxyUrl,
+  withDispatcher
+} from '../../core/proxy'
+import type { Dispatcher } from 'undici'
+import type { Agent } from 'node:https'
 import { deviceIdentity } from './device-identity'
 import { isGroupJid, mapWaMessage, mediaFileLength, type WaRawMessage } from './mapper'
 
@@ -26,13 +32,15 @@ export interface WhatsAppAdapterOptions {
   logger?: Logger
   /**
    * 该账号的代理地址提供函数（socks5:// 或 http://），每次建立连接时读取，
-   * 返回空 = 走默认网络。做成函数是为了改设置后重连即生效。
+   * 必填；为空或不可用时必须失败关闭，绝不回落到默认网络。
    */
   getProxyUrl?: () => string | undefined
   /** 保存下载的媒体，返回 mediaId（由核心层 MediaStore 提供） */
   saveMedia?: (data: Buffer, ext: string) => Promise<string>
   /** 自定义设备名（Linked Devices 里显示）；留空则按账号自动派生 */
   getDeviceLabel?: () => string | undefined
+  /** 固定设备指纹种子；同账号稳定、不同账号隔离。 */
+  getFingerprintSeed?: () => string | undefined
 }
 
 const RECONNECT_BASE_MS = 3_000
@@ -69,10 +77,13 @@ export class WhatsAppAdapter extends ChannelAdapter {
   private stopping = false
   private reconnectTimer: ReturnType<typeof setTimeout> | undefined
   private reconnectDelay = RECONNECT_BASE_MS
+  private dispatcher: Dispatcher | undefined
+  private proxyAgent: Agent | undefined
 
   private readonly getProxyUrl: () => string | undefined
   private readonly saveMedia?: (data: Buffer, ext: string) => Promise<string>
   private readonly getDeviceLabel: () => string | undefined
+  private readonly getFingerprintSeed: () => string | undefined
 
   constructor(opts: WhatsAppAdapterOptions) {
     super()
@@ -81,6 +92,7 @@ export class WhatsAppAdapter extends ChannelAdapter {
     this.getProxyUrl = opts.getProxyUrl ?? (() => undefined)
     this.saveMedia = opts.saveMedia
     this.getDeviceLabel = opts.getDeviceLabel ?? (() => undefined)
+    this.getFingerprintSeed = opts.getFingerprintSeed ?? (() => undefined)
     this.log = (opts.logger ?? noopLogger).child(`whatsapp:${opts.accountId}`)
   }
 
@@ -105,6 +117,7 @@ export class WhatsAppAdapter extends ChannelAdapter {
       // socket 可能已关闭
     }
     this.sock = undefined
+    await this.closeProxyResources()
     this.setState('stopped')
     this.log.info('已停止')
   }
@@ -118,6 +131,7 @@ export class WhatsAppAdapter extends ChannelAdapter {
       this.log.warn('调用 logout 失败（可能已断开），继续清除本地凭证', err)
     }
     this.sock = undefined
+    await this.closeProxyResources()
     await rm(this.authDir, { recursive: true, force: true })
     this.setState('logged_out')
     this.log.info('已退出登录并清除凭证')
@@ -256,7 +270,10 @@ export class WhatsAppAdapter extends ChannelAdapter {
     const url = await this.sock.profilePictureUrl(jid, 'image').catch(() => undefined)
     if (!url) return undefined
     if (url === this.selfAvatarUrl && this.selfAvatarMediaId) return this.selfAvatarMediaId
-    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) })
+    const res = await fetch(
+      url,
+      withDispatcher({ signal: AbortSignal.timeout(15_000) }, this.requiredDispatcher())
+    )
     if (!res.ok) return undefined
     const buffer = Buffer.from(await res.arrayBuffer())
     const mediaId = await this.saveMedia(buffer, '.jpg')
@@ -270,7 +287,10 @@ export class WhatsAppAdapter extends ChannelAdapter {
     // 无头像/无权限查看时 profilePictureUrl 会抛错，视为无头像
     const url = await this.sock.profilePictureUrl(jid, 'image').catch(() => undefined)
     if (!url) return undefined
-    const res = await fetch(url, { signal: AbortSignal.timeout(15_000) })
+    const res = await fetch(
+      url,
+      withDispatcher({ signal: AbortSignal.timeout(15_000) }, this.requiredDispatcher())
+    )
     if (!res.ok) return undefined
     const buffer = Buffer.from(await res.arrayBuffer())
     return this.saveMedia(buffer, '.jpg')
@@ -297,7 +317,9 @@ export class WhatsAppAdapter extends ChannelAdapter {
     }
 
     try {
-      const buffer = (await downloadMediaMessage(raw as WAMessage, 'buffer', {}, {
+      const buffer = (await downloadMediaMessage(raw as WAMessage, 'buffer', {
+        options: withDispatcher({}, this.requiredDispatcher())
+      }, {
         logger: this.waLogger,
         reuploadRequest: (m) => this.sock!.updateMediaMessage(m)
       })) as Buffer
@@ -310,30 +332,26 @@ export class WhatsAppAdapter extends ChannelAdapter {
 
   private async connect(): Promise<void> {
     const { state, saveCreds } = await useMultiFileAuthState(this.authDir)
-
-    let version: [number, number, number] | undefined
-    try {
-      ;({ version } = await fetchLatestBaileysVersion())
-    } catch {
-      this.log.warn('获取最新 WhatsApp Web 版本号失败，使用库内置版本')
-    }
-
+    await this.closeProxyResources()
     const proxyUrl = this.getProxyUrl()
-    const agent = createProxyAgent(proxyUrl)
-    if (agent) this.log.info('使用代理连接', { proxy: proxyUrl?.replace(/\/\/.*@/, '//***@') })
+    const agent = createRequiredProxyAgent(proxyUrl)
+    const dispatcher = createRequiredDispatcher(proxyUrl)
+    this.proxyAgent = agent
+    this.dispatcher = dispatcher
+    this.log.info('使用账号独立代理连接', { proxy: redactProxyUrl(proxyUrl ?? '') })
 
     // 按账号隔离设备名（Linked Devices 里各不相同，避免多账号被关联）
-    const browser = deviceIdentity(this.accountId, this.getDeviceLabel())
+    const browser = deviceIdentity(this.getFingerprintSeed() || this.accountId, this.getDeviceLabel())
     this.log.debug('设备标识', { browser })
 
     const sock = makeWASocket({
-      version,
       auth: {
         creds: state.creds,
         keys: makeCacheableSignalKeyStore(state.keys, this.waLogger)
       },
       agent,
-      fetchAgent: agent,
+      // Baileys v7 的媒体 fetch 实际要求 undici Dispatcher，声明仍沿用 node Agent。
+      fetchAgent: dispatcher as unknown as Agent,
       logger: this.waLogger,
       browser,
       markOnlineOnConnect: false,
@@ -475,6 +493,19 @@ export class WhatsAppAdapter extends ChannelAdapter {
       this.reconnectTimer = undefined
     }
     this.reconnectDelay = RECONNECT_BASE_MS
+  }
+
+  private requiredDispatcher(): Dispatcher {
+    if (!this.dispatcher) throw new Error('代理链路已断开，安全隔离已阻止直连')
+    return this.dispatcher
+  }
+
+  private async closeProxyResources(): Promise<void> {
+    const dispatcher = this.dispatcher
+    this.dispatcher = undefined
+    if (dispatcher) await dispatcher.close().catch(() => undefined)
+    this.proxyAgent?.destroy()
+    this.proxyAgent = undefined
   }
 
   /**
