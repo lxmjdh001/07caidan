@@ -12,7 +12,7 @@ const MAIN = join(CLIENT_DIR, 'out', 'main', 'index.js')
 const clientRequire = createRequire(join(CLIENT_DIR, 'package.json'))
 const ELECTRON_PATH = clientRequire('electron') as string
 
-// BRAND=e2e 的 appName = 'OmniChat E2E'；应用固定把 userData 指到 appData/<appName>
+// BRAND=e2e 的 appName = 'WzzScrm E2E'；应用固定把 userData 指到 appData/<appName>
 const USER_DATA = mkdtempSync(join(tmpdir(), 'omni-e2e-'))
 
 /** 预置一条阿拉伯语会话（含收发各一条），用于校验 RTL 气泡方向与时间戳位置 */

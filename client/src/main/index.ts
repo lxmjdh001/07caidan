@@ -1,6 +1,7 @@
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
+import { cpSync, existsSync, renameSync, writeFileSync } from 'node:fs'
 import { app, BrowserWindow, net, protocol } from 'electron'
 import { OMNI_EVENT_CHANNEL, type OmniEvent } from '@shared/ipc'
 import type { AccountConfig } from '@shared/settings'
@@ -72,21 +73,60 @@ function mediaMimeType(mediaId: string): string | undefined {
   return mime === 'application/octet-stream' ? undefined : mime
 }
 
+type UserDataResolution = {
+  path: string
+  migratedLegacy: boolean
+}
+
+/**
+ * 品牌升级必须在 requestSingleInstanceLock() 之前处理。Electron 会在申请单实例锁时
+ * 提前创建新品牌目录；如果迁移放在其后，旧账号、Cookie 和消息就不会进入新目录。
+ */
+function resolveBrandUserData(): UserDataResolution {
+  app.setName(brand.appName)
+  const explicitUserData = process.env.OMNI_USER_DATA
+  if (explicitUserData) return { path: explicitUserData, migratedLegacy: false }
+
+  const appData = app.getPath('appData')
+  const brandedUserData = join(appData, brand.appName || 'WzzScrm')
+  const legacyUserData = join(appData, 'OmniChat')
+  const migrationMarker = join(brandedUserData, '.wzzscrm-migrated-from-omnichat')
+  if (brandedUserData === legacyUserData || !existsSync(legacyUserData) || existsSync(migrationMarker)) {
+    return { path: brandedUserData, migratedLegacy: false }
+  }
+
+  try {
+    if (!existsSync(brandedUserData)) {
+      renameSync(legacyUserData, brandedUserData)
+    } else {
+      // Electron/Chromium 可能已为新品牌创建空目录。覆盖复制旧资料，但跳过运行期锁文件。
+      cpSync(legacyUserData, brandedUserData, {
+        recursive: true,
+        force: true,
+        filter: (source) => {
+          const name = basename(source)
+          return !name.startsWith('._') && !['SingletonLock', 'SingletonCookie', 'SingletonSocket', 'DevToolsActivePort'].includes(name)
+        }
+      })
+    }
+    writeFileSync(migrationMarker, new Date().toISOString(), 'utf8')
+    return { path: brandedUserData, migratedLegacy: true }
+  } catch {
+    // 迁移失败时直接使用旧目录，数据可用性优先于目录名称。
+    return { path: legacyUserData, migratedLegacy: false }
+  }
+}
+
+const userDataResolution = resolveBrandUserData()
+app.setPath('userData', userDataResolution.path)
+
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  void bootstrap()
+  void bootstrap(userDataResolution.migratedLegacy)
 }
 
-async function bootstrap(): Promise<void> {
-  // 未打包时 Electron 默认把 userData 指到共享的 "Electron" 目录，显式固定到应用专属目录
-  // 每个品牌独立的数据目录：贴牌版与原版共存时数据不能串
-  app.setName(brand.appName)
-  // OMNI_USER_DATA 覆盖数据目录（测试隔离用；未设置时用品牌专属目录）
-  app.setPath(
-    'userData',
-    process.env.OMNI_USER_DATA || join(app.getPath('appData'), brand.appName || 'OmniChat')
-  )
+async function bootstrap(migratedLegacyUserData: boolean): Promise<void> {
   await app.whenReady()
 
   const userData = app.getPath('userData')
@@ -146,6 +186,7 @@ async function bootstrap(): Promise<void> {
   })
   const logger = teeLogger(baseLogger, logUploader)
   logger.info(`${brand.appName} 启动`, { version: app.getVersion(), userData })
+  if (migratedLegacyUserData) logger.info('旧品牌本地数据已迁移到 WzzScrm 数据目录')
   if (migratedBackend) {
     logger.info('已把开发后台地址迁移到正式品牌后台', { serverUrl: migratedBackend })
   }

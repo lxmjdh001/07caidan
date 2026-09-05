@@ -101,8 +101,8 @@ export function buildChatRequest(config: ProviderConfig, input: ChatRequestInput
   }
   if (config.type === 'openrouter') {
     // OpenRouter 用这两个头做调用来源归属，缺了不影响功能但后台看不到来源
-    headers['http-referer'] = 'https://omnichat.app'
-    headers['x-title'] = 'OmniChat'
+    headers['http-referer'] = 'https://wzzapp.cloud'
+    headers['x-title'] = 'WzzScrm'
   }
 
   const messages = input.system

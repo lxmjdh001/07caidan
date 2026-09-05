@@ -27,7 +27,7 @@ vi.mock('electron', () => ({
     }
   }
 }))
-vi.mock('@shared/branding', () => ({ brand: { appName: 'OmniChat' } }))
+vi.mock('@shared/branding', () => ({ brand: { appName: 'WzzScrm' } }))
 
 const { Notifier } = await import('./notifier')
 

@@ -1,6 +1,6 @@
 # TikTok Business Messaging 接入
 
-OmniChat 的 TikTok 通道使用官方 TikTok API for Business，不模拟网页版、不收集客户密码。客户在
+WzzScrm 的 TikTok 通道使用官方 TikTok API for Business，不模拟网页版、不收集客户密码。客户在
 TikTok 官方网页授权自己的企业号；服务器保存该企业号的 `business_id`，并用 AES-256-GCM 加密保存
 短期 access token 与长期 refresh token。桌面客户端不会拿到应用 Secret 或任何 TikTok token。
 
@@ -53,6 +53,6 @@ TIKTOK_TOKEN_ENCRYPTION_KEY=至少32位随机密钥
 
 - 只适用于已获 Business Messaging 权限的 TikTok 企业号，不是任意个人号网页版收件箱。
 - 企业号不能主动私信陌生用户；只有用户先发起会话后才能回复。
-- 官方接口存在回复时间窗与次数限制，OmniChat 会原样显示平台返回的错误，不绕过风控。
-- 官方历史接口覆盖最近 90 天，每个会话最多返回最近 20 条；之后的新消息会持续归档到 OmniChat 主库。
+- 官方接口存在回复时间窗与次数限制，WzzScrm 会原样显示平台返回的错误，不绕过风控。
+- 官方历史接口覆盖最近 90 天，每个会话最多返回最近 20 条；之后的新消息会持续归档到 WzzScrm 主库。
 - 官方发送接口目前只支持文本及符合能力/地区要求的 JPG、PNG 图片，不支持主动发送视频、语音和文件。

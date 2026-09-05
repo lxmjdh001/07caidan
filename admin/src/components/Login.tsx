@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { ApiClient, login, type Me } from '../api'
 import { API_BASE } from '../config'
 import { brand } from '../branding'
+import { BrandMark } from './BrandMark'
 import { useI18n } from '../i18n'
 
 interface Props {
@@ -45,6 +46,7 @@ export function Login({ onLogin }: Props): React.JSX.Element {
   return (
     <div className="login">
       <div className="login-card">
+        <div className="login-brand-mark"><BrandMark /></div>
         <h1>{brand.appName}</h1>
         <p>{t('login.sub')}</p>
         <label className="field">

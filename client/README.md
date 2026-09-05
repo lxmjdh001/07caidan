@@ -1,4 +1,4 @@
-# OmniChat
+# WzzScrm
 
 多平台聚合聊天桌面客户端（Windows / macOS），面向跨境客服场景：
 一个收件箱聚合 WhatsApp、Telegram、LINE、KakaoTalk、Facebook Messenger、Instagram、TikTok、X、Snapchat 等平台的会话，聊天内容双向自动翻译。

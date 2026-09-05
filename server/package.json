@@ -1,7 +1,7 @@
 {
-  "name": "omnichat-server",
+  "name": "wzzscrm-server",
   "version": "0.1.0",
-  "description": "OmniChat 后台：聊天记录归档、查询、按需 AI 意向分析",
+  "description": "WzzScrm 后台：聊天记录归档、查询、按需 AI 意向分析",
   "type": "module",
   "private": true,
   "scripts": {

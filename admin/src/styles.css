@@ -103,6 +103,19 @@ input { font-family: inherit; }
   background: var(--panel); padding: 36px 40px; border-radius: 16px;
   box-shadow: var(--shadow-md); width: 360px;
 }
+.login-brand-mark {
+  position: relative; width: 50px; height: 50px; display: grid; place-items: center; overflow: hidden;
+  margin-bottom: 15px; border: 1px solid rgb(255 255 255 / .26); border-radius: 15px;
+  background: var(--brand-logo, linear-gradient(145deg, #1ab979, #08734b)); color: #fff;
+  box-shadow: 0 10px 24px rgb(11 124 79 / .24), inset 0 1px 0 rgb(255 255 255 / .22);
+}
+.login-brand-mark svg { width: 34px; height: 34px; filter: drop-shadow(0 2px 2px rgb(0 55 35 / .2)); }
+.login-brand-mark::after,
+.sidebar .logo::after {
+  position: absolute; inset: -35% auto -35% -55%; width: 34%; content: '';
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / .38), transparent);
+  transform: rotate(18deg); animation: admin-brand-shine 5.4s ease-in-out infinite;
+}
 .login-card h1 { font-size: 20px; margin-bottom: 6px; }
 .login-card p { color: var(--muted); font-size: 13px; margin-bottom: 20px; }
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
@@ -127,9 +140,12 @@ input { font-family: inherit; }
 }
 .sidebar-logo { display: flex; align-items: center; gap: 10px; padding: 4px 8px 18px; }
 .sidebar .logo {
-  width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center;
-  background: var(--brand-logo, linear-gradient(135deg, #22a06b, #1c8ad9)); color: var(--on-accent); font-weight: 700; font-size: 13px;
+  position: relative; width: 32px; height: 32px; overflow: hidden; border: 1px solid rgb(255 255 255 / .18); border-radius: 10px; display: grid; place-items: center;
+  background: var(--brand-logo, linear-gradient(145deg, #1ab979, #08734b)); color: var(--on-accent); box-shadow: 0 5px 14px rgb(0 0 0 / .2);
 }
+.sidebar .logo svg { position: relative; z-index: 1; width: 23px; height: 23px; }
+@keyframes admin-brand-shine { 0%, 62% { left: -55%; } 80%, 100% { left: 125%; } }
+@media (prefers-reduced-motion: reduce) { .login-brand-mark::after, .sidebar .logo::after { animation: none; } }
 .sidebar-title { font-size: 15px; font-weight: 600; color: var(--on-accent); }
 .sidebar-nav { display: flex; flex-direction: column; gap: 4px; }
 .sidebar-nav button {

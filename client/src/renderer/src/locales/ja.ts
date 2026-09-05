@@ -213,7 +213,7 @@ export const ja: Partial<Record<MessageKey, string>> = {
   'team.title': 'チーム管理',
   'team.username': 'ユーザー名',
   'team.usernameHint': '2〜32文字の英数字。@ サフィックスはシステムが自動付与し、他のオーナーのアカウントと自然に分離されます。',
-  'app.name': 'OmniChat',
+  'app.name': 'WzzScrm',
   'sidebar.title': 'メッセージ',
   'sidebar.search': 'チャットを検索…',
   'sidebar.empty': 'チャットがありません\n接続すると新着メッセージがここに表示されます',

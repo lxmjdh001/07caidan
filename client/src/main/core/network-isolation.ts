@@ -170,7 +170,7 @@ export class AccountNetworkIsolation {
 
     const backend = this.options.getBackend()
     if (!backend.url || !backend.token) {
-      throw new Error('请先登录 OmniChat 后台，再检测代理出口')
+      throw new Error('请先登录 WzzScrm 后台，再检测代理出口')
     }
 
     try {
@@ -376,7 +376,7 @@ async function requestProbeTarget(
       agent,
       headers: {
         accept: '*/*',
-        'user-agent': 'Mozilla/5.0 (compatible; OmniChat-Proxy-Check/1.0)'
+        'user-agent': 'Mozilla/5.0 (compatible; WzzScrm-Proxy-Check/1.0)'
       }
     }
     try {

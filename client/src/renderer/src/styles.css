@@ -187,16 +187,36 @@ body {
   -webkit-app-region: no-drag;
 }
 .auth-logo {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: var(--brand-logo, linear-gradient(135deg, #22a06b, #1c8ad9));
+  position: relative;
+  width: 48px;
+  height: 48px;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.28);
+  border-radius: 15px;
+  background: var(--brand-logo, linear-gradient(145deg, #1ab979, #08734b));
   color: var(--on-accent);
-  font-weight: 700;
-  font-size: 15px;
   display: grid;
   place-items: center;
   margin: 0 auto 14px;
+  box-shadow: 0 10px 24px rgb(11 124 79 / 0.24), inset 0 1px 0 rgb(255 255 255 / 0.24);
+  animation: brand-mark-float 4.8s ease-in-out infinite;
+}
+.auth-logo svg {
+  position: relative;
+  z-index: 1;
+  width: 33px;
+  height: 33px;
+  filter: drop-shadow(0 2px 2px rgb(0 55 35 / .2));
+}
+.auth-logo::after,
+.toolbar-home::after {
+  position: absolute;
+  inset: -35% auto -35% -55%;
+  width: 34%;
+  content: '';
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / .38), transparent);
+  transform: rotate(18deg);
+  animation: brand-mark-shine 5.4s ease-in-out infinite;
 }
 .auth-card h1 {
   font-size: 19px;
@@ -3279,8 +3299,30 @@ body {
 }
 .toolbar-icon:hover { background: var(--panel-alt); color: var(--text); border-color: var(--border); }
 .toolbar-icon:disabled { opacity: .35; cursor: not-allowed; }
-.toolbar-home { background: #26272b; color: #fff; box-shadow: 0 4px 12px rgb(16 24 40 / .16); }
-.toolbar-home:hover { background: #15161a; color: #fff; }
+.toolbar-home {
+  position: relative;
+  overflow: hidden;
+  border-color: rgb(255 255 255 / .2);
+  background: var(--brand-logo, linear-gradient(145deg, #1ab979, #08734b));
+  color: #fff;
+  box-shadow: 0 5px 14px rgb(11 124 79 / .24), inset 0 1px 0 rgb(255 255 255 / .22);
+}
+.toolbar-home:hover { border-color: rgb(255 255 255 / .32); background: var(--brand-logo, linear-gradient(145deg, #1ab979, #08734b)); color: #fff; transform: translateY(-1px); }
+.toolbar-brand-glyph { position: relative; z-index: 1; width: 23px; height: 23px; filter: drop-shadow(0 1px 1px rgb(0 55 35 / .2)); }
+
+@keyframes brand-mark-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+@keyframes brand-mark-shine {
+  0%, 62% { left: -55%; }
+  80%, 100% { left: 125%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .auth-logo,
+  .auth-logo::after,
+  .toolbar-home::after { animation: none; }
+}
 .toolbar-segmented,
 .toolbar-zoom {
   display: flex;

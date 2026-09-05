@@ -1,16 +1,16 @@
 # Facebook Messenger / Instagram 接入
 
-OmniChat 使用 Meta 官方接口，不模拟 Facebook 或 Instagram 网页客户端。
+WzzScrm 使用 Meta 官方接口，不模拟 Facebook 或 Instagram 网页客户端。
 
 ## 客户体验
 
-1. 在 OmniChat 选择 Facebook Messenger 或 Instagram。
+1. 在 WzzScrm 选择 Facebook Messenger 或 Instagram。
 2. 点击“网页授权并连接”。
 3. 在 Facebook / Instagram 官方页面登录并确认授权。
 4. 授权页关闭后，客户端自动连接、同步会话并接收 Webhook 新消息。
 
 客户不填写 App ID、App Secret 或访问令牌。令牌由服务器使用 AES-256-GCM 加密保存，桌面端只能读取
-账号公开摘要、会话和消息。同一老板及其客服团队在另一台电脑登录 OmniChat 后，会自动恢复这些账号。
+账号公开摘要、会话和消息。同一老板及其客服团队在另一台电脑登录 WzzScrm 后，会自动恢复这些账号。
 
 ## 服务器一次性配置
 

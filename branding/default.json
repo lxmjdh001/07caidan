@@ -1,11 +1,11 @@
 {
-  "appName": "OmniChat",
-  "shortName": "omnichat",
-  "logoText": "OC",
-  "company": "OmniChat",
+  "appName": "WzzScrm",
+  "shortName": "wzzscrm",
+  "logoText": "W",
+  "company": "WzzScrm",
   "website": "",
   "supportEmail": "",
-  "themeColor": "#22a06b",
-  "dashboardTitle": "引流看板",
+  "themeColor": "#16a56a",
+  "dashboardTitle": "WzzScrm 引流看板",
   "apiUrl": "http://localhost:8787"
 }

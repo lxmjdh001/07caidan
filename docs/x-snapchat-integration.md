@@ -2,7 +2,7 @@
 
 ## X Direct Messages
 
-OmniChat 使用 X 官方 OAuth 2.0 Authorization Code + PKCE。客户新增 X 账号后只需在 X 网页确认授权，
+WzzScrm 使用 X 官方 OAuth 2.0 Authorization Code + PKCE。客户新增 X 账号后只需在 X 网页确认授权，
 无需填写 Client ID、Secret 或 token。服务器以 AES-256-GCM 保存 access/refresh token，桌面端只读取
 账号摘要和私信数据；同一团队换电脑后会自动恢复账号。
 
@@ -33,7 +33,7 @@ X 的 DM 查询有严格用户级限流，客户端按 75 秒间隔拉取；如�
 ## Snapchat Public Profile Messaging
 
 Snapchat 没有面向第三方的普通个人聊天 API。当前官方 Messaging API 只服务品牌 Public Profile 与
-创作者之间的合作沟通，而且应用需要通过 Snap 联系人单独加入准入名单。OmniChat 在产品名称和授权页
+创作者之间的合作沟通，而且应用需要通过 Snap 联系人单独加入准入名单。WzzScrm 在产品名称和授权页
 明确标为“Snapchat（创作者合作）”，不会伪装成普通 Snapchat 收件箱。
 
 开发者后台回调地址：

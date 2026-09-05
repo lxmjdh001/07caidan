@@ -213,7 +213,7 @@ export const id: Partial<Record<MessageKey, string>> = {
   'team.title': 'Kelola Tim',
   'team.username': 'Nama pengguna',
   'team.usernameHint': '2-32 huruf atau angka; akhiran @ ditambah otomatis, memisahkan tim Anda dari pemilik lain.',
-  'app.name': 'OmniChat',
+  'app.name': 'WzzScrm',
   'sidebar.title': 'Pesan',
   'sidebar.search': 'Cari percakapan…',
   'sidebar.empty': 'Belum ada percakapan\nPesan baru akan muncul di sini setelah terhubung',

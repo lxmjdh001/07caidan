@@ -1,7 +1,7 @@
 {
-  "name": "omnichat-admin",
+  "name": "wzzscrm-admin",
   "version": "0.1.0",
-  "description": "OmniChat 管理后台（前后端分离，React + Vite，调用 server API）",
+  "description": "WzzScrm 管理后台（前后端分离，React + Vite，调用 server API）",
   "type": "module",
   "private": true,
   "scripts": {

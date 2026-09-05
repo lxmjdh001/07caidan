@@ -1,5 +1,5 @@
 [Unit]
-Description=OmniChat backend (Fastify + SQLite)
+Description=WzzScrm backend (Fastify + SQLite)
 After=network-online.target
 Wants=network-online.target
 

@@ -1,0 +1,58 @@
+/* WzzScrm 最终品牌层：始终最后加载，确保官网各入口使用统一 W 标识。 */
+.brand-mark {
+  position: relative;
+  overflow: hidden;
+  width: 29px;
+  height: 29px;
+  padding: 0;
+  border-radius: 9px;
+  display: inline-grid;
+  place-items: center;
+  background: linear-gradient(145deg, #20bd7c, #075f43);
+  box-shadow: 0 7px 16px rgba(7, 95, 67, .24);
+  transition: transform .2s, box-shadow .2s;
+}
+
+.brand-mark::after {
+  content: '';
+  position: absolute;
+  inset: -45%;
+  background: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, .32) 48%, transparent 61%);
+  transform: translateX(-75%);
+  animation: wzz-brand-shine 5.6s ease-in-out infinite;
+}
+
+.brand-mark svg {
+  position: relative;
+  z-index: 1;
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: #fff;
+  stroke-width: 7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.brand:hover .brand-mark {
+  transform: translateY(-1px) rotate(-2deg);
+  box-shadow: 0 10px 22px rgba(7, 95, 67, .3);
+}
+
+.mini-logo {
+  background: linear-gradient(145deg, #20bd7c, #075f43);
+  box-shadow: 0 5px 12px rgba(7, 95, 67, .24);
+}
+
+@keyframes wzz-brand-shine {
+  0%, 62%, 100% { transform: translateX(-75%); }
+  76% { transform: translateX(75%); }
+}
+
+@media (max-width: 900px) {
+  .mobile-toggle { display: block; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-mark::after { animation: none; }
+}

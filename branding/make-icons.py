@@ -40,7 +40,7 @@ if src:
     img = Image.open(src).convert("RGBA").resize((S, S), Image.LANCZOS)
 else:
     base = hex_rgb(cfg.get("themeColor", "#22a06b"))
-    lo = darken(base)
+    lo = darken(base, 0.58)
     img = Image.new("RGBA", (S, S), (0, 0, 0, 0))
     # 对角渐变
     grad = Image.new("RGBA", (S, S))
@@ -56,25 +56,55 @@ else:
     mask = Image.new("L", (S, S), 0)
     ImageDraw.Draw(mask).rounded_rectangle([0, 0, S - 1, S - 1], radius=int(S * 0.225), fill=255)
     img.paste(grad, (0, 0), mask)
-    # 文字
-    text = cfg.get("logoText", "OC")[:3]
-    font = None
-    for cand in [
-        "/System/Library/Fonts/SFNSRounded.ttf",
-        "/System/Library/Fonts/SFNS.ttf",
-        "/System/Library/Fonts/Helvetica.ttc",
-        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
-    ]:
-        if os.path.exists(cand):
-            try:
-                font = ImageFont.truetype(cand, int(S * 0.42))
-                break
-            except OSError:
-                continue
-    d = ImageDraw.Draw(img)
-    bbox = d.textbbox((0, 0), text, font=font)
-    w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    d.text(((S - w) / 2 - bbox[0], (S - h) / 2 - bbox[1]), text, font=font, fill=(255, 255, 255, 255))
+    # 左上柔光与内描边，让小尺寸 Dock/任务栏图标仍有层次。
+    glow = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+    ImageDraw.Draw(glow).ellipse([-220, -360, 820, 660], fill=(255, 255, 255, 30))
+    img = Image.alpha_composite(img, glow)
+    img.putalpha(mask)
+    ImageDraw.Draw(img).rounded_rectangle(
+        [10, 10, S - 11, S - 11],
+        radius=int(S * 0.215),
+        outline=(255, 255, 255, 48),
+        width=10,
+    )
+
+    # WzzScrm 使用固定的连续 W 图形；其它白牌仍可回落文字标识。
+    text = cfg.get("logoText", "W")[:3]
+    if text.upper() == "W":
+        points = [(218, 292), (376, 724), (512, 448), (648, 724), (806, 292)]
+
+        def rounded_line(layer, line_points, color, width):
+            draw = ImageDraw.Draw(layer)
+            draw.line(line_points, fill=color, width=width, joint="curve")
+            radius = width // 2
+            for x, y in line_points:
+                draw.ellipse([x - radius, y - radius, x + radius, y + radius], fill=color)
+
+        shadow = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+        rounded_line(shadow, [(x, y + 20) for x, y in points], (0, 58, 38, 72), 112)
+        img = Image.alpha_composite(img, shadow)
+        mark = Image.new("RGBA", (S, S), (0, 0, 0, 0))
+        rounded_line(mark, points, (255, 255, 255, 255), 98)
+        img = Image.alpha_composite(img, mark)
+        img.putalpha(mask)
+    else:
+        font = None
+        for cand in [
+            "/System/Library/Fonts/SFNSRounded.ttf",
+            "/System/Library/Fonts/SFNS.ttf",
+            "/System/Library/Fonts/Helvetica.ttc",
+            "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        ]:
+            if os.path.exists(cand):
+                try:
+                    font = ImageFont.truetype(cand, int(S * 0.42))
+                    break
+                except OSError:
+                    continue
+        d = ImageDraw.Draw(img)
+        bbox = d.textbbox((0, 0), text, font=font)
+        w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+        d.text(((S - w) / 2 - bbox[0], (S - h) / 2 - bbox[1]), text, font=font, fill=(255, 255, 255, 255))
 
 png = os.path.join(out_dir, "icon.png")
 img.save(png)

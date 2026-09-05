@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 从 GitHub 部署 OmniChat。以后本地只负责 commit + push，服务器固定从同一仓库拉取。
+# 从 GitHub 部署 WzzScrm。以后本地只负责 commit + push，服务器固定从同一仓库拉取。
 # 从仓库根运行：deploy/deploy.sh
 set -euo pipefail
 

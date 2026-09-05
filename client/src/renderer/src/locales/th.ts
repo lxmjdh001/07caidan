@@ -3,7 +3,7 @@ import type { MessageKey } from './zh-CN'
 /** ไทย */
 export const th: Partial<Record<MessageKey, string>> = {
   'account.proxyConfig': 'การตั้งค่าพร็อกซี',
-  'app.name': 'OmniChat',
+  'app.name': 'WzzScrm',
   'sidebar.title': 'ข้อความ',
   'sidebar.search': 'ค้นหาแชท…',
   'sidebar.empty': 'ยังไม่มีแชท\nข้อความใหม่จะแสดงที่นี่หลังเชื่อมต่อแล้ว',

@@ -78,7 +78,7 @@ describe('TikTok Business Messaging HTTP integration', () => {
       assert.equal(headers.get('access-token'), ACCESS_TOKEN)
       return ok({
         username: 'omnichat_shop',
-        display_name: 'OmniChat Shop',
+        display_name: 'WzzScrm Shop',
         profile_image: 'https://p16.tiktokcdn.com/shop.jpg',
         is_business_account: true
       })
@@ -100,7 +100,7 @@ describe('TikTok Business Messaging HTTP integration', () => {
       assert.equal(parsed.searchParams.get('conversation_id'), 'conv+1==')
       return ok({
         participants: [
-          { role: 'BUSINESS_ACCOUNT', id: BUSINESS_ID, display_name: 'OmniChat Shop' },
+          { role: 'BUSINESS_ACCOUNT', id: BUSINESS_ID, display_name: 'WzzScrm Shop' },
           { role: 'PERSONAL_ACCOUNT', id: 'person-1', display_name: 'Alice', profile_image: 'https://p16.tiktokcdn.com/alice.jpg' }
         ],
         messages: [{
@@ -205,7 +205,7 @@ describe('TikTok Business Messaging HTTP integration', () => {
       channel: 'tiktok',
       accountId: 'tt-main',
       businessId: BUSINESS_ID,
-      displayName: 'OmniChat Shop',
+      displayName: 'WzzScrm Shop',
       handle: 'omnichat_shop',
       avatarUrl: 'https://p16.tiktokcdn.com/shop.jpg'
     })

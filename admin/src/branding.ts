@@ -7,7 +7,7 @@ export interface Brand {
 
 declare const __BRAND__: Brand | undefined
 
-const FALLBACK: Brand = { appName: 'OmniChat', logoText: 'OC', themeColor: '#22a06b' }
+const FALLBACK: Brand = { appName: 'WzzScrm', logoText: 'W', themeColor: '#16a56a' }
 
 export const brand: Brand =
   typeof __BRAND__ !== 'undefined' && __BRAND__ ? { ...FALLBACK, ...__BRAND__ } : FALLBACK
@@ -20,9 +20,12 @@ function expandHex(color: string): string | null {
 
 /** 生成品牌 favicon（圆角方块 + logoText）的 SVG data-URI */
 export function faviconDataUri(logoText: string, themeColor: string): string {
-  const t = (logoText || 'OC').slice(0, 2)
-  const bg = expandHex(themeColor) ? themeColor : '#22a06b'
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="${bg}"/><text x="32" y="43" font-family="system-ui,-apple-system,sans-serif" font-size="30" font-weight="700" fill="#ffffff" text-anchor="middle">${t}</text></svg>`
+  const t = (logoText || 'W').slice(0, 2)
+  const bg = expandHex(themeColor) ? themeColor : '#16a56a'
+  const mark = t.toUpperCase() === 'W'
+    ? '<path d="M14 19 24 46 32 29 40 46 50 19" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>'
+    : `<text x="32" y="43" font-family="system-ui,-apple-system,sans-serif" font-size="30" font-weight="700" fill="#ffffff" text-anchor="middle">${t}</text>`
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><linearGradient id="g" x1="8" y1="5" x2="55" y2="59"><stop stop-color="${bg}"/><stop offset="1" stop-color="#08734b"/></linearGradient></defs><rect width="64" height="64" rx="15" fill="url(#g)"/>${mark}</svg>`
   return 'data:image/svg+xml,' + encodeURIComponent(svg)
 }
 
@@ -38,9 +41,9 @@ export function applyBrandFavicon(logoText: string, themeColor: string): void {
   link.href = faviconDataUri(logoText, themeColor)
 }
 
-/** 品牌主题色 → 强调色（--accent/--accent-soft）+ Logo 渐变（--brand-logo）；默认绿保持调优值不覆盖 */
+/** 品牌主题色 → 强调色（--accent/--accent-soft）+ Logo 渐变（--brand-logo）。 */
 export function applyBrandAccent(themeColor: string | undefined): void {
-  if (!themeColor || themeColor.toLowerCase() === '#22a06b') return
+  if (!themeColor) return
   const h = expandHex(themeColor)
   if (!h) return
   const r = parseInt(h.slice(0, 2), 16)

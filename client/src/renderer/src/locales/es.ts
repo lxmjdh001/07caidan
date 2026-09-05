@@ -213,7 +213,7 @@ export const es: Partial<Record<MessageKey, string>> = {
   'team.title': 'Gestión del equipo',
   'team.username': 'Nombre de usuario',
   'team.usernameHint': '2-32 letras o números; el sufijo @ se añade automáticamente, aislando tu equipo del de cualquier otro propietario.',
-  'app.name': 'OmniChat',
+  'app.name': 'WzzScrm',
   'sidebar.title': 'Mensajes',
   'sidebar.search': 'Buscar conversaciones…',
   'sidebar.empty': 'Aún no hay conversaciones\nLos mensajes nuevos aparecerán aquí al conectarse',

@@ -1,8 +1,8 @@
-# OmniChat Telegram 接入开发计划
+# WzzScrm Telegram 接入开发计划
 
 ## 1. 项目目标
 
-在现有 OmniChat Electron 客户端中正式开放 Telegram，提供与 WhatsApp 一致的账号管理、会话列表、聊天、媒体、翻译、头像、代理和后台同步能力。
+在现有 WzzScrm Electron 客户端中正式开放 Telegram，提供与 WhatsApp 一致的账号管理、会话列表、聊天、媒体、翻译、头像、代理和后台同步能力。
 
 Telegram 连接继续运行在用户本地客户端，不把账号登录态、手机号、API Hash 或 MTProto 会话上传到服务器。
 

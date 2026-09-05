@@ -6,6 +6,7 @@ import { Root } from './Root'
 import './styles.css'
 
 applyBrandAccent(brand.themeColor)
+document.title = brand.appName
 
 const root = document.getElementById('root')
 if (!root) throw new Error('#root 不存在')

@@ -213,7 +213,7 @@ export const zhTW: Partial<Record<MessageKey, string>> = {
   'team.title': '團隊管理',
   'team.username': '使用者名稱',
   'team.usernameHint': '2-32 位字母或數字；@ 後綴由系統自動加上，天然與其他老闆的帳號隔離。',
-  'app.name': 'OmniChat',
+  'app.name': 'WzzScrm',
   'sidebar.title': '訊息',
   'sidebar.search': '搜尋對話…',
   'sidebar.empty': '尚無對話\n連線後，新訊息會出現在這裡',

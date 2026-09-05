@@ -116,7 +116,7 @@ export class MetaAdapter extends ChannelAdapter {
       await this.openExternal(response.url)
       this.setState('waiting_oauth', {
         detail: this.kind === 'facebook'
-          ? '请在浏览器登录 Facebook，并选择允许 OmniChat 管理消息的主页。'
+          ? '请在浏览器登录 Facebook，并选择允许 WzzScrm 管理消息的主页。'
           : '请在浏览器登录 Instagram 专业账号并确认授权。'
       })
       this.oauthTimer = setInterval(() => void this.pollOauth(), OAUTH_POLL_MS)
@@ -382,7 +382,7 @@ export class MetaAdapter extends ChannelAdapter {
     const backend = this.getBackend()
     const base = backend.url?.replace(/\/$/, '')
     const token = backend.token?.trim()
-    if (!base || !token) throw new Error('请先登录 OmniChat 后台，再授权 Meta 账号。')
+    if (!base || !token) throw new Error('请先登录 WzzScrm 后台，再授权 Meta 账号。')
     return { base, token }
   }
 
@@ -401,9 +401,9 @@ export class MetaAdapter extends ChannelAdapter {
     try {
       data = (raw ? JSON.parse(raw) : {}) as { error?: string } & T
     } catch {
-      throw new Error(`OmniChat 后台返回异常（HTTP ${response.status}）`)
+      throw new Error(`WzzScrm 后台返回异常（HTTP ${response.status}）`)
     }
-    if (!response.ok) throw new Error(data.error || `OmniChat 后台 HTTP ${response.status}`)
+    if (!response.ok) throw new Error(data.error || `WzzScrm 后台 HTTP ${response.status}`)
     return data
   }
 

@@ -1,4 +1,4 @@
-# OmniChat Server
+# WzzScrm Server
 
 聊天记录归档后台：接收桌面客户端批量同步的会话/消息（含译文、可选媒体），
 提供查询接口，并支持按需的 AI 客户意向分析（Claude）。

@@ -1,6 +1,4 @@
-/** 品牌主题色 → UI 强调色（--accent / --accent-soft）与 Logo 渐变（--brand-logo）。仅对自定义品牌生效。 */
-const DEFAULT_ACCENT = '#22a06b'
-
+/** 品牌主题色 → UI 强调色（--accent / --accent-soft）与 Logo 渐变（--brand-logo）。 */
 function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
   let h = hex.trim().replace(/^#/, '')
   if (h.length === 3) h = h[0]! + h[0]! + h[1]! + h[1]! + h[2]! + h[2]!
@@ -17,10 +15,10 @@ export interface AccentVars {
 
 /**
  * 计算要覆盖的强调色/Logo CSS 变量。纯函数，便于测试。
- * 返回 null 表示不覆盖（默认绿或非法色 → 保持各自浅/深调优值与默认 Logo）。
+ * 返回 null 表示不覆盖（空值或非法色 → 保持当前主题值）。
  */
 export function accentVars(themeColor: string | undefined): AccentVars | null {
-  if (!themeColor || themeColor.trim().toLowerCase() === DEFAULT_ACCENT) return null
+  if (!themeColor) return null
   const rgb = hexToRgb(themeColor)
   if (!rgb) return null
   const d = { r: Math.round(rgb.r * 0.68), g: Math.round(rgb.g * 0.68), b: Math.round(rgb.b * 0.68) }

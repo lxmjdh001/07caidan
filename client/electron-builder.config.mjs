@@ -28,7 +28,7 @@ const updateUrl = process.env.UPDATE_URL || 'https://example.com/updates'
 
 export default {
   publish: [{ provider: 'generic', url: updateUrl }],
-  appId: `com.${brand.shortName || 'omnichat'}.desktop`,
+  appId: `com.${brand.shortName || 'wzzscrm'}.desktop`,
   productName: brand.appName,
   // 各品牌独立输出目录，多品牌连续打包互不覆盖
   directories: { output: `release/${brandName}` },
@@ -37,8 +37,8 @@ export default {
   // electron-builder 的完整性扫描会误把 ._app.asar 当成 ASAR 读取而失败。
   // 关闭该附加校验不影响应用代码签名或 ASAR 本身的打包。
   disableAsarIntegrity: true,
-  // npm 包名保持 omnichat；安装产物的内部名跟品牌走
-  extraMetadata: { name: brand.shortName || 'omnichat' },
+  // 安装产物的内部名与最终品牌保持一致
+  extraMetadata: { name: brand.shortName || 'wzzscrm' },
   asar: true,
   mac: {
     category: 'public.app-category.business',

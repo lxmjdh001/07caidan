@@ -313,7 +313,7 @@ export class SnapchatAdapter extends ChannelAdapter {
     const backend = this.getBackend()
     const base = backend.url?.replace(/\/$/, '')
     const token = backend.token?.trim()
-    if (!base || !token) throw new Error('请先登录 OmniChat 后台，再授权 Snapchat 公共主页。')
+    if (!base || !token) throw new Error('请先登录 WzzScrm 后台，再授权 Snapchat 公共主页。')
     return { base, token }
   }
 
@@ -329,8 +329,8 @@ export class SnapchatAdapter extends ChannelAdapter {
     )
     const raw = await response.text()
     let data: { error?: string }
-    try { data = raw ? JSON.parse(raw) as { error?: string } : {} } catch { throw new Error(`OmniChat 后台返回了无法解析的数据（HTTP ${response.status}）`) }
-    if (!response.ok) throw new Error(data.error || `OmniChat 后台 HTTP ${response.status}`)
+    try { data = raw ? JSON.parse(raw) as { error?: string } : {} } catch { throw new Error(`WzzScrm 后台返回了无法解析的数据（HTTP ${response.status}）`) }
+    if (!response.ok) throw new Error(data.error || `WzzScrm 后台 HTTP ${response.status}`)
     return data as T
   }
 

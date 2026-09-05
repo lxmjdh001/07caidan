@@ -109,7 +109,7 @@ export class XAdapter extends ChannelAdapter {
         throw new Error('服务器返回的 X 授权地址无效')
       }
       await this.openExternal(response.url)
-      this.setState('waiting_oauth', { detail: '请在浏览器登录 X，并允许 OmniChat 读取和回复私信。' })
+      this.setState('waiting_oauth', { detail: '请在浏览器登录 X，并允许 WzzScrm 读取和回复私信。' })
       this.oauthTimer = setInterval(() => void this.pollOauth(), OAUTH_POLL_MS)
       this.oauthTimer.unref?.()
     } catch (error) {
@@ -150,7 +150,7 @@ export class XAdapter extends ChannelAdapter {
 
   override async sendMedia(externalChatId: string, media: OutboundMedia): Promise<OutboundResult> {
     this.assertConnected()
-    if (media.mediaType !== 'image') throw new Error('X 私信目前只支持从 OmniChat 发送图片。')
+    if (media.mediaType !== 'image') throw new Error('X 私信目前只支持从 WzzScrm 发送图片。')
     const mimeType = media.mimeType.split(';', 1)[0]?.toLowerCase() || ''
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(mimeType)) {
       throw new Error('X 私信图片仅支持 JPG、PNG 或 WebP。')
@@ -347,7 +347,7 @@ export class XAdapter extends ChannelAdapter {
     const backend = this.getBackend()
     const base = backend.url?.replace(/\/$/, '')
     const token = backend.token?.trim()
-    if (!base || !token) throw new Error('请先登录 OmniChat 后台，再授权 X 账号。')
+    if (!base || !token) throw new Error('请先登录 WzzScrm 后台，再授权 X 账号。')
     return { base, token }
   }
 
@@ -363,8 +363,8 @@ export class XAdapter extends ChannelAdapter {
     )
     const raw = await response.text()
     let data: { error?: string }
-    try { data = raw ? JSON.parse(raw) as { error?: string } : {} } catch { throw new Error(`OmniChat 后台返回了无法解析的数据（HTTP ${response.status}）`) }
-    if (!response.ok) throw new Error(data.error || `OmniChat 后台 HTTP ${response.status}`)
+    try { data = raw ? JSON.parse(raw) as { error?: string } : {} } catch { throw new Error(`WzzScrm 后台返回了无法解析的数据（HTTP ${response.status}）`) }
+    if (!response.ok) throw new Error(data.error || `WzzScrm 后台 HTTP ${response.status}`)
     return data as T
   }
 

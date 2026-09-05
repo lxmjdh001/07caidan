@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useI18n } from '../i18n'
 import { brand } from '@shared/branding'
+import { BrandMark } from './BrandMark'
 
 const api = window.omni
 
@@ -102,7 +103,7 @@ export function AuthGate({ onAuthed }: Props): React.JSX.Element {
   return (
     <div className="auth-gate">
       <div className="auth-card">
-        <div className="auth-logo">{brand.logoText}</div>
+        <div className="auth-logo"><BrandMark /></div>
         <h1>{brand.appName}</h1>
         <p className="auth-sub">
           {mode === 'login'

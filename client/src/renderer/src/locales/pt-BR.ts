@@ -213,7 +213,7 @@ export const ptBR: Partial<Record<MessageKey, string>> = {
   'team.title': 'Gerenciar Equipe',
   'team.username': 'Nome de usuário',
   'team.usernameHint': '2-32 letras ou números; o sufixo @ é adicionado automaticamente, isolando sua equipe da de qualquer outro proprietário.',
-  'app.name': 'OmniChat',
+  'app.name': 'WzzScrm',
   'sidebar.title': 'Mensagens',
   'sidebar.search': 'Buscar conversas…',
   'sidebar.empty': 'Ainda não há conversas\nAs novas mensagens aparecerão aqui após conectar',

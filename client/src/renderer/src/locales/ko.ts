@@ -213,7 +213,7 @@ export const ko: Partial<Record<MessageKey, string>> = {
   'team.title': '팀 관리',
   'team.username': '사용자명',
   'team.usernameHint': '2~32자의 영문 또는 숫자. @ 접미사는 시스템이 자동으로 추가하여 다른 소유자의 계정과 자연스럽게 분리됩니다.',
-  'app.name': 'OmniChat',
+  'app.name': 'WzzScrm',
   'sidebar.title': '메시지',
   'sidebar.search': '대화 검색…',
   'sidebar.empty': '대화가 없습니다\n연결하면 새 메시지가 여기에 표시됩니다',

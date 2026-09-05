@@ -13,7 +13,8 @@ import { validateBrand } from './brand-schema.mjs'
 const here = dirname(fileURLToPath(import.meta.url))
 const brandingDir = join(here, '..', 'branding')
 
-const files = readdirSync(brandingDir).filter((f) => f.endsWith('.json'))
+// macOS 外置盘会生成 AppleDouble（._*.json），它们不是品牌配置。
+const files = readdirSync(brandingDir).filter((f) => f.endsWith('.json') && !f.startsWith('._'))
 if (files.length === 0) {
   console.error('branding/ 下没有任何 *.json 品牌配置')
   process.exit(1)

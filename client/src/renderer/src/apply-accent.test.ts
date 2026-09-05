@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { accentVars } from './apply-accent'
 
 describe('accentVars（品牌主题色 → 强调色）', () => {
-  it('默认绿不覆盖', () => {
-    expect(accentVars('#22a06b')).toBeNull()
-    expect(accentVars('#22A06B')).toBeNull()
+  it('最终品牌绿会覆盖强调色与 Logo 渐变', () => {
+    expect(accentVars('#16a56a')).toEqual({
+      accent: '#16a56a',
+      accentSoft: 'rgba(22, 165, 106, 0.13)',
+      logoGradient: 'linear-gradient(135deg, #16a56a, rgb(15, 112, 72))'
+    })
   })
   it('空/非法色不覆盖', () => {
     expect(accentVars(undefined)).toBeNull()

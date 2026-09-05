@@ -1,4 +1,4 @@
-# OmniChat 生产反向代理 —— Caddy 自动申请/续期 Let's Encrypt 证书（HTTPS）。
+# WzzScrm 生产反向代理 —— Caddy 自动申请/续期 Let's Encrypt 证书（HTTPS）。
 # 前提：wzzapp.cloud 与 *.wzzapp.cloud 的 A 记录都指向本机公网 IP（已就绪）。
 #
 # 安全要点：后端只监听 127.0.0.1:8787（见 omnichat.env HOST），外网只能经 Caddy 进来。

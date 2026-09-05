@@ -16,11 +16,11 @@ export interface Brand {
 }
 
 const FALLBACK: Brand = {
-  appName: 'OmniChat',
-  logoText: 'OC',
-  company: 'OmniChat',
+  appName: 'WzzScrm',
+  logoText: 'W',
+  company: 'WzzScrm',
   supportEmail: '',
-  dashboardTitle: '引流看板'
+  dashboardTitle: 'WzzScrm 引流看板'
 }
 
 export function loadBrand(): Brand {

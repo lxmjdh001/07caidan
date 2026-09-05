@@ -213,7 +213,7 @@ export const ms: Partial<Record<MessageKey, string>> = {
   'team.title': 'Urus Pasukan',
   'team.username': 'Nama pengguna',
   'team.usernameHint': '2-32 huruf atau nombor; akhiran @ ditambah automatik, mengasingkan pasukan anda daripada pemilik lain.',
-  'app.name': 'OmniChat',
+  'app.name': 'WzzScrm',
   'sidebar.title': 'Mesej',
   'sidebar.search': 'Cari perbualan…',
   'sidebar.empty': 'Tiada perbualan lagi\nMesej baharu akan muncul di sini selepas disambungkan',

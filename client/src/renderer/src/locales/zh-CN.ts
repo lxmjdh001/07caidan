@@ -2,8 +2,8 @@
 export const zhCN = {
   'chat.intentHigh': '高意向',
   'chat.intentMedium': '中意向',
-  'app.name': 'OmniChat',
-  'home.eyebrow': 'OmniChat 工作台',
+  'app.name': 'WzzScrm',
+  'home.eyebrow': 'WzzScrm 工作台',
   'home.title': '工作台',
   'home.subtitle': '集中管理账号、套餐与渠道连接状态',
   'home.refresh': '刷新数据',
@@ -538,7 +538,7 @@ export const zhCN = {
   // 团队管理（老板 → 客服子账号）
   'team.title': '子账号管理',
   'management.nav': '管理中心',
-  'management.kicker': 'OmniChat 管理中心',
+  'management.kicker': 'WzzScrm 管理中心',
   'management.title': '管理中心',
   'management.subtitle': '统一管理子账号、工单与运营工具',
   'management.summary': '已开放功能',

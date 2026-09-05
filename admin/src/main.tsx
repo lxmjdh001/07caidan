@@ -7,7 +7,7 @@ import './styles.css'
 
 document.title = brand.appName
 applyBrandAccent(brand.themeColor)
-applyBrandFavicon(brand.logoText, brand.themeColor ?? '#22a06b')
+applyBrandFavicon(brand.logoText, brand.themeColor ?? '#16a56a')
 
 const root = document.getElementById('root')
 if (!root) throw new Error('#root missing')

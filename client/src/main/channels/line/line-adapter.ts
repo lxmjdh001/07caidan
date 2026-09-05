@@ -257,7 +257,7 @@ export class LineAdapter extends ChannelAdapter {
 
   private handleMessage(message: TalkMessage): void {
     // 手机端发出的消息也必须同步：客服可能在手机上临时回复，或测试「备忘录」。
-    // ChannelManager 按平台 externalId 去重，因此电脑端从 OmniChat 发送的回显不会重复展示。
+    // ChannelManager 按平台 externalId 去重，因此电脑端从 WzzScrm 发送的回显不会重复展示。
     const raw = message.raw as RawLineMessage
     const externalChatId = lineChatId(message, raw)
     const contentType = String(raw.contentType ?? 'NONE').toUpperCase()

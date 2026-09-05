@@ -6,7 +6,7 @@ import type { MessageKey } from './zh-CN'
  */
 export const ar: Partial<Record<MessageKey, string>> = {
   'account.proxyConfig': 'إعدادات الوكيل',
-  'app.name': 'OmniChat',
+  'app.name': 'WzzScrm',
   'sidebar.title': 'الرسائل',
   'sidebar.search': 'البحث في المحادثات…',
   'sidebar.empty': 'لا توجد محادثات بعد\nستظهر الرسائل الجديدة هنا بعد الاتصال',

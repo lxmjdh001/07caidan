@@ -144,7 +144,7 @@ describe('到期提醒巡检', () => {
       sendMail: async (to: string, subject: string) => {
         mails.push(`${to}|${subject}`)
       },
-      appName: 'OmniChat',
+      appName: 'WzzScrm',
       tenants: () => [T],
       ...over
     } as never

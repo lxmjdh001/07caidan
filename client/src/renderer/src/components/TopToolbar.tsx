@@ -1,7 +1,6 @@
 import {
   ArrowLeft,
   ArrowRight,
-  Home,
   Languages,
   Monitor,
   Moon,
@@ -11,8 +10,10 @@ import {
   ZoomIn,
   ZoomOut
 } from 'lucide-react'
+import { brand } from '@shared/branding'
 import { LOCALES, type Locale } from '../i18n'
 import type { ThemeMode } from '@shared/settings'
+import { BrandMark } from './BrandMark'
 
 interface Props {
   canBack: boolean
@@ -48,8 +49,8 @@ export function TopToolbar({
   return (
     <header className="top-toolbar">
       <div className="top-toolbar-left">
-        <button type="button" className="toolbar-icon toolbar-home" title="主页" onClick={onHome}>
-          <Home size={18} strokeWidth={2.3} />
+        <button type="button" className="toolbar-icon toolbar-home" title={`${brand.appName} 主页`} onClick={onHome}>
+          <BrandMark className="toolbar-brand-glyph" />
         </button>
         <button type="button" className="toolbar-icon" title="上一页" disabled={!canBack} onClick={onBack}>
           <ArrowLeft size={18} />

@@ -213,7 +213,7 @@ export const vi: Partial<Record<MessageKey, string>> = {
   'team.title': 'Quản lý nhóm',
   'team.username': 'Tên người dùng',
   'team.usernameHint': '2-32 chữ hoặc số; hậu tố @ được thêm tự động, tách biệt nhóm của bạn với mọi chủ sở hữu khác.',
-  'app.name': 'OmniChat',
+  'app.name': 'WzzScrm',
   'sidebar.title': 'Tin nhắn',
   'sidebar.search': 'Tìm cuộc trò chuyện…',
   'sidebar.empty': 'Chưa có cuộc trò chuyện\nTin nhắn mới sẽ hiện ở đây sau khi kết nối',
