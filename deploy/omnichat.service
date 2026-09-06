@@ -15,6 +15,7 @@ Restart=always
 RestartSec=3
 # 数据目录需可写（OMNI_DATA_DIR）
 StateDirectory=omnichat
+StateDirectoryMode=0700
 # 基本加固
 NoNewPrivileges=true
 ProtectSystem=full
