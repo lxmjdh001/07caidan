@@ -64,6 +64,7 @@ export const IPC_METHODS = {
   authLogin: 'omni:authLogin',
   authForgotPassword: 'omni:authForgotPassword',
   authResetPassword: 'omni:authResetPassword',
+  authChangePassword: 'omni:authChangePassword',
   authLogout: 'omni:authLogout',
   campaignCall: 'omni:campaignCall',
   billingCall: 'omni:billingCall',
@@ -246,6 +247,8 @@ export interface OmniApi {
     code: string,
     password: string
   ): Promise<AuthResult>
+  /** 已登录用户修改密码；成功后其他电脑上的当前账号会话自动退出。 */
+  authChangePassword(currentPassword: string, newPassword: string): Promise<AuthResult>
   /** 退出登录 */
   authLogout(): Promise<void>
   /**

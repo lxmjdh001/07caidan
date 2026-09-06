@@ -621,6 +621,11 @@ export function registerIpc(deps: IpcDeps): void {
     (_e, serverUrl: string, email: string, code: string, password: string) =>
       deps.auth.resetPassword(serverUrl, email, code, password)
   )
+  ipcMain.handle(
+    IPC_METHODS.authChangePassword,
+    (_e, currentPassword: string, newPassword: string) =>
+      deps.auth.changePassword(currentPassword, newPassword)
+  )
   ipcMain.handle(IPC_METHODS.authLogin, async (_e, url: string, email: string, pw: string) => {
     const r = await auth.login(url, email, pw)
     if (r.ok) {

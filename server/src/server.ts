@@ -645,6 +645,20 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     }
   })
 
+  /** 已登录用户修改自己的密码；保留当前会话，吊销该用户的其他会话。 */
+  app.put('/api/client/password', async (req, reply) => {
+    const ctx = ctxOf(req)
+    const token = bearer(req)
+    if (!ctx.clientUser || !token) return reply.code(403).send({ error: '需要客户端账号登录' })
+    const b = (req.body ?? {}) as { currentPassword?: string; newPassword?: string }
+    if (!b.currentPassword || !b.newPassword) {
+      return reply.code(400).send({ error: '当前密码和新密码必填' })
+    }
+    const result = clientAuth.changePassword(ctx.clientUser, b.currentPassword, b.newPassword, token)
+    if (!result.ok) return reply.code(400).send({ error: result.error })
+    return { ok: true }
+  })
+
   // ── 设备管理（远程下线）：任何已登录客户端用户可管理自己计费主体的设备 ──
   app.get('/api/client/devices', async (req, reply) => {
     const ctx = ctxOf(req)

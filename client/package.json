@@ -1,7 +1,7 @@
 {
   "name": "wzzscrm",
   "productName": "WzzScrm",
-  "version": "0.2.20",
+  "version": "0.2.21",
   "description": "多平台聚合聊天客户端（WhatsApp / Telegram / LINE / KakaoTalk / Messenger / Instagram / TikTok / X / Snapchat），带双向自动翻译",
   "type": "module",
   "main": "./out/main/index.js",

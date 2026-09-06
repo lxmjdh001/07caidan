@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { and, eq, gt, inArray, isNotNull, lt, sql } from 'drizzle-orm'
+import { and, eq, gt, inArray, isNotNull, lt, ne, sql } from 'drizzle-orm'
 import { hashPassword, newSessionToken, verifyPassword } from './auth.ts'
 import type { Db } from './db.ts'
 import { randomUUID } from 'node:crypto'
@@ -769,6 +769,40 @@ export class ClientAuthRepo {
       .where(eq(clientUsers.id, user.id))
       .run()
     this.db.delete(clientSessions).where(eq(clientSessions.userId, user.id)).run()
+    return { ok: true }
+  }
+
+  /**
+   * 已登录用户修改自己的密码。
+   * 当前会话继续有效，其他设备上的该用户会话全部吊销，避免旧密码泄露后仍可长期访问。
+   */
+  changePassword(
+    user: ClientUser,
+    currentPassword: string,
+    newPassword: string,
+    currentToken: string
+  ): { ok: true } | { ok: false; error: string } {
+    if (newPassword.length < 8) return { ok: false, error: '新密码至少 8 位' }
+    const row = this.db
+      .select()
+      .from(clientUsers)
+      .where(and(eq(clientUsers.tenant, user.tenant), eq(clientUsers.id, user.id)))
+      .get()
+    if (!row || !verifyPassword(currentPassword, row.passwordHash)) {
+      return { ok: false, error: '当前密码不正确' }
+    }
+    if (verifyPassword(newPassword, row.passwordHash)) {
+      return { ok: false, error: '新密码不能与当前密码相同' }
+    }
+    this.db.transaction((tx) => {
+      tx.update(clientUsers)
+        .set({ passwordHash: hashPassword(newPassword) })
+        .where(and(eq(clientUsers.tenant, user.tenant), eq(clientUsers.id, user.id)))
+        .run()
+      tx.delete(clientSessions)
+        .where(and(eq(clientSessions.userId, user.id), ne(clientSessions.token, currentToken)))
+        .run()
+    })
     return { ok: true }
   }
 

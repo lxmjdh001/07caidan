@@ -110,6 +110,27 @@ export class ClientAuth {
     return this.post(serverUrl, '/api/client/reset-password', { email, code, password })
   }
 
+  async changePassword(currentPassword: string, newPassword: string): Promise<AuthResult> {
+    const sync = this.settings.get().sync
+    if (!sync.token || !sync.serverUrl) return { ok: false, error: '请先登录账号' }
+    try {
+      const res = await fetch(`${clean(sync.serverUrl)}/api/client/password`, {
+        method: 'PUT',
+        headers: {
+          authorization: `Bearer ${sync.token}`,
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({ currentPassword, newPassword }),
+        signal: AbortSignal.timeout(15_000)
+      })
+      const data = (await res.json().catch(() => ({}))) as { error?: string }
+      if (!res.ok) return { ok: false, error: data.error || `HTTP ${res.status}` }
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: `无法连接后台：${String(err)}` }
+    }
+  }
+
   async login(serverUrl: string, email: string, password: string): Promise<AuthResult> {
     return this.authFlow(
       serverUrl,

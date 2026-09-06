@@ -68,6 +68,34 @@ describe('ClientAuthRepo', () => {
     ca.logout(r.token)
     assert.equal(ca.resolve(r.token), null)
   })
+
+  test('修改密码保留当前会话并吊销其他会话', () => {
+    const registered = ca.register('t1', 'a@b.com', 'oldpass123', undefined, false)
+    assert.ok(registered.ok)
+    if (!registered.ok) return
+    const other = ca.login('a@b.com', 'oldpass123')
+    assert.ok(other && 'token' in other)
+    if (!other || !('token' in other)) return
+
+    assert.deepEqual(
+      ca.changePassword(registered.user, 'oldpass123', 'newpass456', registered.token),
+      { ok: true }
+    )
+    assert.ok(ca.resolve(registered.token), '发起改密的当前会话继续有效')
+    assert.equal(ca.resolve(other.token), null, '同一账号的其他会话被吊销')
+    assert.equal(ca.login('a@b.com', 'oldpass123'), null, '旧密码失效')
+    assert.ok(ca.login('a@b.com', 'newpass456'), '新密码可登录')
+  })
+
+  test('修改密码校验当前密码、长度和重复密码', () => {
+    const registered = ca.register('t1', 'a@b.com', 'oldpass123', undefined, false)
+    assert.ok(registered.ok)
+    if (!registered.ok) return
+    assert.equal(ca.changePassword(registered.user, 'wrong', 'newpass456', registered.token).ok, false)
+    assert.equal(ca.changePassword(registered.user, 'oldpass123', 'short', registered.token).ok, false)
+    assert.equal(ca.changePassword(registered.user, 'oldpass123', 'oldpass123', registered.token).ok, false)
+    assert.ok(ca.resolve(registered.token), '校验失败不能影响当前会话')
+  })
 })
 
 describe('找回密码', () => {

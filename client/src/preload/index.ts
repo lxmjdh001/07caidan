@@ -97,6 +97,8 @@ const api: OmniApi = {
     ipcRenderer.invoke(IPC_METHODS.authForgotPassword, serverUrl, email),
   authResetPassword: (serverUrl: string, email: string, code: string, password: string) =>
     ipcRenderer.invoke(IPC_METHODS.authResetPassword, serverUrl, email, code, password),
+  authChangePassword: (currentPassword: string, newPassword: string) =>
+    ipcRenderer.invoke(IPC_METHODS.authChangePassword, currentPassword, newPassword),
   authLogout: () => ipcRenderer.invoke(IPC_METHODS.authLogout),
   onEvent: (cb: (evt: OmniEvent) => void) => {
     const listener = (_e: IpcRendererEvent, evt: OmniEvent): void => cb(evt)

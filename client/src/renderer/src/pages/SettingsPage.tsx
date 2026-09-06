@@ -61,8 +61,6 @@ export function SettingsPage({
   const [inbound, setInbound] = useState(tr.inboundEnabled)
   const [outbound, setOutbound] = useState(tr.outboundEnabled)
   const [confirmSend, setConfirmSend] = useState(tr.confirmBeforeSend)
-  const [syncMedia, setSyncMedia] = useState(settings.sync.uploadMedia)
-  const [cloudSync, setCloudSync] = useState(settings.sync.cloudSync !== false)
   const [tgApiId, setTgApiId] = useState(settings.platform.telegramApiId)
   const [tgApiHash, setTgApiHash] = useState(settings.platform.telegramApiHash)
   const [displayLang, setDisplayLang] = useState(tr.displayLang)
@@ -76,6 +74,13 @@ export function SettingsPage({
   const [llmModel, setLlmModel] = useState(tr.llm.model)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordSaving, setPasswordSaving] = useState(false)
+  const [passwordMessage, setPasswordMessage] = useState<
+    { kind: 'success' | 'error'; text: string } | undefined
+  >()
   const [version, setVersion] = useState('')
   const [update, setUpdate] = useState<import('@shared/update').UpdateStateInfo>({ status: 'idle' })
 
@@ -115,13 +120,42 @@ export function SettingsPage({
           googleCloud: { apiKey: gcKey.trim() },
           llm: { baseUrl: llmBaseUrl.trim(), apiKey: llmKey.trim(), model: llmModel.trim() }
         },
-        sync: { ...settings.sync, uploadMedia: syncMedia, cloudSync },
         platform: { telegramApiId: tgApiId.trim(), telegramApiHash: tgApiHash.trim() }
       })
       setSaved(true)
       setTimeout(() => setSaved(false), 1800)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const changePassword = async (): Promise<void> => {
+    setPasswordMessage(undefined)
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setPasswordMessage({ kind: 'error', text: t('auth.fillAll') })
+      return
+    }
+    if (newPassword.length < 8) {
+      setPasswordMessage({ kind: 'error', text: t('settings.passwordRule') })
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage({ kind: 'error', text: t('settings.passwordMismatch') })
+      return
+    }
+    setPasswordSaving(true)
+    try {
+      const result = await window.omni.authChangePassword(currentPassword, newPassword)
+      if (!result.ok) {
+        setPasswordMessage({ kind: 'error', text: result.error || t('auth.failed') })
+        return
+      }
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      setPasswordMessage({ kind: 'success', text: t('settings.passwordChanged') })
+    } finally {
+      setPasswordSaving(false)
     }
   }
 
@@ -189,35 +223,6 @@ export function SettingsPage({
                 </div>
               </div>
               <p className="field-hint">{t('settings.themeHint')}</p>
-
-              <h3 style={{ marginTop: 22 }}>{t('settings.notifications')}</h3>
-              <label className="field checkbox">
-                <input
-                  type="checkbox"
-                  checked={notifyOn}
-                  onChange={(e) => setNotifyOn(e.target.checked)}
-                />
-                <span>{t('settings.notifyEnabled')}</span>
-              </label>
-              <label className="field checkbox">
-                <input
-                  type="checkbox"
-                  checked={notifyPreview}
-                  disabled={!notifyOn}
-                  onChange={(e) => setNotifyPreview(e.target.checked)}
-                />
-                <span>{t('settings.notifyPreview')}</span>
-              </label>
-              <label className="field checkbox">
-                <input
-                  type="checkbox"
-                  checked={notifySound}
-                  disabled={!notifyOn}
-                  onChange={(e) => setNotifySound(e.target.checked)}
-                />
-                <span>{t('settings.notifySound')}</span>
-              </label>
-              <p className="field-hint">{t('settings.notifyHint')}</p>
 
               <h3 style={{ marginTop: 22 }}>{t('settings.quickReplies')}</h3>
               <p className="field-hint">{t('settings.quickRepliesHint')}</p>
@@ -461,41 +466,103 @@ export function SettingsPage({
           )}
 
           {tab === 'backend' && (
-            <section className="form-card">
-              <h3>{t('settings.account')}</h3>
-              <div className="account-block-head">
-                <span className="account-name">
-                  {settings.sync.email || t('account.notLoggedIn')}
-                </span>
-                <span className="account-key">{settings.sync.serverUrl}</span>
+            <section className="form-card account-settings-card">
+              <div className="account-settings-section account-profile-section">
+                <div>
+                  <h3>{t('settings.accountInfo')}</h3>
+                  <span className="account-settings-label">{t('auth.email')}</span>
+                  <strong className="account-settings-email">
+                    {settings.sync.email || t('account.notLoggedIn')}
+                  </strong>
+                </div>
+                <button
+                  type="button"
+                  className="danger-btn"
+                  onClick={() => {
+                    if (window.confirm(t('auth.logoutConfirm'))) void onAccountLogout()
+                  }}
+                >
+                  {t('auth.logout')}
+                </button>
               </div>
-              <label className="field checkbox">
-                <input
-                  type="checkbox"
-                  checked={syncMedia}
-                  onChange={(e) => setSyncMedia(e.target.checked)}
-                />
-                <span>{t('settings.syncMedia')}</span>
-              </label>
-              <p className="field-hint">{t('settings.syncHint')}</p>
-              <label className="field checkbox">
-                <input
-                  type="checkbox"
-                  checked={cloudSync}
-                  onChange={(e) => setCloudSync(e.target.checked)}
-                />
-                <span>{t('settings.cloudSync')}</span>
-              </label>
-              <p className="field-hint">{t('settings.cloudSyncHint')}</p>
-              <button
-                type="button"
-                className="danger-btn"
-                onClick={() => {
-                  if (window.confirm(t('auth.logoutConfirm'))) void onAccountLogout()
-                }}
-              >
-                {t('auth.logout')}
-              </button>
+
+              <div className="account-settings-grid">
+                <div className="account-settings-section">
+                  <h3>{t('settings.changePassword')}</h3>
+                  <label className="field">
+                    <span>{t('settings.currentPassword')}</span>
+                    <input
+                      type="password"
+                      autoComplete="current-password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>{t('auth.newPassword')}</span>
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                    />
+                  </label>
+                  <label className="field">
+                    <span>{t('settings.confirmPassword')}</span>
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                    />
+                  </label>
+                  <p className="field-hint">{t('settings.passwordSessionHint')}</p>
+                  {passwordMessage && (
+                    <p className={`account-password-message ${passwordMessage.kind}`}>
+                      {passwordMessage.text}
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    className="primary-btn account-password-button"
+                    disabled={passwordSaving}
+                    onClick={() => void changePassword()}
+                  >
+                    {t('settings.changePassword')}
+                  </button>
+                </div>
+
+                <div className="account-settings-section">
+                  <h3>{t('settings.notifications')}</h3>
+                  <label className="field checkbox account-notification-option">
+                    <input
+                      type="checkbox"
+                      checked={notifyOn}
+                      onChange={(e) => setNotifyOn(e.target.checked)}
+                    />
+                    <span>{t('settings.notifyEnabled')}</span>
+                  </label>
+                  <label className="field checkbox account-notification-option">
+                    <input
+                      type="checkbox"
+                      checked={notifyPreview}
+                      disabled={!notifyOn}
+                      onChange={(e) => setNotifyPreview(e.target.checked)}
+                    />
+                    <span>{t('settings.notifyPreview')}</span>
+                  </label>
+                  <label className="field checkbox account-notification-option">
+                    <input
+                      type="checkbox"
+                      checked={notifySound}
+                      disabled={!notifyOn}
+                      onChange={(e) => setNotifySound(e.target.checked)}
+                    />
+                    <span>{t('settings.notifySound')}</span>
+                  </label>
+                  <p className="field-hint">{t('settings.notifyHint')}</p>
+                </div>
+              </div>
             </section>
           )}
         </div>
