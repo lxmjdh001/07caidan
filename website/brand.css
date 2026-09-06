@@ -53,6 +53,96 @@
   .mobile-toggle { display: block; }
 }
 
+/* 官网渠道区：复用客户端同一套官方平台 SVG，并以双列表实现无缝循环。 */
+.integrations {
+  overflow: hidden;
+}
+
+.integration-marquee {
+  position: relative;
+  overflow: hidden;
+  padding: 7px 0 3px;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 7%, #000 93%, transparent);
+}
+
+.integration-track {
+  display: flex;
+  width: max-content;
+  animation: wzz-integration-scroll 32s linear infinite;
+  will-change: transform;
+}
+
+.integration-set {
+  display: flex;
+  flex: none;
+  gap: 15px;
+  padding-right: 15px;
+}
+
+.integration-item {
+  min-width: 178px;
+  height: 54px;
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 16px;
+  border: 1px solid #e4ece7;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, .82);
+  color: #586d62;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 8px 18px rgba(17, 71, 46, .045);
+}
+
+.integration-icon {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.integration-icon img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.integration-marquee:hover .integration-track,
+.integration-marquee:focus-within .integration-track {
+  animation-play-state: paused;
+}
+
+@keyframes wzz-integration-scroll {
+  to { transform: translateX(-50%); }
+}
+
+@media (max-width: 700px) {
+  .integration-marquee {
+    margin-inline: -8px;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent);
+  }
+
+  .integration-item {
+    min-width: 152px;
+    height: 49px;
+    padding: 0 13px;
+    font-size: 13px;
+  }
+
+  .integration-icon {
+    width: 27px;
+    height: 27px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .brand-mark::after { animation: none; }
+  .brand-mark::after,
+  .integration-track { animation: none; }
+
+  .integration-marquee { overflow-x: auto; }
 }
