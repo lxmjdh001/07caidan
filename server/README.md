@@ -24,6 +24,7 @@ OMNI_TOKENS=your-token ANTHROPIC_API_KEY=sk-... npm start
 | `PORT` / `HOST` | 8787 / 0.0.0.0 | 监听地址 |
 | `OMNI_DATA_DIR` | `./data` | 数据目录（db + 媒体） |
 | `OMNI_TOKENS` | `dev-token` | **同步客户端**令牌，逗号分隔，每个 = 一个租户 |
+| `ACCOUNT_ENVIRONMENT_ENCRYPTION_KEY` | — | 跨设备平台登录态/指纹/代理快照的 AES-GCM 主密钥（生产必填，至少 32 个随机字符） |
 | `OMNI_ADMIN_USER` / `OMNI_ADMIN_PASSWORD` | admin / admin | 首次启动创建的 owner 账号（管理后台登录） |
 | `OMNI_ADMIN_TENANT` | 第一个同步令牌 | 管理员可见的租户 |
 | `ANTHROPIC_API_KEY` | — | 缺失时 AI 分析接口返回 501 |

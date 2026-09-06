@@ -17,6 +17,8 @@ export interface ChannelNetworkPolicy {
   isUsable: (key: string) => boolean
   startMonitoring: (key: string, onUnavailable: (detail: string) => void) => void
   stopMonitoring: (key: string) => void
+  /** 显式停止/退出账号时释放跨设备环境占用；连接错误可保留以便适配器原地重连。 */
+  release?: (key: string) => void
 }
 
 const NETWORK_ACTIVE_STATUSES = new Set<ChannelState['status']>([
@@ -87,6 +89,7 @@ export class ChannelManager {
       if (!NETWORK_ACTIVE_STATUSES.has(state.status)) {
         this.networkPolicy?.stopMonitoring(adapter.key)
       }
+      if (state.status === 'logged_out') this.networkPolicy?.release?.(adapter.key)
       // 连接就绪后为该渠道的历史会话补拉头像
       if (state.status === 'connected') {
         this.ensureSelfAvatar(adapter)
@@ -185,6 +188,7 @@ export class ChannelManager {
     const adapter = this.adapters.get(key)
     if (!adapter) return
     this.networkPolicy?.stopMonitoring(key)
+    this.networkPolicy?.release?.(key)
     try {
       await adapter.stop()
     } catch {
@@ -211,6 +215,7 @@ export class ChannelManager {
       await adapter.start()
     } catch (error) {
       this.networkPolicy?.stopMonitoring(key)
+      this.networkPolicy?.release?.(key)
       throw error
     }
   }
@@ -218,6 +223,7 @@ export class ChannelManager {
   /** 停止账号连接但保留登录凭证与启用状态。 */
   async stop(key: string): Promise<void> {
     this.networkPolicy?.stopMonitoring(key)
+    this.networkPolicy?.release?.(key)
     await this.requireAdapter(key).stop()
   }
 
@@ -235,6 +241,7 @@ export class ChannelManager {
     } else {
       this.disabledAccounts.add(key)
       this.networkPolicy?.stopMonitoring(key)
+      this.networkPolicy?.release?.(key)
       await adapter.stop()
     }
   }
@@ -307,7 +314,10 @@ export class ChannelManager {
   }
 
   async stopAll(): Promise<void> {
-    for (const key of this.adapters.keys()) this.networkPolicy?.stopMonitoring(key)
+    for (const key of this.adapters.keys()) {
+      this.networkPolicy?.stopMonitoring(key)
+      this.networkPolicy?.release?.(key)
+    }
     await Promise.allSettled([...this.adapters.values()].map((a) => a.stop()))
   }
 
@@ -316,6 +326,7 @@ export class ChannelManager {
       await this.requireAdapter(key).logout()
     } finally {
       this.networkPolicy?.stopMonitoring(key)
+      this.networkPolicy?.release?.(key)
     }
   }
 
@@ -333,6 +344,7 @@ export class ChannelManager {
       await switching
     } catch (error) {
       this.networkPolicy?.stopMonitoring(key)
+      this.networkPolicy?.release?.(key)
       throw error
     }
   }
@@ -357,6 +369,7 @@ export class ChannelManager {
       await adapter.beginOAuth()
     } catch (error) {
       this.networkPolicy?.stopMonitoring(key)
+      this.networkPolicy?.release?.(key)
       throw error
     }
   }
@@ -711,6 +724,7 @@ export class ChannelManager {
       await this.networkPolicy.assertReady(key)
     } catch (error) {
       this.networkPolicy.stopMonitoring(key)
+      this.networkPolicy.release?.(key)
       const previous = this.states.get(key)
       const next: ChannelState = {
         kind: previous?.kind ?? this.requireAdapter(key).kind,
@@ -735,6 +749,7 @@ export class ChannelManager {
     const adapter = this.adapters.get(key)
     if (!adapter) return
     this.networkPolicy?.stopMonitoring(key)
+    this.networkPolicy?.release?.(key)
     try {
       await adapter.stop()
     } catch (error) {

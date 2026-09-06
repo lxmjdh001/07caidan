@@ -82,6 +82,8 @@ export interface ServerConfig {
   snapchatClientSecret?: string
   /** Snapchat access/refresh/conversation token 的静态加密密钥。 */
   snapchatTokenEncryptionKey?: string
+  /** 跨设备账号环境快照的 AES-256-GCM 主密钥；生产环境必填且至少 32 字符。 */
+  accountEnvironmentEncryptionKey?: string
 }
 
 export function loadConfig(): ServerConfig {
@@ -145,7 +147,8 @@ export function loadConfig(): ServerConfig {
     xTokenEncryptionKey: process.env.X_TOKEN_ENCRYPTION_KEY || undefined,
     snapchatClientId: process.env.SNAPCHAT_CLIENT_ID || undefined,
     snapchatClientSecret: process.env.SNAPCHAT_CLIENT_SECRET || undefined,
-    snapchatTokenEncryptionKey: process.env.SNAPCHAT_TOKEN_ENCRYPTION_KEY || undefined
+    snapchatTokenEncryptionKey: process.env.SNAPCHAT_TOKEN_ENCRYPTION_KEY || undefined,
+    accountEnvironmentEncryptionKey: process.env.ACCOUNT_ENVIRONMENT_ENCRYPTION_KEY || undefined
   }
 }
 
@@ -183,6 +186,9 @@ export function productionConfigErrors(config: ServerConfig): string[] {
   }
   if (!config.tokens.length || config.tokens.some((token) => token.length < 24 || weak.test(token))) {
     errors.push('OMNI_TOKENS 中每个令牌必须是至少 24 位的随机值')
+  }
+  if (!config.accountEnvironmentEncryptionKey || config.accountEnvironmentEncryptionKey.length < 32) {
+    errors.push('ACCOUNT_ENVIRONMENT_ENCRYPTION_KEY 必须是至少 32 位的随机值')
   }
   if (
     config.requireEmailVerify &&

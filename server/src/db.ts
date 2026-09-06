@@ -75,6 +75,15 @@ export function openDb(dbPath: string): Db {
       PRIMARY KEY (tenant, account_key)
     );
 
+    CREATE TABLE IF NOT EXISTS account_environments (
+      tenant TEXT NOT NULL, account_key TEXT NOT NULL, snapshot TEXT NOT NULL,
+      revision INTEGER NOT NULL DEFAULT 1, active_device_id TEXT,
+      lease_id TEXT, lease_expires_at INTEGER, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, account_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_account_environments_lease
+      ON account_environments (tenant, lease_expires_at);
+
     CREATE TABLE IF NOT EXISTS sync_claims (
       tenant TEXT NOT NULL, purpose TEXT NOT NULL, claim_key TEXT NOT NULL,
       created_at INTEGER NOT NULL,
@@ -521,6 +530,7 @@ function migrate(sqlite: BetterSqlite3.Database): void {
     ['client_sessions', 'device_name', 'TEXT'],
     ['client_sessions', 'last_seen_at', 'INTEGER'],
     ['client_sessions', 'created_at', 'INTEGER'],
+    ['account_environments', 'lease_id', 'TEXT'],
     ['messages', 'updated_at', 'INTEGER NOT NULL DEFAULT 0']
   ] as const
 

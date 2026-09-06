@@ -39,6 +39,7 @@ import { TranslationPipeline } from './translation/pipeline'
 import { PassthroughTranslator } from './translation/passthrough-translator'
 import { configurePipeline, createTranslatorRegistry } from './translation/plugins'
 import { ConfigSync } from './sync/config-sync-service'
+import { AccountEnvironmentSync } from './sync/account-environment-sync'
 import { AppTray } from './core/tray'
 import { AppUpdater, type UpdateState } from './core/updater'
 import { createMainWindow } from './window'
@@ -334,12 +335,33 @@ async function bootstrap(migratedLegacyUserData: boolean): Promise<void> {
     onState: (state) => broadcast({ type: 'network:state', state }),
     logger
   })
+  const environmentSync = new AccountEnvironmentSync(
+    settings,
+    userData,
+    (key, detail) => {
+      logger.warn(detail, { key })
+      void manager.stop(key).catch((error) => {
+        logger.warn('停止已被其它电脑接管的账号失败', { key, error: String(error) })
+      })
+    },
+    logger
+  )
+  await environmentSync.init()
   manager.setNetworkPolicy({
-    assertReady: (key) => networkIsolation.assertReady(key),
-    isUsable: (key) => networkIsolation.isUsable(key),
+    assertReady: async (key) => {
+      await environmentSync.acquire(key)
+      try {
+        return await networkIsolation.assertReady(key)
+      } catch (error) {
+        await environmentSync.release(key)
+        throw error
+      }
+    },
+    isUsable: (key) => environmentSync.isUsable(key) && networkIsolation.isUsable(key),
     startMonitoring: (key, onUnavailable) =>
       networkIsolation.startMonitoring(key, onUnavailable),
-    stopMonitoring: (key) => networkIsolation.stopMonitoring(key)
+    stopMonitoring: (key) => networkIsolation.stopMonitoring(key),
+    release: (key) => void environmentSync.release(key)
   })
 
   // ── 渠道插件装配。新增平台：注册插件即可（下面按 kind 通用创建适配器）──
@@ -378,7 +400,9 @@ async function bootstrap(migratedLegacyUserData: boolean): Promise<void> {
         },
         saveCredentials: async (credentials) => {
           await settings.replaceAccountCredentials(key, credentials)
+          environmentSync.scheduleUpload(key)
         },
+        notifyEnvironmentChanged: () => environmentSync.scheduleUpload(key),
         getDefaults: () => {
           const p = settings.get().platform
           return { telegramApiId: p.telegramApiId, telegramApiHash: p.telegramApiHash }
@@ -645,7 +669,7 @@ async function bootstrap(migratedLegacyUserData: boolean): Promise<void> {
   syncClient.start()
 
   const auth = new ClientAuth(settings, logger)
-  // 配置云同步：登录/启动 pull，偏好变更 push（只搬非敏感白名单）
+  // 普通设置只同步非敏感白名单；平台登录态由单独的加密环境服务同步。
   const configSync = new ConfigSync(settings, {
     logger,
     onApplied: (updated) => {
@@ -702,6 +726,7 @@ async function bootstrap(migratedLegacyUserData: boolean): Promise<void> {
     broadcast,
     onSettingsChanged: (updated) => {
       configurePipeline(pipeline, translatorRegistry, updated.translation, pipelineExtras)
+      environmentSync.scheduleAll(updated)
       logger.info('设置已更新')
     },
     onAddAccount: async (channel) => {
@@ -726,11 +751,18 @@ async function bootstrap(migratedLegacyUserData: boolean): Promise<void> {
       })
       await manager.logout(key).catch(() => undefined)
       await manager.unregister(key)
+      await environmentSync.remove(key)
       await settings.removeAccount(key)
       configSync.pushDebounced()
       logger.info('已删除账号', { key })
     },
-    onAuthReady: restoreServerOauthAccounts,
+    onAuthReady: async () => {
+      // 登录前可能正在使用本机离线会话；先停下，再按新工作区逐账号取得云端环境与租约。
+      await manager.stopAll()
+      await reconcileAccountRegistry(settings.get())
+      await restoreServerOauthAccounts()
+      await manager.startAll()
+    },
     onQuit: () => {
       tray.quitting = true
       app.quit()
@@ -738,9 +770,11 @@ async function bootstrap(migratedLegacyUserData: boolean): Promise<void> {
   })
 
   installAppMenu()
-  // 启动时若已登录，拉取云端偏好（登录路径的 pull 在 authLogin/authRegister 处）
-  void configSync.pull()
-  void restoreServerOauthAccounts()
+  // 恢复顺序必须固定：账号目录 → 适配器注册 → 逐账号获取加密环境与租约 → 平台连接。
+  // 每个账号在 ChannelManager.start 的网络门禁中恢复，避免一次下载上百个大型会话快照。
+  await configSync.pull()
+  await reconcileAccountRegistry(settings.get())
+  await restoreServerOauthAccounts()
   const win = createMainWindow()
   // 关窗进托盘而不是退出：客服工具要保持后台在线收消息。
   // 从托盘选"退出"或 app 正在退出时放行。
@@ -787,6 +821,7 @@ async function bootstrap(migratedLegacyUserData: boolean): Promise<void> {
     networkIsolation.stopAll()
     closeIsolatedOAuthWindows()
     void configSync.flush()
+    void environmentSync.stop()
     void manager.stopAll()
     void store.flush()
   })

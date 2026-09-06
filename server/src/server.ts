@@ -56,6 +56,7 @@ import type { SyncPayload } from './types.ts'
 import { brand } from './branding.ts'
 import { regionAllowed } from './geoip/geoip.ts'
 import { WorkspaceAccountRepo } from './workspace-account-repo.ts'
+import { AccountEnvironmentRepo } from './account-environment-repo.ts'
 import {
   isProxyVendorRegion,
   ProxyVendorRepo,
@@ -130,6 +131,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   const clientAuth = new ClientAuthRepo(db)
   const clientConfig = new ClientConfigRepo(db)
   const workspaceAccounts = new WorkspaceAccountRepo(db)
+  const accountEnvironments = new AccountEnvironmentRepo(db, config.accountEnvironmentEncryptionKey)
   const proxyVendors = new ProxyVendorRepo(db)
   const lineRelay = new LineRelay(db)
   const metaService = new MetaService(db, config, overrides.metaFetch)
@@ -654,7 +656,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     return { ok: true, revoked }
   })
 
-  // ── 配置云同步（跨设备漫游非敏感偏好；凭证/会话绝不入云）──
+  // ── 配置云同步（跨设备漫游非敏感偏好；凭证/会话走下方独立加密环境仓库）──
   app.get('/api/client/settings', async (req, reply) => {
     const ctx = ctxOf(req)
     if (!ctx.clientUser) return reply.code(403).send({ error: '需要客户端账号登录' })
@@ -707,6 +709,115 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     const parsed = parseAccountIdentity(accountKey)
     if (!parsed) return reply.code(400).send({ error: '账号标识无效' })
     return { account: workspaceAccounts.remove(workspaceOf(req), accountKey, parsed.channel, parsed.accountId) }
+  })
+
+  // ── 指纹浏览器式账号环境（加密登录态 + 单设备连接租约）──
+  const environmentLeaseMs = 90_000
+  const requireEnvironmentStore = (req: FastifyRequest, reply: FastifyReply): boolean => {
+    if (!ctxOf(req).clientUser) {
+      void reply.code(403).send({ error: '需要客户端账号登录' })
+      return false
+    }
+    if (!accountEnvironments.available) {
+      void reply.code(503).send({ error: '服务器尚未配置账号环境加密密钥' })
+      return false
+    }
+    return true
+  }
+  const environmentParams = (req: FastifyRequest): { accountKey: string } =>
+    req.params as { accountKey: string }
+  const validEnvironmentKey = (key: string): boolean => parseAccountIdentity(key) !== null
+  const validEnvironmentDevice = (value: unknown): value is string =>
+    typeof value === 'string' && /^[a-f0-9]{8,64}$/i.test(value)
+  const validEnvironmentLease = (value: unknown): value is string =>
+    typeof value === 'string' && /^[a-f0-9]{32}$/i.test(value)
+
+  app.post('/api/client/environments/:accountKey/lease', async (req, reply) => {
+    if (!requireEnvironmentStore(req, reply)) return
+    const accountKey = environmentParams(req).accountKey
+    const body = (req.body ?? {}) as { deviceId?: unknown; takeover?: unknown }
+    if (!validEnvironmentKey(accountKey) || !validEnvironmentDevice(body.deviceId)) {
+      return reply.code(400).send({ error: '账号或设备标识无效' })
+    }
+    const result = accountEnvironments.acquire(
+      workspaceOf(req), accountKey, body.deviceId.toLowerCase(), environmentLeaseMs, body.takeover === true
+    )
+    if (!result.ok) {
+      return reply.code(409).send({
+        error: '该账号环境正在另一台电脑运行',
+        code: 'environment_in_use',
+        activeDeviceId: result.activeDeviceId,
+        leaseExpiresAt: result.leaseExpiresAt
+      })
+    }
+    return result
+  })
+
+  app.post('/api/client/environments/:accountKey/heartbeat', async (req, reply) => {
+    if (!requireEnvironmentStore(req, reply)) return
+    const accountKey = environmentParams(req).accountKey
+    const body = (req.body ?? {}) as { deviceId?: unknown; leaseId?: unknown }
+    if (
+      !validEnvironmentKey(accountKey) || !validEnvironmentDevice(body.deviceId) ||
+      !validEnvironmentLease(body.leaseId)
+    ) {
+      return reply.code(400).send({ error: '账号或设备标识无效' })
+    }
+    const ok = accountEnvironments.heartbeat(
+      workspaceOf(req), accountKey, body.deviceId.toLowerCase(), body.leaseId.toLowerCase(), environmentLeaseMs
+    )
+    if (!ok) return reply.code(409).send({ error: '账号环境已被另一台电脑接管', code: 'lease_lost' })
+    return { ok: true }
+  })
+
+  app.post('/api/client/environments/:accountKey/release', async (req, reply) => {
+    if (!requireEnvironmentStore(req, reply)) return
+    const accountKey = environmentParams(req).accountKey
+    const body = (req.body ?? {}) as { deviceId?: unknown; leaseId?: unknown }
+    if (
+      !validEnvironmentKey(accountKey) || !validEnvironmentDevice(body.deviceId) ||
+      !validEnvironmentLease(body.leaseId)
+    ) {
+      return reply.code(400).send({ error: '账号或设备标识无效' })
+    }
+    return {
+      ok: accountEnvironments.release(
+        workspaceOf(req), accountKey, body.deviceId.toLowerCase(), body.leaseId.toLowerCase()
+      )
+    }
+  })
+
+  app.put('/api/client/environments/:accountKey', async (req, reply) => {
+    if (!requireEnvironmentStore(req, reply)) return
+    const accountKey = environmentParams(req).accountKey
+    const body = (req.body ?? {}) as { deviceId?: unknown; leaseId?: unknown; snapshot?: unknown }
+    if (
+      !validEnvironmentKey(accountKey) || !validEnvironmentDevice(body.deviceId) ||
+      !validEnvironmentLease(body.leaseId)
+    ) {
+      return reply.code(400).send({ error: '账号或设备标识无效' })
+    }
+    if (!body.snapshot || typeof body.snapshot !== 'object' || Array.isArray(body.snapshot)) {
+      return reply.code(400).send({ error: '账号环境快照格式无效' })
+    }
+    if (JSON.stringify(body.snapshot).length > 56 * 1024 * 1024) {
+      return reply.code(413).send({ error: '账号环境快照过大' })
+    }
+    const environment = accountEnvironments.put(
+      workspaceOf(req), accountKey, body.deviceId.toLowerCase(), body.leaseId.toLowerCase(),
+      body.snapshot as Record<string, unknown>, environmentLeaseMs
+    )
+    if (!environment) {
+      return reply.code(409).send({ error: '账号环境已被另一台电脑接管', code: 'lease_lost' })
+    }
+    return { ok: true, environment }
+  })
+
+  app.delete('/api/client/environments/:accountKey', async (req, reply) => {
+    if (!requireEnvironmentStore(req, reply)) return
+    const accountKey = environmentParams(req).accountKey
+    if (!validEnvironmentKey(accountKey)) return reply.code(400).send({ error: '账号标识无效' })
+    return { ok: true, removed: accountEnvironments.remove(workspaceOf(req), accountKey) }
   })
 
   app.post('/api/client/logout', async (req) => {

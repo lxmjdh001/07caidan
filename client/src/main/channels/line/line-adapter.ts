@@ -19,6 +19,7 @@ export interface LineAdapterOptions {
   logger?: Logger
   getAuthToken: () => string | undefined
   saveAuthToken: (authToken: string | undefined) => Promise<void>
+  onSessionChanged?: () => void
   getProxyUrl?: () => string | undefined
   saveMedia?: (data: Buffer, ext: string) => Promise<string>
 }
@@ -46,7 +47,7 @@ type LineBuddyDetail = {
  * 普通 LINE 账号适配器。
  *
  * 登录与收发全部运行在桌面端：客户扫描本机生成的二维码，授权令牌和 E2EE
- * 密钥只写入该账号专属 session 文件，不经由本项目后台服务器。
+ * 密钥写入账号专属文件，并由 WzzScrm 加密环境服务同步到该客户工作区。
  */
 export class LineAdapter extends ChannelAdapter {
   readonly kind = 'line' as const
@@ -56,6 +57,7 @@ export class LineAdapter extends ChannelAdapter {
   private readonly log: Logger
   private readonly getAuthToken: () => string | undefined
   private readonly saveAuthToken: (authToken: string | undefined) => Promise<void>
+  private readonly onSessionChanged: () => void
   private readonly getProxyUrl: () => string | undefined
   private readonly saveMedia?: (data: Buffer, ext: string) => Promise<string>
 
@@ -78,6 +80,7 @@ export class LineAdapter extends ChannelAdapter {
     this.log = (opts.logger ?? noopLogger).child(`line:${opts.accountId}`)
     this.getAuthToken = opts.getAuthToken
     this.saveAuthToken = opts.saveAuthToken
+    this.onSessionChanged = opts.onSessionChanged ?? (() => undefined)
     this.getProxyUrl = opts.getProxyUrl ?? (() => undefined)
     this.saveMedia = opts.saveMedia
   }
@@ -120,6 +123,7 @@ export class LineAdapter extends ChannelAdapter {
   async sendText(externalChatId: string, text: string): Promise<OutboundResult> {
     const client = this.requireClient()
     const sent = await client.base.talk.sendMessage({ to: externalChatId, text, e2ee: true })
+    this.onSessionChanged()
     return { externalId: sent.id }
   }
 
@@ -132,6 +136,7 @@ export class LineAdapter extends ChannelAdapter {
       oType: mediaTypeForUpload(media.mediaType),
       filename: media.fileName
     })
+    this.onSessionChanged()
     return { externalId: sent.id }
   }
 
@@ -202,10 +207,12 @@ export class LineAdapter extends ChannelAdapter {
       // loginWithQR 在 resolve 前就发出了 update:authtoken 事件；这里再保存一次，
       // 确保首次扫码的 token 不会因监听器稍后注册而丢失。
       await this.saveAuthToken(client.authToken)
+      this.onSessionChanged()
       client.base.on('update:authtoken', (authToken) => {
-        void this.saveAuthToken(authToken).catch((err) => {
-          this.log.warn('保存 LINE 授权令牌失败', { err: String(err) })
-        })
+        void this.saveAuthToken(authToken).then(
+          () => this.onSessionChanged(),
+          (err) => this.log.warn('保存 LINE 授权令牌失败', { err: String(err) })
+        )
       })
       this.abort = new AbortController()
       client.on('message', (message) => this.handleMessage(message))
@@ -281,6 +288,7 @@ export class LineAdapter extends ChannelAdapter {
     if (needsDownload && this.saveMedia && unified.body.type === 'media') {
       void this.downloadMedia(message, unified)
     }
+    this.onSessionChanged()
   }
 
   private async downloadMedia(message: TalkMessage, unified: UnifiedMessage): Promise<void> {

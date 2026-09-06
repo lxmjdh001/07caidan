@@ -41,6 +41,8 @@ export interface WhatsAppAdapterOptions {
   getDeviceLabel?: () => string | undefined
   /** 固定设备指纹种子；同账号稳定、不同账号隔离。 */
   getFingerprintSeed?: () => string | undefined
+  /** Baileys 登录密钥文件变化后触发独立环境快照。 */
+  onAuthStateChanged?: () => void
 }
 
 const RECONNECT_BASE_MS = 3_000
@@ -57,7 +59,8 @@ function normalizeParticipantJid(value: string): string {
 
 /**
  * WhatsApp 渠道适配器（Baileys v7，WebSocket 直连 WhatsApp Web 协议）。
- * 连接完全跑在客户端本地：扫码登录后凭证保存在本机，流量走用户自己的网络。
+ * 连接完全跑在客户端本地：流量只走账号独立代理；登录密钥写入独立目录，并由
+ * WzzScrm 加密环境服务同步到该客户工作区，供受控的跨设备接管恢复。
  */
 export class WhatsAppAdapter extends ChannelAdapter {
   readonly kind = 'whatsapp' as const
@@ -84,6 +87,7 @@ export class WhatsAppAdapter extends ChannelAdapter {
   private readonly saveMedia?: (data: Buffer, ext: string) => Promise<string>
   private readonly getDeviceLabel: () => string | undefined
   private readonly getFingerprintSeed: () => string | undefined
+  private readonly onAuthStateChanged: () => void
 
   constructor(opts: WhatsAppAdapterOptions) {
     super()
@@ -93,6 +97,7 @@ export class WhatsAppAdapter extends ChannelAdapter {
     this.saveMedia = opts.saveMedia
     this.getDeviceLabel = opts.getDeviceLabel ?? (() => undefined)
     this.getFingerprintSeed = opts.getFingerprintSeed ?? (() => undefined)
+    this.onAuthStateChanged = opts.onAuthStateChanged ?? (() => undefined)
     this.log = (opts.logger ?? noopLogger).child(`whatsapp:${opts.accountId}`)
   }
 
@@ -133,6 +138,7 @@ export class WhatsAppAdapter extends ChannelAdapter {
     this.sock = undefined
     await this.closeProxyResources()
     await rm(this.authDir, { recursive: true, force: true })
+    this.onAuthStateChanged()
     this.setState('logged_out')
     this.log.info('已退出登录并清除凭证')
   }
@@ -143,6 +149,7 @@ export class WhatsAppAdapter extends ChannelAdapter {
     }
     const result = await this.sock.sendMessage(externalChatId, { text })
     this.cacheSent(result?.key?.id, result?.message)
+    this.onAuthStateChanged()
     this.log.debug('消息已发送', { to: externalChatId, id: result?.key?.id })
     return { externalId: result?.key?.id ?? undefined }
   }
@@ -154,6 +161,7 @@ export class WhatsAppAdapter extends ChannelAdapter {
     const content = toWaMediaContent(media)
     const result = await this.sock.sendMessage(externalChatId, content)
     this.cacheSent(result?.key?.id, result?.message)
+    this.onAuthStateChanged()
     this.log.debug('媒体已发送', { to: externalChatId, type: media.mediaType, id: result?.key?.id })
     return { externalId: result?.key?.id ?? undefined }
   }
@@ -364,7 +372,12 @@ export class WhatsAppAdapter extends ChannelAdapter {
     })
     this.sock = sock
 
-    sock.ev.on('creds.update', saveCreds)
+    sock.ev.on('creds.update', () => {
+      void saveCreds().then(
+        () => this.onAuthStateChanged(),
+        (error) => this.log.warn('保存 WhatsApp 登录密钥失败', error)
+      )
+    })
 
     sock.ev.on('connection.update', (update) => {
       const { connection, lastDisconnect, qr } = update
@@ -436,6 +449,8 @@ export class WhatsAppAdapter extends ChannelAdapter {
           void this.downloadIncomingMedia(raw, mapped)
         }
       }
+      // 收发消息会推进 Signal session/预密钥；延迟快照可同时捕获 Baileys 刚写完的密钥文件。
+      this.onAuthStateChanged()
     })
 
     // 联系人/会话元数据 → 修正会话标题（upsert 与 update 都要接）

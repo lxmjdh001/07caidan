@@ -20,6 +20,8 @@ export interface ChannelPluginContext {
   getBackend: () => { url?: string; token?: string }
   /** 回写该账号的凭证（如 Telegram 登录后的会话串），适配器自持久化用 */
   saveCredentials: (credentials: Record<string, string>) => Promise<void>
+  /** 会话文件或协议密钥变化后，触发该独立环境的云端快照。 */
+  notifyEnvironmentChanged: () => void
   /** 全局默认值（如应用级 Telegram API 凭证），账号未单独配置时回退到此 */
   getDefaults?: () => { telegramApiId?: string; telegramApiHash?: string }
   /** 在带固定代理和独立持久化分区的内置窗口打开 OAuth，不使用共享系统浏览器。 */

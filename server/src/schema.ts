@@ -216,6 +216,26 @@ export const clientSessions = sqliteTable('client_sessions', {
   createdAt: integer('created_at')
 })
 
+/**
+ * 平台账号的可迁移独立环境。snapshot 只保存 AES-256-GCM 密文，内容包含该账号的
+ * 稳定指纹、代理绑定和平台登录态；activeDeviceId/leaseExpiresAt 防止同一环境被
+ * 两台电脑同时连接到平台。
+ */
+export const accountEnvironments = sqliteTable(
+  'account_environments',
+  {
+    tenant: text('tenant').notNull(),
+    accountKey: text('account_key').notNull(),
+    snapshot: text('snapshot').notNull(),
+    revision: integer('revision').notNull().default(1),
+    activeDeviceId: text('active_device_id'),
+    leaseId: text('lease_id'),
+    leaseExpiresAt: integer('lease_expires_at'),
+    updatedAt: integer('updated_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.accountKey] })]
+)
+
 /** 邮箱验证码 */
 export const emailCodes = sqliteTable('email_codes', {
   email: text('email').primaryKey(),

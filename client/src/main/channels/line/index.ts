@@ -13,6 +13,7 @@ export const linePlugin: ChannelPlugin = {
       sessionFile: join(ctx.dataDir, 'sessions', `${accountId}.json`),
       getAuthToken: () => ctx.getAccountConfig().credentials?.authToken,
       saveAuthToken: async (authToken) => ctx.saveCredentials(authToken ? { authToken } : {}),
+      onSessionChanged: ctx.notifyEnvironmentChanged,
       getProxyUrl: () => ctx.getAccountConfig().proxyUrl,
       saveMedia: ctx.saveMedia
     })

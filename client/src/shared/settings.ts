@@ -25,7 +25,8 @@ export interface TranslationConfig {
 /**
  * 单个平台账号的稳定设备身份。
  *
- * seed 只用于本机派生协议层设备名和独立浏览器分区，不发送给平台或后台；
+ * seed 用于派生协议层设备名和独立浏览器分区；只随加密账号环境保存到客户工作区，
+ * 不作为明文偏好上传，也不会发送给平台；
  * id 是可展示的短标识，方便在代理管理页确认不同账号没有共用同一环境。
  */
 export interface AccountFingerprint {
@@ -48,7 +49,7 @@ export interface ProxyVerification {
 /** 独立代理资产；可先保存到代理库，之后再关联一个或多个平台账号。 */
 export interface ProxyAsset {
   id: string
-  /** 完整代理地址，可能包含认证信息；只保存在本机受限配置中。 */
+  /** 完整代理地址，可能包含认证信息；本机受限保存，并随加密账号环境跨设备恢复。 */
   proxyUrl: string
   note?: string
   createdAt: number
@@ -109,7 +110,7 @@ export interface SyncConfig {
   role?: string
   /** 登录账号的有效权限（服务端下发；界面按此显隐，真正的强制在服务端） */
   permissions?: string[]
-  /** 是否把「非敏感偏好」云同步到后台，跨设备漫游（凭证/会话不上云） */
+  /** 是否把非敏感偏好同步到后台；平台凭证/会话由独立加密环境服务管理。 */
   cloudSync?: boolean
   /** 本地记账：上次与云端对齐的偏好版本时间戳（用于后写为准，不上云） */
   settingsSyncedAt?: number

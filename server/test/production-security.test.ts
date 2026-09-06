@@ -37,6 +37,7 @@ function config(overrides: Partial<ServerConfig> = {}): ServerConfig {
     trustProxy: true,
     updatesDir: join(dir, 'updates'),
     crispWebsiteId: undefined,
+    accountEnvironmentEncryptionKey: 'account-environment-key-at-least-32-characters',
     ...overrides
   }
 }

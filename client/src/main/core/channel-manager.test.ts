@@ -187,6 +187,26 @@ describe('ChannelManager', () => {
     })
   })
 
+  it('连接异常时保留环境租约供原地重连，显式停止时才释放', async () => {
+    const release = vi.fn()
+    const stopMonitoring = vi.fn()
+    manager.setNetworkPolicy({
+      assertReady: vi.fn(async () => undefined),
+      isUsable: () => true,
+      startMonitoring: vi.fn(),
+      stopMonitoring,
+      release
+    })
+
+    await manager.start('whatsapp:main')
+    adapter.emit('state', { kind: 'whatsapp', accountId: 'main', status: 'error' })
+    expect(stopMonitoring).toHaveBeenCalledWith('whatsapp:main')
+    expect(release).not.toHaveBeenCalled()
+
+    await manager.stop('whatsapp:main')
+    expect(release).toHaveBeenCalledWith('whatsapp:main')
+  })
+
   it('重复 externalId 的消息不重复广播', async () => {
     adapter.fakeIncoming({ externalId: 'DUP', id: 'a' })
     adapter.fakeIncoming({ externalId: 'DUP', id: 'b' })

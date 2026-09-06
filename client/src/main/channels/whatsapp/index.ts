@@ -14,6 +14,7 @@ export const whatsAppPlugin: ChannelPlugin = {
       getProxyUrl: () => ctx.getAccountConfig().proxyUrl,
       getDeviceLabel: () => ctx.getAccountConfig().deviceLabel,
       getFingerprintSeed: () => ctx.getAccountConfig().fingerprint?.seed,
+      onAuthStateChanged: ctx.notifyEnvironmentChanged,
       saveMedia: ctx.saveMedia
     })
   }
