@@ -99,6 +99,18 @@ describe('邀请码注册与永久归因', () => {
     const dashboard = await call('GET', '/api/invites/me', inviterToken)
     assert.equal(dashboard.json.referrals.length, 1, '停用邀请码不得删除既有永久关系')
   })
+
+  test('邀请码错误不会消耗邮箱验证码', () => {
+    const db = openDb(join(dir, `${Math.random().toString(36).slice(2)}-verify.db`))
+    const auth = new ClientAuthRepo(db)
+    auth.issueCode('verified@test.com', '123456')
+    const invalid = auth.register(TENANT, 'verified@test.com', 'pw123456', '123456', true, undefined, 'NOTFOUND')
+    assert.equal(invalid.ok, false)
+    assert.match(invalid.ok ? '' : invalid.error, /邀请码/)
+
+    const valid = auth.register(TENANT, 'verified@test.com', 'pw123456', '123456', true)
+    assert.equal(valid.ok, true, '邀请码校验失败后，同一邮箱验证码仍应可用于注册')
+  })
 })
 
 describe('充值与消费返佣', () => {

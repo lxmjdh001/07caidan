@@ -238,10 +238,7 @@ export class ClientAuthRepo {
     const exists = this.db.select().from(clientUsers).where(eq(clientUsers.email, normalizedEmail)).get()
     if (exists) return { ok: false, error: '该邮箱已注册' }
 
-    if (requireVerify) {
-      if (!code) return { ok: false, error: '请输入邮箱验证码' }
-      if (!this.checkCode(normalizedEmail, code)) return { ok: false, error: '验证码错误或已过期' }
-    }
+    if (requireVerify && !code) return { ok: false, error: '请输入邮箱验证码' }
     const normalizedInvite = inviteCode?.trim().toUpperCase().replace(/[\s-]+/g, '') || ''
     if (normalizedInvite && !/^[A-Z0-9]{6,24}$/.test(normalizedInvite)) {
       return { ok: false, error: '邀请码格式不正确' }
@@ -261,6 +258,16 @@ export class ClientAuthRepo {
           if (!invite || invite.enabled !== 1) throw new Error('INVITE_DISABLED')
           if (invite.expiresAt != null && invite.expiresAt <= now) throw new Error('INVITE_EXPIRED')
           if (invite.maxUses > 0 && invite.usedCount >= invite.maxUses) throw new Error('INVITE_FULL')
+        }
+
+        // 验证码必须和注册落库位于同一事务。邀请码失效或数据库写入失败时事务回滚，
+        // 客户刚收到的验证码仍然有效，不需要重新发送。
+        if (requireVerify) {
+          const emailCode = tx.select().from(emailCodes).where(eq(emailCodes.email, normalizedEmail)).get()
+          if (!emailCode || emailCode.expiresAt < now || emailCode.code !== code) {
+            throw new Error('EMAIL_CODE_INVALID')
+          }
+          tx.delete(emailCodes).where(eq(emailCodes.email, normalizedEmail)).run()
         }
 
         const res = tx
@@ -294,6 +301,7 @@ export class ClientAuthRepo {
       if (message === 'INVITE_DISABLED') return { ok: false, error: '邀请码不存在或已停用' }
       if (message === 'INVITE_EXPIRED') return { ok: false, error: '邀请码已过期' }
       if (message === 'INVITE_FULL') return { ok: false, error: '邀请码使用次数已满' }
+      if (message === 'EMAIL_CODE_INVALID') return { ok: false, error: '验证码错误或已过期' }
       return { ok: false, error: '注册失败，请稍后重试' }
     }
     const user: ClientUser = {
