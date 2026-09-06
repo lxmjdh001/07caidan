@@ -4,6 +4,7 @@ import type { Db } from '../db.ts'
 import { orders } from '../schema.ts'
 import type { BillingRepo } from './billing-repo.ts'
 import { computeFee, convertFromUsd, type Cents, type FeeConfig } from './money.ts'
+import { uniqueAmount as uniqueUsdtAmount } from './gateways/usdt.ts'
 
 export type OrderKind = 'topup' | 'plan'
 export type OrderStatus = 'pending' | 'paid' | 'failed' | 'expired'
@@ -50,7 +51,7 @@ export type SettleResult =
   | { ok: true; order: Order; alreadyPaid: boolean }
   | {
       ok: false
-      reason: 'not_found' | 'amount_mismatch' | 'expired' | 'not_pending'
+      reason: 'not_found' | 'amount_mismatch' | 'expired' | 'not_pending' | 'payment_reused'
       order?: Order
     }
 
@@ -91,9 +92,10 @@ export class OrderRepo {
             decimals: input.decimals
           })
 
+    const id = this.newPaymentId(tenant, input.channelId, input.channelType, payableLocal, now)
     const row = {
       tenant,
-      id: OrderRepo.newOrderId(now),
+      id,
       userId: input.userId,
       kind: input.kind,
       planId: input.planId ?? null,
@@ -114,6 +116,40 @@ export class OrderRepo {
     }
     this.db.insert(orders).values(row).run()
     return toOrder(row as typeof orders.$inferSelect)
+  }
+
+  /**
+   * USDT 依赖精确金额匹配，因此同一通道的待支付订单绝不能出现相同最终金额。
+   * 随机订单号只是生成候选尾数；真正落库前还要和全部有效待支付订单比对。
+   */
+  private newPaymentId(
+    tenant: string,
+    channelId: string,
+    channelType: string,
+    payableLocal: number,
+    now: number
+  ): string {
+    if (channelType !== 'usdt') return OrderRepo.newOrderId(now)
+    const used = new Set(
+      this.db
+        .select({ id: orders.id, payableLocal: orders.payableLocal, expiresAt: orders.expiresAt })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.tenant, tenant),
+            eq(orders.channelId, channelId),
+            eq(orders.status, 'pending')
+          )
+        )
+        .all()
+        .filter((row) => row.expiresAt > now)
+        .map((row) => uniqueUsdtAmount(row.payableLocal, row.id))
+    )
+    for (let attempt = 0; attempt < 300; attempt++) {
+      const candidate = OrderRepo.newOrderId(now + attempt)
+      if (!used.has(uniqueUsdtAmount(payableLocal, candidate))) return candidate
+    }
+    throw new Error('USDT 待支付金额已占满，请稍后再试')
   }
 
   get(tenant: string, id: string): Order | null {
@@ -181,6 +217,24 @@ export class OrderRepo {
       opts.paidAmountLocal < existing.payableLocal
     ) {
       return { ok: false, reason: 'amount_mismatch', order: existing }
+    }
+
+    // 外部支付流水只能认领一次。金额尾数可降低撞单概率，但不能代替流水号去重：
+    // 两个订单即使碰巧生成相同金额，也绝不能把同一笔转账入账两次。
+    if (opts.tradeNo && existing.channelId) {
+      const claimed = this.db
+        .select({ id: orders.id })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.tenant, tenant),
+            eq(orders.channelId, existing.channelId),
+            eq(orders.tradeNo, opts.tradeNo),
+            eq(orders.status, 'paid')
+          )
+        )
+        .get()
+      if (claimed) return { ok: false, reason: 'payment_reused', order: existing }
     }
 
     // 幂等的关键：带 status='pending' 条件更新。并发的两个回调里

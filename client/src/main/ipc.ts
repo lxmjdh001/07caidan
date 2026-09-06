@@ -88,6 +88,7 @@ const BILLING_METHODS: Record<string, true> = {
   setInviteEnabled: true,
   listProxyVendors: true,
   createOrder: true,
+  checkOrder: true,
   subscribe: true,
   setAutoRenew: true,
   exchangeCredits: true,

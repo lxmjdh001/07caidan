@@ -76,6 +76,11 @@ interface PaymentInfo {
   payload?: Record<string, string>
 }
 
+interface PaymentSession {
+  orderId: string
+  info: PaymentInfo
+}
+
 /** 支付通道卡片列表：把各通道手续费亮出来，用户自己挑最划算的 */
 function ChannelCards({
   channels,
@@ -126,8 +131,60 @@ function ChannelCards({
 }
 
 /** 下单结果：网页支付链接或转账 payload */
-function PaymentResult({ payment }: { payment: PaymentInfo | null }): React.JSX.Element | null {
+function PaymentResult({
+  session,
+  onPaid
+}: {
+  session: PaymentSession | null
+  onPaid: () => Promise<void>
+}): React.JSX.Element | null {
   const { t } = useI18n()
+  const [checkState, setCheckState] = useState<'idle' | 'checking' | 'pending' | 'paid' | 'expired' | 'error'>('idle')
+  const payment = session?.info ?? null
+  const isUsdt = Boolean(payment?.payload?.address && payment.payload.amount)
+
+  const checkPayment = useCallback(async (silent = false): Promise<'paid' | 'pending' | 'stopped'> => {
+    if (!session?.orderId || !isUsdt) return 'stopped'
+    if (!silent) setCheckState('checking')
+    try {
+      const result = await api.billing<{ paid: boolean; order?: { status?: string } }>('checkOrder', session.orderId)
+      if (result.paid) {
+        setCheckState('paid')
+        await onPaid()
+        return 'paid'
+      }
+      if (result.order?.status && result.order.status !== 'pending') {
+        setCheckState('expired')
+        return 'stopped'
+      }
+      setCheckState('pending')
+      return 'pending'
+    } catch {
+      setCheckState('error')
+      return 'pending'
+    }
+  }, [isUsdt, onPaid, session?.orderId])
+
+  useEffect(() => {
+    setCheckState('idle')
+    if (!session?.orderId || !isUsdt) return
+    let stopped = false
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const pollingDeadline = Date.now() + 31 * 60_000
+    const poll = async (): Promise<void> => {
+      const result = await checkPayment(true)
+      if (!stopped && result === 'pending' && Date.now() < pollingDeadline) {
+        timer = setTimeout(() => void poll(), 10_000)
+      }
+    }
+    // UZF 监控通常约 10 秒同步一次；先给转账广播留出时间，再开始后台轮询。
+    timer = setTimeout(() => void poll(), 5_000)
+    return () => {
+      stopped = true
+      if (timer) clearTimeout(timer)
+    }
+  }, [checkPayment, isUsdt, session?.orderId])
+
   if (!payment) return null
   return (
     <>
@@ -143,13 +200,60 @@ function PaymentResult({ payment }: { payment: PaymentInfo | null }): React.JSX.
           </button>
         </div>
       )}
-      {payment.payload && (
+      {payment.payload && !isUsdt && (
         <div className="pay-payload">
           {Object.entries(payment.payload).map(([k, v]) => (
             <p key={k}>
               <span className="pp-key">{k}</span> <code>{v}</code>
             </p>
           ))}
+          <p className="field-hint">{t('bill.payloadHint')}</p>
+        </div>
+      )}
+      {payment.payload && isUsdt && (
+        <div className="pay-payload usdt-payment">
+          {([
+            ['network', t('bill.usdtNetwork')],
+            ['address', t('bill.usdtAddress')],
+            ['amount', t('bill.usdtAmount')],
+            ['orderId', t('bill.usdtOrder')]
+          ] as const).map(([key, label]) => {
+            const value = payment.payload?.[key]
+            return value ? (
+              <div className="usdt-payment-row" key={key}>
+                <span className="pp-key">{label}</span>
+                <code>{value}</code>
+                {(key === 'address' || key === 'amount') && (
+                  <button type="button" className="ghost-btn small" onClick={() => void navigator.clipboard.writeText(value)}>
+                    {t('campaign.copy')}
+                  </button>
+                )}
+              </div>
+            ) : null
+          })}
+          <div className={`payment-check-state ${checkState}`}>
+            {checkState === 'paid'
+              ? t('bill.paymentReceived')
+              : checkState === 'expired'
+                ? t('bill.paymentExpired')
+              : checkState === 'checking'
+                ? t('bill.checkingPayment')
+                : checkState === 'error'
+                  ? t('bill.paymentCheckError')
+                  : checkState === 'pending'
+                    ? t('bill.paymentPending')
+                    : t('bill.paymentWaiting')}
+          </div>
+          {checkState !== 'paid' && checkState !== 'expired' && (
+            <button
+              type="button"
+              className="ghost-btn payment-check-btn"
+              disabled={checkState === 'checking'}
+              onClick={() => void checkPayment()}
+            >
+              {t('bill.checkPayment')}
+            </button>
+          )}
           <p className="field-hint">{t('bill.payloadHint')}</p>
         </div>
       )}
@@ -437,7 +541,7 @@ function PlanPayPanel({
   const [channelId, setChannelId] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const [payment, setPayment] = useState<PaymentInfo | null>(null)
+  const [payment, setPayment] = useState<PaymentSession | null>(null)
 
   useEffect(() => {
     void api.billing<{ channels: PayChannel[] }>('listChannels').then((r) => {
@@ -476,12 +580,12 @@ function PlanPayPanel({
                 setPayment(null)
                 setBusy(true)
                 try {
-                  const r = await api.billing<{ payment: PaymentInfo }>('createOrder', {
+                  const r = await api.billing<{ order: OrderRow; payment: PaymentInfo }>('createOrder', {
                     kind: 'plan',
                     planId: plan.id,
                     channelId
                   })
-                  setPayment(r.payment)
+                  setPayment({ orderId: r.order.id, info: r.payment })
                   await onChanged()
                 } catch (e) {
                   setErr(errText(e))
@@ -494,7 +598,7 @@ function PlanPayPanel({
             </button>
           </>
         )}
-        <PaymentResult payment={payment} />
+        <PaymentResult session={payment} onPaid={onChanged} />
       </section>
     </div>
   )
@@ -507,7 +611,7 @@ function TopupTab({ onChanged }: { onChanged: () => Promise<void> }): React.JSX.
   const [amount, setAmount] = useState('10.00')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const [payment, setPayment] = useState<PaymentInfo | null>(null)
+  const [payment, setPayment] = useState<PaymentSession | null>(null)
 
   useEffect(() => {
     void api.billing<{ channels: PayChannel[] }>('listChannels').then((r) => {
@@ -562,12 +666,12 @@ function TopupTab({ onChanged }: { onChanged: () => Promise<void> }): React.JSX.
                 }
                 setBusy(true)
                 try {
-                  const r = await api.billing<{ payment: PaymentInfo }>('createOrder', {
+                  const r = await api.billing<{ order: OrderRow; payment: PaymentInfo }>('createOrder', {
                     kind: 'topup',
                     amountCents,
                     channelId
                   })
-                  setPayment(r.payment)
+                  setPayment({ orderId: r.order.id, info: r.payment })
                   await onChanged()
                 } catch (e) {
                   setErr(errText(e))
@@ -581,7 +685,7 @@ function TopupTab({ onChanged }: { onChanged: () => Promise<void> }): React.JSX.
           </>
         )}
 
-        <PaymentResult payment={payment} />
+        <PaymentResult session={payment} onPaid={onChanged} />
       </section>
     </div>
   )

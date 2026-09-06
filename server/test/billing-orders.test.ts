@@ -113,6 +113,17 @@ describe('结算与幂等', () => {
     )
   })
 
+  test('同一外部流水不能给两笔订单重复入账', () => {
+    const first = order({ amountCents: 1000 })
+    const second = order({ amountCents: 1000 })
+    assert.equal(repo.settle(T, first.id, { tradeNo: 'OKX-BILL-1', now: NOW }).ok, true)
+    const duplicate = repo.settle(T, second.id, { tradeNo: 'OKX-BILL-1', now: NOW })
+    assert.equal(duplicate.ok, false)
+    assert.equal(duplicate.ok === false && duplicate.reason, 'payment_reused')
+    assert.equal(repo.get(T, second.id)?.status, 'pending')
+    assert.equal(billing.getBalance(T, U).balanceCents, 1000)
+  })
+
   test('入账金额是商品价值，客户承担的手续费不进余额', () => {
     const o = order({ fee: { rate: 0.05, fixed: 0, paidBy: 'customer' } })
     repo.settle(T, o.id, { paidAmountLocal: o.payableLocal, now: NOW })

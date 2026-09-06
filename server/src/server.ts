@@ -123,6 +123,8 @@ export interface ServerOverrides {
   xFetch?: typeof fetch
   /** 测试注入：拦截 Snapchat Public Profile API。 */
   snapchatFetch?: typeof fetch
+  /** 测试注入：拦截 USDT/UZF 查账请求。 */
+  paymentFetch?: typeof fetch
 }
 
 export function buildServer(config: ServerConfig, overrides: ServerOverrides = {}): FastifyInstance {
@@ -469,6 +471,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     userIdOf: (email) => clientAuth.userIdOf(email),
     billingUserIdOf: (userId) => clientAuth.billingUserIdOf(userId),
     invites: inviteRepo,
+    paymentFetch: overrides.paymentFetch,
     publicBase
   })
 

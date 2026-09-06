@@ -3086,6 +3086,34 @@ body {
 .pay-payload p { margin: 4px 0; font-size: 13px; }
 .pay-payload code { user-select: text; word-break: break-all; }
 .pp-key { color: var(--text-secondary); font-size: 12px; margin-inline-end: 6px; }
+.usdt-payment {
+  display: grid;
+  gap: 8px;
+  border-style: solid;
+}
+.usdt-payment-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.usdt-payment-row code {
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: var(--panel);
+}
+.ghost-btn.small { padding: 6px 10px; font-size: 12px; }
+.payment-check-state {
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: var(--panel);
+}
+.payment-check-state.checking,
+.payment-check-state.pending { color: #b97818; background: color-mix(in srgb, #d99325 10%, transparent); }
+.payment-check-state.paid { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.payment-check-state.error { color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent); }
+.payment-check-btn { justify-self: start; }
 
 /* ── 语音录制与转文字 ── */
 .rec-bar {

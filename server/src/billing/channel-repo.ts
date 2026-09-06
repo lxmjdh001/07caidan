@@ -40,7 +40,14 @@ export interface ChannelInput {
 }
 
 /** 通道配置里不能回传给前端的键 */
-const SECRET_KEYS = new Set(['key', 'apiKey', 'clientSecret', 'callbackSecret', 'webhookId'])
+const SECRET_KEYS = new Set([
+  'key',
+  'apiKey',
+  'clientSecret',
+  'callbackSecret',
+  'queryApiSecret',
+  'webhookId'
+])
 
 export function maskChannelConfig(config: Record<string, string>): Record<string, string> {
   const out: Record<string, string> = {}

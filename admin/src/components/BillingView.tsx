@@ -388,26 +388,28 @@ function DescModal({
 // ══════════ 支付通道 ══════════
 
 /** 各通道类型需要的配置键与提示 */
-const CHANNEL_CONFIG_KEYS: Record<string, Array<{ key: string; label: string }>> = {
+const CHANNEL_CONFIG_KEYS: Record<string, Array<{ key: string; label: string; secret?: boolean }>> = {
   yipay: [
     { key: 'endpoint', label: '网关地址' },
     { key: 'pid', label: '商户 PID' },
-    { key: 'key', label: '商户密钥' },
+    { key: 'key', label: '商户密钥', secret: true },
     { key: 'payType', label: '支付方式(alipay/wxpay)' }
   ],
   paypal: [
     { key: 'clientId', label: 'Client ID' },
-    { key: 'clientSecret', label: 'Client Secret' },
-    { key: 'webhookId', label: 'Webhook ID' },
+    { key: 'clientSecret', label: 'Client Secret', secret: true },
+    { key: 'webhookId', label: 'Webhook ID', secret: true },
     { key: 'mode', label: 'live / sandbox' }
   ],
   usdt: [
     { key: 'network', label: '网络(TRC20/ERC20)' },
     { key: 'address', label: '收款地址' },
-    { key: 'callbackSecret', label: '回调密钥' },
+    { key: 'queryApiUrl', label: 'UZF 查询服务地址' },
+    { key: 'queryApiSecret', label: 'UZF 查询密钥', secret: true },
+    { key: 'callbackSecret', label: '回调密钥（可选）', secret: true },
     { key: 'minConfirmations', label: '最少确认数' }
   ],
-  mock: [{ key: 'callbackSecret', label: '回调密钥' }]
+  mock: [{ key: 'callbackSecret', label: '回调密钥', secret: true }]
 }
 
 function ChannelsTab({ client }: Props): React.JSX.Element {
@@ -421,6 +423,7 @@ function ChannelsTab({ client }: Props): React.JSX.Element {
   const [feeFixed, setFeeFixed] = useState('0')
   const [feePaidBy, setFeePaidBy] = useState<'merchant' | 'customer'>('merchant')
   const [config, setConfig] = useState<Record<string, string>>({})
+  const [editing, setEditing] = useState<PayChannel | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -463,8 +466,10 @@ function ChannelsTab({ client }: Props): React.JSX.Element {
             <select
               value={type}
               onChange={(e) => {
-                setType(e.target.value)
-                setConfig({})
+                const next = e.target.value
+                setType(next)
+                setCurrency(next === 'usdt' ? 'USDT' : 'USD')
+                setConfig(next === 'usdt' ? { network: 'TRC20', queryApiUrl: 'http://127.0.0.1:6000' } : {})
               }}
             >
               {Object.keys(CHANNEL_CONFIG_KEYS).map((k) => (
@@ -506,6 +511,7 @@ function ChannelsTab({ client }: Props): React.JSX.Element {
             <label key={f.key}>
               <span>{f.label}</span>
               <input
+                type={f.secret ? 'password' : 'text'}
                 value={config[f.key] ?? ''}
                 onChange={(e) => setConfig((c) => ({ ...c, [f.key]: e.target.value }))}
               />
@@ -546,6 +552,9 @@ function ChannelsTab({ client }: Props): React.JSX.Element {
                   </td>
                   <td>{c.feePaidBy === 'customer' ? t('billing.feeCustomer') : t('billing.feeMerchant')}</td>
                   <td>
+                    <button className="ghost small" onClick={() => setEditing(c)}>
+                      {t('common.edit')}
+                    </button>{' '}
                     <button
                       className="ghost small"
                       onClick={async () => {
@@ -572,7 +581,88 @@ function ChannelsTab({ client }: Props): React.JSX.Element {
           </table>
         )}
       </section>
+      {editing && (
+        <ChannelEditModal
+          channel={editing}
+          onClose={() => setEditing(null)}
+          onSave={async (patch) => {
+            await client.updateChannel(editing.id, patch)
+            setEditing(null)
+            await load()
+          }}
+        />
+      )}
     </>
+  )
+}
+
+function ChannelEditModal({
+  channel,
+  onClose,
+  onSave
+}: {
+  channel: PayChannel
+  onClose: () => void
+  onSave: (patch: Partial<PayChannel>) => Promise<void>
+}): React.JSX.Element {
+  const { t } = useI18n()
+  const [name, setName] = useState(channel.name)
+  const [currency, setCurrency] = useState(channel.currency)
+  const [feeRate, setFeeRate] = useState(String(channel.feeRate * 100))
+  const [feeFixed, setFeeFixed] = useState((channel.feeFixedCents / 100).toFixed(2))
+  const [feePaidBy, setFeePaidBy] = useState(channel.feePaidBy)
+  const [config, setConfig] = useState({ ...channel.config })
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <h3>编辑支付通道</h3>
+        <div className="field"><span>{t('billing.channelType')}</span><input value={channel.type} disabled /></div>
+        <div className="field"><span>{t('billing.channelName')}</span><input value={name} onChange={(e) => setName(e.target.value)} /></div>
+        <div className="form-row">
+          <label><span>{t('billing.currency')}</span><input value={currency} onChange={(e) => setCurrency(e.target.value)} /></label>
+          <label><span>{t('billing.feeRatePct')}</span><input value={feeRate} onChange={(e) => setFeeRate(e.target.value)} /></label>
+          <label><span>{t('billing.feeFixedUsd')}</span><input value={feeFixed} onChange={(e) => setFeeFixed(e.target.value)} /></label>
+          <label><span>{t('billing.feePaidBy')}</span><select value={feePaidBy} onChange={(e) => setFeePaidBy(e.target.value as 'merchant' | 'customer')}><option value="merchant">{t('billing.feeMerchant')}</option><option value="customer">{t('billing.feeCustomer')}</option></select></label>
+        </div>
+        {(CHANNEL_CONFIG_KEYS[channel.type] ?? []).map((field) => (
+          <div className="field" key={field.key}>
+            <span>{field.label}</span>
+            <input
+              type={field.secret ? 'password' : 'text'}
+              value={config[field.key] ?? ''}
+              onFocus={(e) => field.secret && e.currentTarget.value === '••••••' && e.currentTarget.select()}
+              onChange={(e) => setConfig((current) => ({ ...current, [field.key]: e.target.value }))}
+            />
+          </div>
+        ))}
+        {err && <p className="err small">{err}</p>}
+        <div className="modal-actions">
+          <button className="ghost" onClick={onClose}>{t('common.cancel')}</button>
+          <button className="primary" disabled={busy} onClick={async () => {
+            if (!name.trim()) return setErr(t('billing.errName'))
+            const parsedFee = parseUsd(feeFixed)
+            if (parsedFee === null) return setErr(t('billing.errPrice'))
+            setBusy(true)
+            try {
+              await onSave({
+                name: name.trim(),
+                currency: currency.trim().toUpperCase(),
+                feeRate: Math.max(0, Number(feeRate) || 0) / 100,
+                feeFixedCents: parsedFee,
+                feePaidBy,
+                config
+              })
+            } catch (error) {
+              setErr((error as Error).message)
+              setBusy(false)
+            }
+          }}>{t('common.save')}</button>
+        </div>
+      </div>
+    </div>
   )
 }
 

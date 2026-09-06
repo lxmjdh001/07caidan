@@ -1,0 +1,20 @@
+[Unit]
+Description=WzzScrm UZF query API
+After=uzf-monitor.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/omnichat/repo/services/uzf
+Environment=UZF_CONFIG=/etc/omnichat/uzf.json
+ExecStart=/opt/omnichat/uzf-venv/bin/gunicorn --workers 2 --threads 2 --bind 127.0.0.1:6000 --access-logfile - --error-logfile - query_api:app
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadOnlyPaths=/var/lib/omnichat
+
+[Install]
+WantedBy=multi-user.target

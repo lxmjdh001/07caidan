@@ -76,6 +76,16 @@ BRAND=prod UPDATE_URL=https://wzzapp.cloud/updates npm run dist
 `OMNI_TG_API_ID` 与 `OMNI_TG_API_HASH` 放在被 Git 忽略的
 `client/.env.production.local`，不要写入源码或提交仓库。
 
+## USDT 自动查账
+
+USDT 使用仓库内 `services/uzf` 监控 OKX 的已入账充值记录。把
+`services/uzf/config.json.example` 复制为服务器 `/etc/omnichat/uzf.json`，填写只读
+OKX API 凭证、实际收款网络/地址和随机查询密钥。下一次执行 `deploy/deploy.sh` 会自动
+安装并启动 `uzf-monitor` 与 `uzf-query`；查询接口只监听服务器回环地址。
+
+管理后台创建 USDT 通道时填写：币种 `USDT`、汇率 `1`、UZF 查询服务地址
+`http://127.0.0.1:6000`，并填写与 `uzf.json` 相同的查询密钥。
+
 ## 安全约束
 
 - 优先使用 SSH 密钥登录服务器，并更换曾明文传递过的密码。

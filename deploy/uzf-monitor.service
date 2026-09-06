@@ -1,0 +1,21 @@
+[Unit]
+Description=WzzScrm UZF OKX deposit monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/omnichat/repo/services/uzf
+Environment=UZF_CONFIG=/etc/omnichat/uzf.json
+ExecStart=/opt/omnichat/uzf-venv/bin/python okx_monitor.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/omnichat
+
+[Install]
+WantedBy=multi-user.target

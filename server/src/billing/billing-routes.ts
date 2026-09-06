@@ -9,7 +9,8 @@ import { ChannelRepo, maskChannelConfig, type PaymentChannel } from './channel-r
 import { MockGateway } from './gateways/mock.ts'
 import { PaypalGateway } from './gateways/paypal.ts'
 import type { PaymentGateway } from './gateways/types.ts'
-import { UsdtGateway } from './gateways/usdt.ts'
+import { UsdtGateway, uniqueAmount as uniqueUsdtAmount } from './gateways/usdt.ts'
+import { queryUzfPayments } from './gateways/uzf-query.ts'
 import { YipayGateway } from './gateways/yipay.ts'
 import type { OrderRepo } from './order-repo.ts'
 import type { PeriodUnit } from './plans.ts'
@@ -40,6 +41,8 @@ export interface BillingRouteDeps {
   /** 子账号映射到主账号计费主体。 */
   billingUserIdOf?: (userId: number) => number | undefined
   invites: InviteRepo
+  /** 测试注入：拦截 UZF 查账请求，生产默认使用全局 fetch。 */
+  paymentFetch?: typeof fetch
 }
 
 const GATEWAYS: Record<string, PaymentGateway> = {
@@ -60,7 +63,7 @@ const PERIOD_UNITS: PeriodUnit[] = ['month', 'quarter', 'half_year', 'year', 'da
  * - 支付通道（公开回调）：/pay/notify/:tenant/:channelId，靠各通道自己的验签
  */
 export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDeps): void {
-  const { billing, orders, channels, ai, aiClient, ctxOf, requirePerm, publicBase, emailOf, userIdOf, billingUserIdOf, invites } = deps
+  const { billing, orders, channels, ai, aiClient, ctxOf, requirePerm, publicBase, emailOf, userIdOf, billingUserIdOf, invites, paymentFetch } = deps
 
   /**
    * 客户端用户守卫：必须是邮箱登录的桌面端用户（静态同步令牌没有身份，不能有钱包）。
@@ -374,7 +377,7 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     if (!requirePerm(req, reply, 'billing:manage')) return
     const tenant = ctxOf(req).tenant
     const orderId = (req.params as { id: string }).id
-    const settled = orders.settle(tenant, orderId, { tradeNo: 'manual-admin' })
+    const settled = orders.settle(tenant, orderId, { tradeNo: `manual-admin:${orderId}` })
     if (!settled.ok) {
       const msg =
         settled.reason === 'not_found'
@@ -550,18 +553,24 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     const rate = channels.getRate(tenant, channel.currency)
     if (!rate) return reply.code(400).send({ error: `未配置 ${channel.currency} 汇率` })
 
-    const order = orders.create(tenant, {
-      userId,
-      kind,
-      amountCents,
-      planId,
-      channelId: channel.id,
-      channelType: channel.type,
-      fee: channels.feeOf(channel),
-      currency: rate.currency,
-      rate: rate.rate,
-      decimals: rate.decimals
-    })
+    let order
+    try {
+      order = orders.create(tenant, {
+        userId,
+        kind,
+        amountCents,
+        planId,
+        channelId: channel.id,
+        channelType: channel.type,
+        fee: channels.feeOf(channel),
+        currency: rate.currency,
+        rate: rate.rate,
+        decimals: rate.decimals
+      })
+    } catch (error) {
+      req.log.warn({ err: String(error), channelId: channel.id }, '创建支付订单失败')
+      return reply.code(409).send({ error: error instanceof Error ? error.message : '创建订单失败' })
+    }
 
     const payment = gateway.createPayment(
       {
@@ -577,6 +586,68 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     )
 
     return { order, payment }
+  })
+
+  /**
+   * 客户端轮询 USDT 到账状态。查询密钥只留在服务器通道配置中；客户端只提交订单号。
+   * UZF 返回全部同金额流水，这里再校验订单时间并用 bill_id 防重复认领。
+   */
+  app.post('/api/billing/orders/:id/check', async (req, reply) => {
+    const userId = requireClientUser(req, reply, 'billing:manage')
+    if (userId === null) return
+    const tenant = ctxOf(req).tenant
+    const orderId = (req.params as { id: string }).id
+    const order = orders.get(tenant, orderId)
+    if (!order || order.userId !== userId) return reply.code(404).send({ error: '订单不存在' })
+    if (order.status === 'paid') return { paid: true, order }
+    if (order.status !== 'pending') return { paid: false, order }
+    if (order.expiresAt <= Date.now()) {
+      orders.markExpired(tenant, order.id)
+      return { paid: false, order: orders.get(tenant, order.id) }
+    }
+    if (order.channelType !== 'usdt' || !order.channelId) {
+      return reply.code(400).send({ error: '该订单不支持主动查账' })
+    }
+
+    const channel = channels.get(tenant, order.channelId)
+    if (!channel) return reply.code(404).send({ error: '支付通道不存在' })
+    const expectedMinor = uniqueUsdtAmount(order.payableLocal, order.id)
+    const queried = await queryUzfPayments({
+      baseUrl: channel.config.queryApiUrl ?? '',
+      secret: channel.config.queryApiSecret ?? '',
+      amountMinor: expectedMinor,
+      currency: 'USDT',
+      notBeforeMs: order.createdAt,
+      fetchFn: paymentFetch
+    })
+    if (!queried.ok) {
+      const configurationError = queried.reason === 'not_configured' || queried.reason === 'bad_url'
+      req.log.warn({ orderId, reason: queried.reason }, 'USDT 自动查账失败')
+      return reply.code(configurationError ? 503 : 502).send({
+        error: configurationError ? 'USDT 自动查账尚未配置' : 'USDT 查账服务暂时不可用',
+        reason: queried.reason
+      })
+    }
+
+    for (const transfer of queried.transfers) {
+      const settled = orders.settle(tenant, order.id, {
+        tradeNo: transfer.billId,
+        paidAmountLocal: transfer.amountMinor
+      })
+      // 该流水已被另一订单认领时继续看下一条同金额流水。
+      if (!settled.ok && settled.reason === 'payment_reused') continue
+      if (!settled.ok) {
+        return reply.code(400).send({ error: '订单结算失败', reason: settled.reason })
+      }
+      if (!settled.alreadyPaid && settled.order.kind === 'plan' && settled.order.planId) {
+        const change = billing.changePlan(tenant, settled.order.userId, settled.order.planId)
+        if (!change.ok) {
+          req.log.warn({ orderId, reason: change.reason }, 'USDT 到账后自动开通套餐失败，金额已留在余额')
+        }
+      }
+      return { paid: true, order: orders.get(tenant, order.id) }
+    }
+    return { paid: false, order }
   })
 
   /** 用余额订阅/升降级套餐（不经支付通道） */

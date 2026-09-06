@@ -63,6 +63,10 @@ export class BillingApi {
     return this.request('POST', '/api/billing/orders', body)
   }
 
+  checkOrder(orderId: string): Promise<unknown> {
+    return this.request('POST', `/api/billing/orders/${encodeURIComponent(orderId)}/check`)
+  }
+
   subscribe(planId: string): Promise<unknown> {
     return this.request('POST', '/api/billing/subscribe', { planId })
   }

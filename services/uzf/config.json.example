@@ -1,0 +1,20 @@
+{
+  "okx": {
+    "api_key": "只读_OKX_API_KEY",
+    "secret_key": "OKX_SECRET_KEY",
+    "passphrase": "OKX_API_PASSPHRASE"
+  },
+  "monitor": {
+    "currency": "USDT",
+    "chain": "USDT-TRC20",
+    "address": "你的_OKX_USDT_充值地址",
+    "interval": 10,
+    "time_window_seconds": 7200,
+    "json_file": "/var/lib/omnichat/okx-transfers.json"
+  },
+  "query_api": {
+    "host": "127.0.0.1",
+    "port": 6000,
+    "secret": "至少32位随机查询密钥"
+  }
+}

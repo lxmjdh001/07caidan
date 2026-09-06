@@ -28,6 +28,7 @@ let app: FastifyInstance
 /** 管理员令牌 / 客户端用户令牌 */
 let adminToken = ''
 let userToken = ''
+let uzfTransfers: Array<Record<string, unknown>> = []
 
 function makeConfig(dbPath: string): ServerConfig {
   return {
@@ -81,8 +82,13 @@ after(async () => {
 
 beforeEach(async () => {
   await app?.close()
+  uzfTransfers = []
   app = buildServer(makeConfig(join(dir, `${Math.random().toString(36).slice(2)}.db`)), {
-    aiClient: fakeAiClient()
+    aiClient: fakeAiClient(),
+    paymentFetch: async () => new Response(JSON.stringify({
+      success: true,
+      data: { transfers: uzfTransfers, count: uzfTransfers.length }
+    }), { status: 200, headers: { 'content-type': 'application/json' } })
   })
   await app.ready()
   adminToken = (await api('POST', '/api/login', { username: 'admin', password: 'admin' }, null))
@@ -92,6 +98,22 @@ beforeEach(async () => {
   ).json.token
   assert.ok(adminToken && userToken)
 })
+
+async function usdtChannel(): Promise<string> {
+  const r = await api('POST', '/api/admin/channels', {
+    type: 'usdt',
+    name: 'USDT-TRC20',
+    currency: 'USDT',
+    config: {
+      network: 'TRC20',
+      address: 'TTESTADDRESS',
+      queryApiUrl: 'http://uzf.test:6000',
+      queryApiSecret: 'query-secret'
+    }
+  }, adminToken)
+  assert.equal(r.status, 200, r.text)
+  return r.json.channel.id
+}
 
 /** 管理员建一个 mock 支付通道 */
 async function mockChannel(over: Record<string, unknown> = {}): Promise<string> {
@@ -221,6 +243,70 @@ describe('充值全链路（mock 通道）', () => {
       channelId: ch
     })
     assert.equal(r.status, 400)
+  })
+})
+
+describe('USDT + UZF 自动查账', () => {
+  test('精确金额到账后自动入账', async () => {
+    const channelId = await usdtChannel()
+    const created = await api('POST', '/api/billing/orders', {
+      kind: 'topup',
+      amountCents: 1000,
+      channelId
+    })
+    assert.equal(created.status, 200, created.text)
+    const { order, payment } = created.json
+    assert.equal(payment.payload.network, 'TRC20')
+    assert.equal(payment.payload.address, 'TTESTADDRESS')
+
+    uzfTransfers = [{
+      bill_id: 'OKX-BILL-PAID-1',
+      amount: Number(payment.payload.amount),
+      currency: 'USDT',
+      bill_timestamp: order.createdAt + 1000
+    }]
+    const checked = await api('POST', `/api/billing/orders/${order.id}/check`, {})
+    assert.equal(checked.status, 200, checked.text)
+    assert.equal(checked.json.paid, true)
+    assert.equal((await api('GET', '/api/billing/me')).json.balance.balanceCents, 1000)
+  })
+
+  test('同一 OKX 流水不能被第二个订单再次认领', async () => {
+    const channelId = await usdtChannel()
+    const first = (await api('POST', '/api/billing/orders', {
+      kind: 'topup', amountCents: 1000, channelId
+    })).json
+    uzfTransfers = [{
+      bill_id: 'ONE-BILL', amount: Number(first.payment.payload.amount), currency: 'USDT',
+      bill_timestamp: first.order.createdAt + 1
+    }]
+    assert.equal((await api('POST', `/api/billing/orders/${first.order.id}/check`, {})).json.paid, true)
+
+    const second = (await api('POST', '/api/billing/orders', {
+      kind: 'topup', amountCents: 1000, channelId
+    })).json
+    uzfTransfers = [{
+      bill_id: 'ONE-BILL', amount: Number(second.payment.payload.amount), currency: 'USDT',
+      bill_timestamp: second.order.createdAt + 1
+    }]
+    const checked = await api('POST', `/api/billing/orders/${second.order.id}/check`, {})
+    assert.equal(checked.status, 200, checked.text)
+    assert.equal(checked.json.paid, false)
+    assert.equal((await api('GET', '/api/billing/me')).json.balance.balanceCents, 1000)
+  })
+
+  test('订单创建前的旧流水不会入账', async () => {
+    const channelId = await usdtChannel()
+    const created = (await api('POST', '/api/billing/orders', {
+      kind: 'topup', amountCents: 1000, channelId
+    })).json
+    uzfTransfers = [{
+      bill_id: 'OLD-BILL', amount: Number(created.payment.payload.amount), currency: 'USDT',
+      bill_timestamp: created.order.createdAt - 10 * 60_000
+    }]
+    const checked = await api('POST', `/api/billing/orders/${created.order.id}/check`, {})
+    assert.equal(checked.json.paid, false)
+    assert.equal((await api('GET', '/api/billing/me')).json.balance.balanceCents, 0)
   })
 })
 

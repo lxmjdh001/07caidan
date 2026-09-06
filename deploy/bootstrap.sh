@@ -47,7 +47,7 @@ fi
 
 echo "==> 安装编译工具（better-sqlite3 原生编译）"
 case "$PM" in
-    apt) apt-get install -y build-essential python3 sqlite3 gzip ;;
+    apt) apt-get install -y build-essential python3 python3-venv sqlite3 gzip ;;
     dnf|yum) "$PM" groupinstall -y "Development Tools" || "$PM" install -y gcc gcc-c++ make; "$PM" install -y python3 sqlite gzip ;;
 esac
 
