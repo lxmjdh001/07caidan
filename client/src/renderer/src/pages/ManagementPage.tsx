@@ -11,6 +11,7 @@ interface Props {
   onOpenProxy: () => void
   onOpenWorkorders: () => void
   onOpenQuickMessages: () => void
+  onOpenInvites: () => void
 }
 
 interface Card {
@@ -30,7 +31,8 @@ export function ManagementPage({
   onOpenSubaccounts,
   onOpenProxy,
   onOpenWorkorders,
-  onOpenQuickMessages
+  onOpenQuickMessages,
+  onOpenInvites
 }: Props): React.JSX.Element {
   const { t } = useI18n()
   const cards: Card[] = [
@@ -62,8 +64,9 @@ export function ManagementPage({
       id: 'invites',
       titleKey: 'management.invites',
       descKey: 'management.invitesDesc',
-      available: false,
-      visible: canSubaccounts
+      available: true,
+      visible: canSubaccounts,
+      action: onOpenInvites
     },
     {
       id: 'quick-messages',

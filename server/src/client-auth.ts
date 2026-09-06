@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto'
-import { and, eq, gt, inArray, isNotNull, lt } from 'drizzle-orm'
+import { and, eq, gt, inArray, isNotNull, lt, sql } from 'drizzle-orm'
 import { hashPassword, newSessionToken, verifyPassword } from './auth.ts'
 import type { Db } from './db.ts'
 import { randomUUID } from 'node:crypto'
-import { clientConfigs, clientRoles, clientSessions, clientUsers, emailCodes } from './schema.ts'
+import { clientConfigs, clientRoles, clientSessions, clientUsers, emailCodes, inviteCodes, referrals } from './schema.ts'
 import {
   CLIENT_ROLE_PRESETS,
   canDelegate,
@@ -226,35 +226,80 @@ export class ClientAuthRepo {
     password: string,
     code: string | undefined,
     requireVerify: boolean,
-    device?: DeviceInfo
+    device?: DeviceInfo,
+    inviteCode?: string
   ): RegisterResult {
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    const normalizedEmail = email.trim().toLowerCase()
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail)) {
       return { ok: false, error: '邮箱格式不正确' }
     }
     if (password.length < 6) return { ok: false, error: '密码至少 6 位' }
 
-    const exists = this.db.select().from(clientUsers).where(eq(clientUsers.email, email)).get()
+    const exists = this.db.select().from(clientUsers).where(eq(clientUsers.email, normalizedEmail)).get()
     if (exists) return { ok: false, error: '该邮箱已注册' }
 
     if (requireVerify) {
       if (!code) return { ok: false, error: '请输入邮箱验证码' }
-      if (!this.checkCode(email, code)) return { ok: false, error: '验证码错误或已过期' }
+      if (!this.checkCode(normalizedEmail, code)) return { ok: false, error: '验证码错误或已过期' }
+    }
+    const normalizedInvite = inviteCode?.trim().toUpperCase().replace(/[\s-]+/g, '') || ''
+    if (normalizedInvite && !/^[A-Z0-9]{6,24}$/.test(normalizedInvite)) {
+      return { ok: false, error: '邀请码格式不正确' }
     }
 
-    const res = this.db
-      .insert(clientUsers)
-      .values({
-        tenant,
-        email,
-        passwordHash: hashPassword(password),
-        verified: requireVerify ? 1 : 0,
-        createdAt: Date.now()
+    const now = Date.now()
+    let userId = 0
+    try {
+      userId = this.db.transaction((tx) => {
+        let invite: typeof inviteCodes.$inferSelect | undefined
+        if (normalizedInvite) {
+          invite = tx
+            .select()
+            .from(inviteCodes)
+            .where(and(eq(inviteCodes.tenant, tenant), eq(inviteCodes.code, normalizedInvite)))
+            .get()
+          if (!invite || invite.enabled !== 1) throw new Error('INVITE_DISABLED')
+          if (invite.expiresAt != null && invite.expiresAt <= now) throw new Error('INVITE_EXPIRED')
+          if (invite.maxUses > 0 && invite.usedCount >= invite.maxUses) throw new Error('INVITE_FULL')
+        }
+
+        const res = tx
+          .insert(clientUsers)
+          .values({
+            tenant,
+            email: normalizedEmail,
+            passwordHash: hashPassword(password),
+            verified: requireVerify ? 1 : 0,
+            createdAt: now
+          })
+          .run()
+        const id = Number(res.lastInsertRowid)
+        if (invite) {
+          tx.insert(referrals).values({
+            tenant,
+            inviteeUserId: id,
+            inviterUserId: invite.inviterUserId,
+            inviteCode: invite.code,
+            createdAt: now
+          }).run()
+          tx.update(inviteCodes)
+            .set({ usedCount: sql`${inviteCodes.usedCount} + 1`, updatedAt: now })
+            .where(and(eq(inviteCodes.tenant, tenant), eq(inviteCodes.code, invite.code)))
+            .run()
+        }
+        return id
       })
-      .run()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : ''
+      if (message === 'INVITE_DISABLED') return { ok: false, error: '邀请码不存在或已停用' }
+      if (message === 'INVITE_EXPIRED') return { ok: false, error: '邀请码已过期' }
+      if (message === 'INVITE_FULL') return { ok: false, error: '邀请码使用次数已满' }
+      return { ok: false, error: '注册失败，请稍后重试' }
+    }
     const user: ClientUser = {
-      id: Number(res.lastInsertRowid),
+      id: userId,
       tenant,
-      email,
+      email: normalizedEmail,
       verified: requireVerify,
       role: 'boss',
       permissions: [...CLIENT_ROLE_PRESETS.boss!]

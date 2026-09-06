@@ -83,6 +83,9 @@ const BILLING_METHODS: Record<string, true> = {
   listChannels: true,
   listOrders: true,
   listLedger: true,
+  inviteDashboard: true,
+  createInvite: true,
+  setInviteEnabled: true,
   listProxyVendors: true,
   createOrder: true,
   subscribe: true,
@@ -600,8 +603,8 @@ export function registerIpc(deps: IpcDeps): void {
   )
   ipcMain.handle(
     IPC_METHODS.authRegister,
-    async (_e, url: string, email: string, pw: string, code?: string) => {
-      const r = await auth.register(url, email, pw, code)
+    async (_e, url: string, email: string, pw: string, code?: string, inviteCode?: string) => {
+      const r = await auth.register(url, email, pw, code, inviteCode)
       if (r.ok) {
         await deps.configSync.pull()
         await deps.onAuthReady()

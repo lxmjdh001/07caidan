@@ -47,6 +47,7 @@ interface Props {
   onOpenSubaccounts: () => void
   onOpenWorkorders: () => void
   onOpenQuickMessages: () => void
+  onOpenInvites: () => void
   canSubaccounts: boolean
   canProxy: boolean
   canWorkorders: boolean
@@ -77,7 +78,7 @@ function dateText(ts?: number): string {
   return ts ? new Date(ts).toLocaleDateString() : '—'
 }
 
-export function HomePage({ settings, channels, plugins, onOpenApp, onOpenManagement, onOpenProxy, onOpenSubaccounts, onOpenWorkorders, onOpenQuickMessages, canSubaccounts, canProxy, canWorkorders, canQuickMessages, onRefresh }: Props): React.JSX.Element {
+export function HomePage({ settings, channels, plugins, onOpenApp, onOpenManagement, onOpenProxy, onOpenSubaccounts, onOpenWorkorders, onOpenQuickMessages, onOpenInvites, canSubaccounts, canProxy, canWorkorders, canQuickMessages, onRefresh }: Props): React.JSX.Element {
   const { t } = useI18n()
   const [billing, setBilling] = useState<BillingMe | null>(null)
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
@@ -151,7 +152,7 @@ export function HomePage({ settings, channels, plugins, onOpenApp, onOpenManagem
             { id: 'subaccounts', title: t('management.subaccounts'), desc: t('management.subaccountsDesc'), available: true, visible: canSubaccounts, action: onOpenSubaccounts },
             { id: 'proxy', title: t('management.proxy'), desc: t('management.proxyDesc'), available: true, visible: canProxy, action: onOpenProxy },
             { id: 'workorders', title: t('management.workorders'), desc: t('management.workordersDesc'), available: true, visible: canWorkorders, action: onOpenWorkorders },
-            { id: 'invites', title: t('management.invites'), desc: t('management.invitesDesc'), available: false, visible: canSubaccounts },
+            { id: 'invites', title: t('management.invites'), desc: t('management.invitesDesc'), available: true, visible: canSubaccounts, action: onOpenInvites },
             { id: 'quick-messages', title: t('management.quickMessages'), desc: t('management.quickMessagesDesc'), available: true, visible: canQuickMessages, action: onOpenQuickMessages }
           ].filter((item) => item.visible).map((item) => (
             <button key={item.id} type="button" data-testid={`management-${item.id}`} className={`home-management-card ${item.available ? '' : 'is-pending'}`} disabled={!item.available} onClick={item.action}>

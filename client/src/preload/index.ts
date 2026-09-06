@@ -89,8 +89,8 @@ const api: OmniApi = {
   authConfig: (serverUrl: string) => ipcRenderer.invoke(IPC_METHODS.authConfig, serverUrl),
   authSendCode: (serverUrl: string, email: string) =>
     ipcRenderer.invoke(IPC_METHODS.authSendCode, serverUrl, email),
-  authRegister: (serverUrl: string, email: string, password: string, code?: string) =>
-    ipcRenderer.invoke(IPC_METHODS.authRegister, serverUrl, email, password, code),
+  authRegister: (serverUrl: string, email: string, password: string, code?: string, inviteCode?: string) =>
+    ipcRenderer.invoke(IPC_METHODS.authRegister, serverUrl, email, password, code, inviteCode),
   authLogin: (serverUrl: string, email: string, password: string) =>
     ipcRenderer.invoke(IPC_METHODS.authLogin, serverUrl, email, password),
   authForgotPassword: (serverUrl: string, email: string) =>

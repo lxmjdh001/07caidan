@@ -86,12 +86,13 @@ export class ClientAuth {
     serverUrl: string,
     email: string,
     password: string,
-    code?: string
+    code?: string,
+    inviteCode?: string
   ): Promise<AuthResult> {
     return this.authFlow(
       serverUrl,
       '/api/client/register',
-      { email, password, code, ...deviceFields() },
+      { email, password, code, inviteCode: inviteCode?.trim() || undefined, ...deviceFields() },
       email
     )
   }

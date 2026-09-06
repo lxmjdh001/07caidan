@@ -321,6 +321,48 @@ export interface AdminOrder {
   paidAt?: number
 }
 
+export interface AdminInviteCode {
+  code: string
+  inviterUserId: number
+  inviterEmail?: string
+  enabled: boolean
+  maxUses: number
+  usedCount: number
+  expiresAt?: number
+  createdAt: number
+}
+
+export interface AdminReferral {
+  userId: number
+  email: string
+  inviterUserId?: number
+  inviterEmail?: string
+  inviteCode: string
+  registeredAt: number
+  commissionCents: number
+}
+
+export interface AdminCommission {
+  id: number
+  inviterUserId: number
+  inviteeUserId: number
+  inviterEmail?: string
+  inviteeEmail?: string
+  eventType: 'topup' | 'spend'
+  baseCents: number
+  rateBps: number
+  commissionCents: number
+  createdAt: number
+}
+
+export interface AdminInviteOverview {
+  rateBps: number
+  totalCommissionCents: number
+  codes: AdminInviteCode[]
+  referrals: AdminReferral[]
+  commissions: AdminCommission[]
+}
+
 export class ApiClient {
   constructor(
     private readonly base: string,
@@ -549,6 +591,17 @@ export class ApiClient {
     autoTopUpCredits?: boolean
   }): Promise<{ settings: { creditsPerUsd: number; autoTopUpCredits: boolean } }> {
     return this.req('/api/admin/billing-settings', { method: 'PUT', body: JSON.stringify(body) })
+  }
+
+  inviteOverview(): Promise<AdminInviteOverview> {
+    return this.req('/api/admin/invites')
+  }
+
+  updateCommissionRate(ratePercent: number): Promise<{ rateBps: number; ratePercent: number }> {
+    return this.req('/api/admin/commission-settings', {
+      method: 'PUT',
+      body: JSON.stringify({ ratePercent })
+    })
   }
 
   usageSummary(): Promise<{

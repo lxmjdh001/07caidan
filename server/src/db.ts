@@ -115,6 +115,38 @@ export function openDb(dbPath: string): Db {
       enabled INTEGER NOT NULL DEFAULT 1,
       created_at INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS invite_codes (
+      tenant TEXT NOT NULL, code TEXT NOT NULL, inviter_user_id INTEGER NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1, max_uses INTEGER NOT NULL DEFAULT 0,
+      used_count INTEGER NOT NULL DEFAULT 0, expires_at INTEGER,
+      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, code)
+    );
+    CREATE INDEX IF NOT EXISTS idx_invite_codes_owner
+      ON invite_codes (tenant, inviter_user_id, created_at);
+    CREATE TABLE IF NOT EXISTS referrals (
+      tenant TEXT NOT NULL, invitee_user_id INTEGER NOT NULL, inviter_user_id INTEGER NOT NULL,
+      invite_code TEXT NOT NULL, created_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, invitee_user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_referrals_inviter
+      ON referrals (tenant, inviter_user_id, created_at);
+    CREATE TABLE IF NOT EXISTS commission_settings (
+      tenant TEXT PRIMARY KEY, rate_bps INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS commission_ledger (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, tenant TEXT NOT NULL,
+      inviter_user_id INTEGER NOT NULL, invitee_user_id INTEGER NOT NULL,
+      source_ledger_id INTEGER NOT NULL, event_type TEXT NOT NULL,
+      base_cents INTEGER NOT NULL, rate_bps INTEGER NOT NULL,
+      commission_cents INTEGER NOT NULL, created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_commission_beneficiary
+      ON commission_ledger (tenant, inviter_user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_commission_source_user
+      ON commission_ledger (tenant, invitee_user_id, created_at);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_commission_source_ledger
+      ON commission_ledger (tenant, source_ledger_id);
     CREATE TABLE IF NOT EXISTS client_roles (
       tenant TEXT NOT NULL, id TEXT NOT NULL, owner_id INTEGER NOT NULL,
       name TEXT NOT NULL, permissions TEXT NOT NULL DEFAULT '[]',

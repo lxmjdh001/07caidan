@@ -36,6 +36,18 @@ export class BillingApi {
     return this.request('GET', '/api/billing/ledger')
   }
 
+  inviteDashboard(): Promise<unknown> {
+    return this.request('GET', '/api/invites/me')
+  }
+
+  createInvite(body: { code?: string; maxUses?: number; expiresAt?: number }): Promise<unknown> {
+    return this.request('POST', '/api/invites', body)
+  }
+
+  setInviteEnabled(code: string, enabled: boolean): Promise<unknown> {
+    return this.request('PATCH', `/api/invites/${encodeURIComponent(code)}`, { enabled })
+  }
+
   /** 客户端代理采购目录（服务器后台可配置，只返回已上架项目）。 */
   listProxyVendors(region?: 'global' | 'china'): Promise<unknown> {
     const query = region ? `?region=${encodeURIComponent(region)}` : ''

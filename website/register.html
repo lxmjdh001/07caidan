@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="注册 WzzScrm 客户工作台账号" />
+    <title>注册 WzzScrm</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/brand.css" />
+    <link rel="stylesheet" href="/register.css" />
+  </head>
+  <body>
+    <header class="register-nav">
+      <a class="brand" href="/"><span class="brand-mark"><svg viewBox="0 0 64 64" aria-hidden="true"><path d="M14 19 24 46 32 29 40 46 50 19" /></svg></span><span>WzzScrm</span></a>
+      <a href="/">返回官网</a>
+    </header>
+    <main class="register-shell">
+      <section class="register-copy">
+        <span class="register-kicker">WzzScrm 客户工作台</span>
+        <h1>创建账号，开始连接你的客户</h1>
+        <p>注册后下载客户端，用同一个账号登录 Mac 或 Windows，聊天资料、团队配置与账户余额会跟随账号同步。</p>
+        <ul><li>全渠道消息集中处理</li><li>跨设备安全同步</li><li>团队角色与权限管理</li></ul>
+      </section>
+      <section class="register-card" aria-labelledby="register-title">
+        <div id="register-form">
+          <h2 id="register-title">注册账号</h2>
+          <p class="card-sub">邀请码为选填，没有邀请码也可以正常注册。</p>
+          <label><span>邮箱</span><input id="email" type="email" autocomplete="email" placeholder="name@company.com" /></label>
+          <label><span>密码</span><input id="password" type="password" autocomplete="new-password" minlength="6" placeholder="至少 6 位" /></label>
+          <label><span>确认密码</span><input id="confirm-password" type="password" autocomplete="new-password" minlength="6" /></label>
+          <label id="code-field" hidden><span>邮箱验证码</span><span class="inline-input"><input id="code" inputmode="numeric" maxlength="6" /><button id="send-code" type="button">发送验证码</button></span></label>
+          <label><span>邀请码 <small>选填</small></span><input id="invite" maxlength="24" autocomplete="off" placeholder="例如 WZZ123456" /></label>
+          <div id="message" class="form-message" hidden></div>
+          <button id="register-button" class="register-button" type="button">免费注册</button>
+          <p class="legal">注册即表示你同意平台服务与隐私规则。</p>
+        </div>
+        <div id="register-success" class="register-success" hidden>
+          <span class="success-icon">✓</span><h2>注册成功</h2><p>请下载 WzzScrm 客户端，并使用刚才的邮箱和密码登录。</p>
+          <a class="register-button" href="/#download">下载客户端</a><a class="back-home" href="/">返回官网</a>
+        </div>
+      </section>
+    </main>
+    <script>
+      const API = 'https://wzzapp.cloud'
+      const el = (id) => document.getElementById(id)
+      const params = new URLSearchParams(location.search)
+      const initialInvite = (params.get('invite') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24)
+      el('invite').value = initialInvite
+      let requireVerify = false
+      let sending = false
+      const showMessage = (text, ok = false) => {
+        const node = el('message'); node.hidden = !text; node.textContent = text; node.className = `form-message ${ok ? 'ok' : 'error'}`
+      }
+      async function api(path, body) {
+        const res = await fetch(API + path, { method: body ? 'POST' : 'GET', headers: body ? { 'content-type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(data.error || `请求失败（${res.status}）`)
+        return data
+      }
+      void api('/api/client/config').then((config) => { requireVerify = !!config.requireEmailVerify; el('code-field').hidden = !requireVerify }).catch(() => showMessage('暂时无法连接服务器，请稍后重试'))
+      el('invite').addEventListener('input', (event) => { event.target.value = event.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, '') })
+      el('send-code').addEventListener('click', async () => {
+        if (sending) return
+        const email = el('email').value.trim().toLowerCase()
+        if (!email) return showMessage('请先填写邮箱')
+        sending = true; el('send-code').disabled = true; showMessage('')
+        try { await api('/api/client/send-code', { email }); showMessage('验证码已发送，10 分钟内有效。', true); el('send-code').textContent = '已发送' }
+        catch (error) { showMessage(error.message); el('send-code').disabled = false }
+        finally { sending = false }
+      })
+      el('register-button').addEventListener('click', async () => {
+        const email = el('email').value.trim().toLowerCase()
+        const password = el('password').value
+        const confirm = el('confirm-password').value
+        const code = el('code').value.trim()
+        const inviteCode = el('invite').value.trim()
+        if (!email || !password || !confirm || (requireVerify && !code)) return showMessage('请填写完整')
+        if (password.length < 6) return showMessage('密码至少 6 位')
+        if (password !== confirm) return showMessage('两次输入的密码不一致')
+        const button = el('register-button'); button.disabled = true; button.textContent = '注册中…'; showMessage('')
+        try {
+          await api('/api/client/register', { email, password, code: code || undefined, inviteCode: inviteCode || undefined })
+          el('register-form').hidden = true; el('register-success').hidden = false
+        } catch (error) { showMessage(error.message); button.disabled = false; button.textContent = '免费注册' }
+      })
+    </script>
+  </body>
+</html>

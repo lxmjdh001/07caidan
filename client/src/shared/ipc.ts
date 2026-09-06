@@ -234,7 +234,7 @@ export interface OmniApi {
   /** 发送邮箱验证码 */
   authSendCode(serverUrl: string, email: string): Promise<AuthResult>
   /** 注册（可带验证码），成功即登录 */
-  authRegister(serverUrl: string, email: string, password: string, code?: string): Promise<AuthResult>
+  authRegister(serverUrl: string, email: string, password: string, code?: string, inviteCode?: string): Promise<AuthResult>
   /** 邮箱密码登录 */
   authLogin(serverUrl: string, email: string, password: string): Promise<AuthResult>
   /** 找回密码：发送验证码（无论邮箱是否注册都返回 ok，防探测） */

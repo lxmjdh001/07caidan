@@ -1,4 +1,4 @@
-import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 /**
  * Drizzle schema（SQLite）。切换到 PostgreSQL 时改用 pg-core 的同名表定义，
@@ -187,6 +187,77 @@ export const clientUsers = sqliteTable('client_users', {
   enabled: integer('enabled').notNull().default(1),
   createdAt: integer('created_at').notNull()
 })
+
+/**
+ * 用户可分享的邀请码。邀请码只负责首次注册归因；一旦写入 referrals，关系永久不变。
+ * maxUses = 0 表示不限次数，expiresAt 为空表示永不过期。
+ */
+export const inviteCodes = sqliteTable(
+  'invite_codes',
+  {
+    tenant: text('tenant').notNull(),
+    code: text('code').notNull(),
+    inviterUserId: integer('inviter_user_id').notNull(),
+    enabled: integer('enabled').notNull().default(1),
+    maxUses: integer('max_uses').notNull().default(0),
+    usedCount: integer('used_count').notNull().default(0),
+    expiresAt: integer('expires_at'),
+    createdAt: integer('created_at').notNull(),
+    updatedAt: integer('updated_at').notNull()
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenant, t.code] }),
+    index('idx_invite_codes_owner').on(t.tenant, t.inviterUserId, t.createdAt)
+  ]
+)
+
+/** 注册时建立的一次性、永久邀请关系；invitee 在同一租户只能有一个邀请人。 */
+export const referrals = sqliteTable(
+  'referrals',
+  {
+    tenant: text('tenant').notNull(),
+    inviteeUserId: integer('invitee_user_id').notNull(),
+    inviterUserId: integer('inviter_user_id').notNull(),
+    inviteCode: text('invite_code').notNull(),
+    createdAt: integer('created_at').notNull()
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenant, t.inviteeUserId] }),
+    index('idx_referrals_inviter').on(t.tenant, t.inviterUserId, t.createdAt)
+  ]
+)
+
+/** 租户级返佣比例；使用万分比避免浮点误差，1000 = 10%。 */
+export const commissionSettings = sqliteTable('commission_settings', {
+  tenant: text('tenant').primaryKey(),
+  rateBps: integer('rate_bps').notNull().default(0),
+  updatedAt: integer('updated_at').notNull()
+})
+
+/**
+ * 返佣明细。sourceLedgerId 唯一对应一次原始充值/消费流水，保证支付回调重试也不会重复返佣。
+ * 比例与基数保存快照，后台日后改比例不会篡改历史账目。
+ */
+export const commissionLedger = sqliteTable(
+  'commission_ledger',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    tenant: text('tenant').notNull(),
+    inviterUserId: integer('inviter_user_id').notNull(),
+    inviteeUserId: integer('invitee_user_id').notNull(),
+    sourceLedgerId: integer('source_ledger_id').notNull(),
+    eventType: text('event_type').notNull(),
+    baseCents: integer('base_cents').notNull(),
+    rateBps: integer('rate_bps').notNull(),
+    commissionCents: integer('commission_cents').notNull(),
+    createdAt: integer('created_at').notNull()
+  },
+  (t) => [
+    index('idx_commission_beneficiary').on(t.tenant, t.inviterUserId, t.createdAt),
+    index('idx_commission_source_user').on(t.tenant, t.inviteeUserId, t.createdAt),
+    uniqueIndex('idx_commission_source_ledger').on(t.tenant, t.sourceLedgerId)
+  ]
+)
 
 /** 老板自定义角色：一组权限的命名打包，只能含老板自己拥有的权限 */
 export const clientRoles = sqliteTable(

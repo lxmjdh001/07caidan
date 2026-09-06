@@ -18,6 +18,7 @@ export function AuthGate({ onAuthed }: Props): React.JSX.Element {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [code, setCode] = useState('')
+  const [inviteCode, setInviteCode] = useState('')
   const [requireVerify, setRequireVerify] = useState(false)
   const [err, setErr] = useState('')
   const [info, setInfo] = useState('')
@@ -78,7 +79,7 @@ export function AuthGate({ onAuthed }: Props): React.JSX.Element {
     const r =
       mode === 'login'
         ? await api.authLogin(serverUrl, email, password)
-        : await api.authRegister(serverUrl, email, password, requireVerify ? code : undefined)
+        : await api.authRegister(serverUrl, email, password, requireVerify ? code : undefined, inviteCode)
     setBusy(false)
     if (r.ok) onAuthed()
     else setErr(r.error ?? t('auth.failed'))
@@ -160,6 +161,19 @@ export function AuthGate({ onAuthed }: Props): React.JSX.Element {
                 {codeSent ? t('auth.codeResent') : t('auth.sendCode')}
               </button>
             </div>
+          </label>
+        )}
+
+        {mode === 'register' && (
+          <label className="field">
+            <span>{t('auth.inviteCode')}</span>
+            <input
+              value={inviteCode}
+              maxLength={24}
+              autoComplete="off"
+              placeholder={t('auth.inviteCodeHint')}
+              onChange={(e) => setInviteCode(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g, ''))}
+            />
           </label>
         )}
 

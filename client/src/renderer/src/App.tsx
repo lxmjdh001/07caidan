@@ -16,6 +16,7 @@ import { HomePage } from './pages/HomePage'
 import { ManagementPage } from './pages/ManagementPage'
 import { ProxyPage } from './pages/ProxyPage'
 import { QuickMessagesPage } from './pages/QuickMessagesPage'
+import { InvitesPage } from './pages/InvitesPage'
 import { ChannelPicker } from './components/ChannelPicker'
 import { ChatView } from './components/ChatView'
 import { ConversationList } from './components/ConversationList'
@@ -44,7 +45,7 @@ function supportsGroupManagement(accountKey: string): boolean {
   return accountKey.startsWith('whatsapp:') || accountKey.startsWith('telegram:')
 }
 
-type MainView = 'home' | 'chat' | 'campaigns' | 'billing' | 'support' | 'settings' | 'team' | 'management' | 'proxy' | 'quick-messages'
+type MainView = 'home' | 'chat' | 'campaigns' | 'billing' | 'support' | 'settings' | 'team' | 'management' | 'proxy' | 'quick-messages' | 'invites'
 
 export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element {
   const { t } = useI18n()
@@ -731,7 +732,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             onOpenSupport={() => navigateTo(view === 'support' ? 'chat' : 'support')}
             onOpenManagement={() => navigateTo(view === 'management' ? 'chat' : 'management')}
             onQuitApplication={() => setQuitConfirmOpen(true)}
-            activeView={view === 'home' ? 'chat' : view === 'proxy' || view === 'quick-messages' ? 'management' : view}
+            activeView={view === 'home' ? 'chat' : view === 'proxy' || view === 'quick-messages' || view === 'invites' ? 'management' : view}
             showManagement={canOpenManagement}
             showBilling={can('billing:manage')}
             allowAddAccount={can('accounts:manage')}
@@ -774,6 +775,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
                   onOpenSubaccounts={() => navigateTo('team')}
                   onOpenWorkorders={() => navigateTo('campaigns')}
                   onOpenQuickMessages={() => navigateTo('quick-messages')}
+                  onOpenInvites={() => navigateTo('invites')}
                   canSubaccounts={can('team:manage')}
                   canProxy={can('accounts:manage')}
                   canWorkorders={can('campaigns:manage')}
@@ -792,6 +794,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
               onOpenProxy={() => navigateTo('proxy')}
               onOpenWorkorders={() => navigateTo('campaigns')}
               onOpenQuickMessages={() => navigateTo('quick-messages')}
+              onOpenInvites={() => navigateTo('invites')}
             />
           ) : view === 'proxy' && can('accounts:manage') && settings ? (
             <ProxyPage
@@ -815,6 +818,8 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
               quickReplies={settings.quickReplies}
               onSave={async (quickReplies) => { await saveSettings({ quickReplies }) }}
             />
+          ) : view === 'invites' && can('team:manage') ? (
+            <InvitesPage />
           ) : view === 'campaigns' && can('campaigns:manage') ? (
             <CampaignPage accounts={accountOptions} />
           ) : view === 'billing' && can('billing:manage') ? (

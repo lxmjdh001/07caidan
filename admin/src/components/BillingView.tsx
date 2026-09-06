@@ -9,12 +9,13 @@ import type {
   Plan
 } from '../api'
 import { useI18n } from '../i18n'
+import { CommissionTab } from './CommissionTab'
 
 interface Props {
   client: ApiClient
 }
 
-type Tab = 'plans' | 'channels' | 'rates' | 'ai' | 'usage' | 'orders'
+type Tab = 'plans' | 'channels' | 'rates' | 'ai' | 'usage' | 'orders' | 'commission'
 
 /** 美分 → 美元展示 */
 function usd(cents: number): string {
@@ -35,7 +36,7 @@ function parseUsd(v: string): number | null {
  * 编辑一律走「行内表单 + 保存」，不做复杂弹窗 —— 这些是低频运营操作。
  */
 export function BillingView({ client }: Props): React.JSX.Element {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const [tab, setTab] = useState<Tab>('plans')
 
   const TABS: Array<{ id: Tab; label: string }> = [
@@ -44,7 +45,8 @@ export function BillingView({ client }: Props): React.JSX.Element {
     { id: 'rates', label: t('billing.rates') },
     { id: 'ai', label: t('billing.ai') },
     { id: 'usage', label: t('billing.usage') },
-    { id: 'orders', label: t('billing.orders') }
+    { id: 'orders', label: t('billing.orders') },
+    { id: 'commission', label: locale.startsWith('zh') ? '邀请返佣' : 'Commission' }
   ]
 
   return (
@@ -70,6 +72,7 @@ export function BillingView({ client }: Props): React.JSX.Element {
         {tab === 'ai' && <AiTab client={client} />}
         {tab === 'usage' && <UsageTab client={client} />}
         {tab === 'orders' && <OrdersTab client={client} />}
+        {tab === 'commission' && <CommissionTab client={client} />}
       </div>
     </div>
   )

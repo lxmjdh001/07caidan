@@ -12,6 +12,7 @@ import { UsdtGateway } from './gateways/usdt.ts'
 import { YipayGateway } from './gateways/yipay.ts'
 import type { OrderRepo } from './order-repo.ts'
 import type { PeriodUnit } from './plans.ts'
+import type { InviteRepo } from '../invite-repo.ts'
 
 export interface BillingRouteDeps {
   billing: BillingRepo
@@ -35,6 +36,7 @@ export interface BillingRouteDeps {
   emailOf?: (userId: number) => string | undefined
   /** 手动调余额时用邮箱定位用户 */
   userIdOf?: (email: string) => number | undefined
+  invites: InviteRepo
 }
 
 const GATEWAYS: Record<string, PaymentGateway> = {
@@ -55,7 +57,7 @@ const PERIOD_UNITS: PeriodUnit[] = ['month', 'quarter', 'half_year', 'year', 'da
  * - 支付通道（公开回调）：/pay/notify/:tenant/:channelId，靠各通道自己的验签
  */
 export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDeps): void {
-  const { billing, orders, channels, ai, aiClient, ctxOf, requirePerm, publicBase, emailOf, userIdOf } = deps
+  const { billing, orders, channels, ai, aiClient, ctxOf, requirePerm, publicBase, emailOf, userIdOf, invites } = deps
 
   /**
    * 客户端用户守卫：必须是邮箱登录的桌面端用户（静态同步令牌没有身份，不能有钱包）。
@@ -80,6 +82,22 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
   }
 
   // ══════════ 管理后台 ══════════
+
+  // ── 邀请码与返佣 ──
+  app.get('/api/admin/invites', async (req, reply) => {
+    if (!requirePerm(req, reply, 'billing:manage')) return
+    return invites.adminOverview(ctxOf(req).tenant)
+  })
+
+  app.put('/api/admin/commission-settings', async (req, reply) => {
+    if (!requirePerm(req, reply, 'billing:manage')) return
+    const ratePercent = Number((req.body as { ratePercent?: unknown } | undefined)?.ratePercent)
+    if (!Number.isFinite(ratePercent) || ratePercent < 0 || ratePercent > 100) {
+      return reply.code(400).send({ error: '返佣比例必须在 0% 到 100% 之间' })
+    }
+    const rateBps = invites.setRateBps(ctxOf(req).tenant, Math.round(ratePercent * 100))
+    return { rateBps, ratePercent: rateBps / 100 }
+  })
 
   // ── 套餐 ──
   app.get('/api/admin/plans', async (req, reply) => {
@@ -353,6 +371,42 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
   })
 
   // ══════════ 客户端 ══════════
+
+  const requireClientBoss = (req: FastifyRequest, reply: FastifyReply): number | null => {
+    const ctx = ctxOf(req)
+    if (ctx.clientUserId === undefined) {
+      void reply.code(403).send({ error: '需要客户端账号登录' })
+      return null
+    }
+    if ((ctx.billingUserId ?? ctx.clientUserId) !== ctx.clientUserId) {
+      void reply.code(403).send({ error: '仅主账号可管理邀请码' })
+      return null
+    }
+    return ctx.clientUserId
+  }
+
+  app.get('/api/invites/me', async (req, reply) => {
+    const userId = requireClientBoss(req, reply)
+    if (userId === null) return
+    return invites.dashboard(ctxOf(req).tenant, userId)
+  })
+
+  app.post('/api/invites', async (req, reply) => {
+    const userId = requireClientBoss(req, reply)
+    if (userId === null) return
+    const b = (req.body ?? {}) as { code?: string; maxUses?: number; expiresAt?: number }
+    const result = invites.createCode(ctxOf(req).tenant, userId, b)
+    return result.ok ? { invite: result.invite } : reply.code(400).send({ error: result.error })
+  })
+
+  app.patch('/api/invites/:code', async (req, reply) => {
+    const userId = requireClientBoss(req, reply)
+    if (userId === null) return
+    const enabled = (req.body as { enabled?: unknown } | undefined)?.enabled
+    if (typeof enabled !== 'boolean') return reply.code(400).send({ error: 'enabled 必须是布尔值' })
+    const ok = invites.setEnabled(ctxOf(req).tenant, userId, (req.params as { code: string }).code, enabled)
+    return ok ? { ok: true } : reply.code(404).send({ error: '邀请码不存在' })
+  })
 
   app.get('/api/billing/plans', async (req) => {
     return { plans: billing.listPlans(ctxOf(req).tenant, true) }

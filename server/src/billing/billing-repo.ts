@@ -1,7 +1,15 @@
 import { randomUUID } from 'node:crypto'
 import { and, desc, eq, sql } from 'drizzle-orm'
 import type { Db } from '../db.ts'
-import { balances, ledger, plans, subscriptions } from '../schema.ts'
+import {
+  balances,
+  commissionLedger,
+  commissionSettings,
+  ledger,
+  plans,
+  referrals,
+  subscriptions
+} from '../schema.ts'
 import { deductCredits, type CreditRate } from './credits.ts'
 import type { Cents } from './money.ts'
 import {
@@ -63,6 +71,7 @@ export type LedgerKind =
   | 'renew'
   | 'credit_exchange'
   | 'model_usage'
+  | 'commission'
   | 'adjust'
 
 export interface LedgerEntry {
@@ -87,6 +96,8 @@ export interface MutateInput {
   refType?: string
   refId?: string
   note?: string
+  /** 消费返佣基数（美分）；模型积分消费等 amountCents=0 的场景显式传入。 */
+  commissionBaseCents?: Cents
   /** 是否允许扣成负数（默认不允许，防止透支） */
   allowNegative?: boolean
   now?: number
@@ -267,7 +278,7 @@ export class BillingRepo {
         })
         .run()
 
-      tx.insert(ledger)
+      const ledgerResult = tx.insert(ledger)
         .values({
           tenant,
           userId: input.userId,
@@ -282,6 +293,91 @@ export class BillingRepo {
           createdAt: now
         })
         .run()
+
+      // 邀请返佣必须与原始充值/消费在同一事务完成：要么两边一起成功，要么一起回滚。
+      // 管理员调账、退款、积分兑换和返佣本身不参与，避免循环返佣或重复计算。
+      const excludedSpendKinds: LedgerKind[] = [
+        'adjust',
+        'proration_refund',
+        'credit_exchange',
+        'commission'
+      ]
+      const eventType = input.kind === 'topup' && amount > 0
+        ? 'topup'
+        : !excludedSpendKinds.includes(input.kind) && (amount < 0 || (input.commissionBaseCents ?? 0) > 0)
+          ? 'spend'
+          : null
+      const baseCents = Math.max(0, Math.round(input.commissionBaseCents ?? Math.abs(amount)))
+      if (eventType && baseCents > 0) {
+        const relation = tx
+          .select()
+          .from(referrals)
+          .where(and(eq(referrals.tenant, tenant), eq(referrals.inviteeUserId, input.userId)))
+          .get()
+        const rateBps = tx
+          .select()
+          .from(commissionSettings)
+          .where(eq(commissionSettings.tenant, tenant))
+          .get()?.rateBps ?? 0
+        const commissionCents = Math.floor((baseCents * Math.max(0, Math.min(10_000, rateBps))) / 10_000)
+        if (relation && commissionCents > 0) {
+          const sourceLedgerId = Number(ledgerResult.lastInsertRowid)
+          const commissionInsert = tx
+            .insert(commissionLedger)
+            .values({
+              tenant,
+              inviterUserId: relation.inviterUserId,
+              inviteeUserId: input.userId,
+              sourceLedgerId,
+              eventType,
+              baseCents,
+              rateBps,
+              commissionCents,
+              createdAt: now
+            })
+            .onConflictDoNothing({ target: [commissionLedger.tenant, commissionLedger.sourceLedgerId] })
+            .run()
+          if (commissionInsert.changes > 0) {
+            const inviterBalance = tx
+              .select()
+              .from(balances)
+              .where(and(eq(balances.tenant, tenant), eq(balances.userId, relation.inviterUserId)))
+              .get()
+            const inviterNextBalance = (inviterBalance?.balanceCents ?? 0) + commissionCents
+            const inviterCredits = inviterBalance?.credits ?? 0
+            tx.insert(balances)
+              .values({
+                tenant,
+                userId: relation.inviterUserId,
+                balanceCents: inviterNextBalance,
+                credits: inviterCredits,
+                updatedAt: now
+              })
+              .onConflictDoUpdate({
+                target: [balances.tenant, balances.userId],
+                set: {
+                  balanceCents: sql`excluded.balance_cents`,
+                  credits: sql`excluded.credits`,
+                  updatedAt: sql`excluded.updated_at`
+                }
+              })
+              .run()
+            tx.insert(ledger).values({
+              tenant,
+              userId: relation.inviterUserId,
+              kind: 'commission',
+              amountCents: commissionCents,
+              creditsDelta: 0,
+              balanceAfter: inviterNextBalance,
+              creditsAfter: inviterCredits,
+              refType: 'commission',
+              refId: String(sourceLedgerId),
+              note: `${eventType === 'topup' ? '充值' : '消费'}邀请返佣`,
+              createdAt: now
+            }).run()
+          }
+        }
+      }
 
       return {
         ok: true as const,
@@ -696,6 +792,8 @@ export class BillingRepo {
       refType: 'model',
       refId: opts.refId,
       note: opts.note,
+      // 即便本次完全使用已有积分、没有直接扣余额，也按积分的美元价值返佣。
+      commissionBaseCents: Math.ceil((Math.max(0, Math.round(cost)) * 100) / Math.max(1, opts.rate.creditsPerUsd)),
       now
     })
     return { ok: r.ok, balance: r.balance }

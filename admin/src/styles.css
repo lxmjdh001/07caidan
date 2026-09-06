@@ -554,3 +554,19 @@ button.danger {
   .proxy-vendor-form-grid { grid-template-columns: 1fr; }
   .proxy-vendor-wide { grid-column: auto; }
 }
+.commission-setting-card { display: grid; grid-template-columns: minmax(260px, 1fr) auto; align-items: center; gap: 12px 24px; }
+.commission-setting-card h3 { margin-bottom: 5px; }
+.commission-setting-card p { margin: 0; }
+.commission-setting-card > .ok, .commission-setting-card > .err { grid-column: 1 / -1; }
+.commission-rate-control { display: flex; align-items: center; gap: 8px; }
+.commission-rate-control input { width: 110px; text-align: right; }
+.commission-rate-control span { font-weight: 700; }
+.commission-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.commission-summary .card { display: grid; gap: 7px; margin: 0; }
+.commission-summary span { color: var(--muted); font-size: 12px; }
+.commission-summary strong { font-size: 24px; }
+.admin-table-scroll { overflow-x: auto; }
+@media (max-width: 800px) {
+  .commission-setting-card { grid-template-columns: 1fr; }
+  .commission-summary { grid-template-columns: 1fr; }
+}

@@ -3415,6 +3415,46 @@ body {
 .management-subtitle { margin-top: 7px; color: var(--text-secondary); font-size: 13px; }
 .management-body { max-width: 1180px; }
 .management-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+
+/* 邀请码与返佣 */
+.invites-page { overflow: auto; background: var(--bg); }
+.invites-header { align-items: flex-end; }
+.invites-header p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+.invites-header .ghost-btn, .invite-share-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.invites-body { display: grid; gap: 12px; padding-bottom: 36px; }
+.invite-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.invite-stats > div { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 3px 10px; min-height: 82px; padding: 14px 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
+.invite-stats svg { grid-row: 1 / span 2; color: var(--accent); }
+.invite-stats span { color: var(--muted); font-size: 12px; }
+.invite-stats strong { font-size: 22px; }
+.invite-share-card { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 20px; border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border)); border-radius: 16px; background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+.invite-share-card > div:first-child { display: grid; gap: 3px; }
+.invite-share-card span, .invite-share-card small { color: var(--muted); font-size: 12px; }
+.invite-share-card strong { color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 26px; letter-spacing: 2px; }
+.invite-share-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.invite-panel { overflow: hidden; border: 1px solid var(--border); border-radius: 15px; background: var(--surface); }
+.invite-panel-head { display: flex; justify-content: space-between; padding: 14px 18px 10px; }
+.invite-panel-head h2 { margin: 0; font-size: 17px; }
+.invite-panel-head p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.invite-create-row { display: grid; grid-template-columns: minmax(220px, 1fr) 120px auto; gap: 8px; padding: 0 18px 14px; }
+.invite-create-row input { height: 38px; padding: 0 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--input-bg); color: var(--text); }
+.invite-create-row .primary-btn { min-height: 38px; padding: 0 18px; }
+.invite-table-scroll { overflow-x: auto; border-top: 1px solid var(--border); }
+.invite-table { width: 100%; border-collapse: collapse; min-width: 720px; }
+.invite-table th, .invite-table td { padding: 11px 18px; border-bottom: 1px solid var(--border); text-align: left; font-size: 13px; white-space: nowrap; }
+.invite-table th { color: var(--muted); font-size: 11px; font-weight: 650; background: color-mix(in srgb, var(--surface) 85%, var(--bg)); }
+.invite-table tbody tr:last-child td { border-bottom: 0; }
+.invite-table code { padding: 3px 7px; border-radius: 6px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); font-weight: 700; }
+.invite-status { display: inline-flex; padding: 3px 8px; border-radius: 999px; font-size: 11px; }
+.invite-status.on { color: var(--accent); background: color-mix(in srgb, var(--accent) 11%, transparent); }
+.invite-status.off { color: var(--muted); background: var(--bg); }
+.invite-money { color: var(--accent); font-weight: 700; }
+.invite-empty { height: 64px; text-align: center !important; color: var(--muted); }
+@media (max-width: 900px) {
+  .invite-stats { grid-template-columns: 1fr; }
+  .invite-share-card { align-items: stretch; flex-direction: column; }
+  .invite-create-row { grid-template-columns: 1fr; }
+}
 .management-card { position: relative; min-height: 82px; display: flex; align-items: flex-start; padding: 12px 13px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); text-align: left; cursor: pointer; transition: border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
 .management-card:hover:not(:disabled) { border-color: var(--accent); box-shadow: 0 8px 22px rgb(16 24 40 / .08); transform: translateY(-1px); }
 .management-card.is-pending { background: var(--panel-alt); opacity: .68; cursor: not-allowed; }

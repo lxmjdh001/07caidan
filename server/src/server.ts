@@ -57,6 +57,7 @@ import { brand } from './branding.ts'
 import { regionAllowed } from './geoip/geoip.ts'
 import { WorkspaceAccountRepo } from './workspace-account-repo.ts'
 import { AccountEnvironmentRepo } from './account-environment-repo.ts'
+import { InviteRepo } from './invite-repo.ts'
 import {
   isProxyVendorRegion,
   ProxyVendorRepo,
@@ -139,6 +140,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   const xService = new XService(db, config, overrides.xFetch)
   const snapchatService = new SnapchatService(db, config, overrides.snapchatFetch)
   const campaignRepo = new CampaignRepo(db)
+  const inviteRepo = new InviteRepo(db)
   const billingRepo = new BillingRepo(db)
   // 设备上限来自计费主体（老板）当前订阅的套餐；注入回调避免 auth 硬依赖 billing
   clientAuth.deviceQuotaResolver = (ownerId) => billingRepo.deviceQuota(config.clientTenant, ownerId)
@@ -465,6 +467,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     requirePerm: (req, reply, perm) => requirePerm(req, reply, perm as Permission),
     emailOf: (userId) => clientAuth.emailOf(userId),
     userIdOf: (email) => clientAuth.userIdOf(email),
+    invites: inviteRepo,
     publicBase
   })
 
@@ -563,6 +566,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
       code?: string
       deviceId?: string
       deviceName?: string
+      inviteCode?: string
     }
     if (!b.email || !b.password) return reply.code(400).send({ error: '邮箱和密码必填' })
     const r = clientAuth.register(
@@ -571,7 +575,8 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
       b.password,
       b.code,
       config.requireEmailVerify,
-      { deviceId: b.deviceId, deviceName: b.deviceName }
+      { deviceId: b.deviceId, deviceName: b.deviceName },
+      b.inviteCode
     )
     if (!r.ok) return reply.code(400).send({ error: r.error })
     return {
