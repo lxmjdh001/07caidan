@@ -15,6 +15,12 @@ const brand = JSON.parse(
 )
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, '')
+  // 本地 `npm run dev` 采用 development mode，但应与正式安装包使用同一对
+  // Telegram 应用凭证；否则开发进程重启后会错误提示已登录账号重新填写 ID/Hash。
+  // 生产专用文件仍被 git 忽略，且显式环境变量、当前 mode 的 .env 文件优先。
+  const productionEnv = mode === 'production' ? env : loadEnv('production', __dirname, '')
+  const telegramEnv = (key: 'OMNI_TG_API_ID' | 'OMNI_TG_API_HASH'): string =>
+    (process.env[key] || env[key] || productionEnv[key] || '').trim()
   const define = { __BRAND__: JSON.stringify(brand) }
 
   /**
@@ -27,12 +33,8 @@ export default defineConfig(({ mode }) => {
    */
   const mainDefine = {
     ...define,
-    __OMNI_TG_API_ID__: JSON.stringify(
-      (process.env.OMNI_TG_API_ID ?? env.OMNI_TG_API_ID ?? '').trim()
-    ),
-    __OMNI_TG_API_HASH__: JSON.stringify(
-      (process.env.OMNI_TG_API_HASH ?? env.OMNI_TG_API_HASH ?? '').trim()
-    )
+    __OMNI_TG_API_ID__: JSON.stringify(telegramEnv('OMNI_TG_API_ID')),
+    __OMNI_TG_API_HASH__: JSON.stringify(telegramEnv('OMNI_TG_API_HASH'))
   }
 
   return {
