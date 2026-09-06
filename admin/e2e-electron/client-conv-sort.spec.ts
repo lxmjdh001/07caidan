@@ -42,10 +42,12 @@ test('客户端会话列表：按最近消息时间倒序排列', async () => {
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
+
+  await win.locator('.account-row.all').click()
 
   const items = win.locator('.conversation-item')
   await expect(items).toHaveCount(3, { timeout: 10_000 })

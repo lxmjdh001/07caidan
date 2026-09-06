@@ -44,13 +44,14 @@ test('客户端充值：客户承担手续费通道显示 gross-up 应付并生�
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
-  await win.locator('.rail-nav', { hasText: '套餐与余额' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-billing').click()
   await win.locator('.page-tabs button', { hasText: '充值' }).click()
 
   // 金额 $10.00（默认）→ 我的通道卡展示手续费 $0.53、应付 $10.53

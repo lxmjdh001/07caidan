@@ -27,11 +27,11 @@ test('客户端代理平台目录：按全球和中国分类展示后台配置',
     await win.locator('input[type="email"]').fill(`proxy_${Date.now().toString(36)}@e2e.test`)
     await win.locator('input[type="password"]').fill('secret123')
     await win.locator('.auth-submit').click()
-    await expect(win.locator('.account-settings-trigger')).toBeVisible({ timeout: 20_000 })
+    await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
-    await win.locator('.account-settings-trigger').click()
-    await win.locator('.account-settings-menu button', { hasText: '管理中心' }).click()
-    await win.locator('.management-card', { hasText: '代理 IP 管理' }).click()
+    await win.getByTestId('client-nav-trigger').click()
+    await win.getByTestId('client-nav-management').click()
+    await win.getByTestId('management-proxy').click()
 
     await expect(win.getByRole('heading', { name: '代理 IP 管理' })).toBeVisible()
     await expect(win.getByRole('tab', { name: '代理列表' })).toHaveAttribute('aria-selected', 'true')

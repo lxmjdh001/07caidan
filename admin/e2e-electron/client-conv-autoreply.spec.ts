@@ -37,14 +37,17 @@ test('客户端会话设置：会话级 AI 自动回复开关持久化', async (
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
+  await win.locator('.account-row.all').click()
+
   await win.locator('.conversation-item', { hasText: '自动回复客户E2E' }).click()
-  await win.locator('.conv-settings-btn').click()
+  const conversationSettings = win.getByTitle('会话设置')
+  await conversationSettings.click()
   const popover = win.locator('.conv-settings-popover')
   await expect(popover).toBeVisible({ timeout: 10_000 })
 
@@ -60,9 +63,9 @@ test('客户端会话设置：会话级 AI 自动回复开关持久化', async (
   await win.screenshot({ path: `${SHOT_DIR}/client-66-conv-autoreply.png` })
 
   // 关闭再打开弹层：仍为开启
-  await win.locator('.conv-settings-btn').click()
+  await conversationSettings.click()
   await expect(popover).toBeHidden()
-  await win.locator('.conv-settings-btn').click()
+  await conversationSettings.click()
   await expect(
     win.locator('.conv-settings-popover').locator('label.checkbox', { hasText: 'AI 自动回复本会话' }).locator('input[type="checkbox"]')
   ).toBeChecked()

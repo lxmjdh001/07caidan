@@ -43,13 +43,13 @@ test('客户端启动公告：展示后台发布的公告并可关闭', async ()
     await win.locator('input[type="email"]').fill(email)
     await win.locator('input[type="password"]').fill('secret123')
     await win.locator('.auth-submit').click()
-    await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+    await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
     // 启动公告弹窗展示该公告标题与正文
     const modal = win.locator('.modal-backdrop').filter({ hasText: '通知' })
     await expect(modal).toBeVisible({ timeout: 15_000 })
     await expect(win.locator('.notice-item h3', { hasText: title })).toBeVisible()
-    await expect(win.getByText(body)).toBeVisible()
+    await expect(modal.getByText(body)).toBeVisible()
 
     await win.waitForTimeout(300)
     await win.screenshot({ path: `${SHOT_DIR}/client-50-announcement.png` })

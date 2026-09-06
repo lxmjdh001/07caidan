@@ -42,13 +42,15 @@ test('客户端会话列表：搜索框按标题实时过滤', async () => {
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
   // 两条会话都在
+  await win.locator('.account-row.all').click()
+
   await expect(win.locator('.conversation-item')).toHaveCount(2, { timeout: 10_000 })
 
   // 搜「苹果」→ 只剩苹果客户

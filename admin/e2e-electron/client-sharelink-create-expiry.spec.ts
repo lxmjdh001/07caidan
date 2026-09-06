@@ -37,14 +37,16 @@ test('客户端分享链接：选 30 天后预设创建带有效期链接', asyn
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
-  await win.locator('.rail-nav', { hasText: '引流工单' }).click()
-  await win.locator('.campaign-row', { hasText: name }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-management').click()
+  await win.getByTestId('management-workorders').click()
+  await win.locator('.campaign-table tbody tr', { hasText: name }).getByRole('button', { name: '查看' }).click()
 
   // 详情分享链接区：填备注 + 选「30 天后」预设 → 生成链接
   await win.locator('label.field', { hasText: '备注' }).locator('input').fill(`月度看板${TAG}`)

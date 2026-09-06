@@ -23,9 +23,11 @@ test('Client Bahasa Indonesia: halaman Tim dan navigasi berbahasa Indonesia', as
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
-  await win.locator('.rail-nav', { hasText: 'Kelola Tim' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-management').click()
+  await win.getByTestId('management-subaccounts').click()
   await expect(win.getByRole('heading', { name: 'Perangkat login' })).toBeVisible({ timeout: 10_000 })
   await expect(win.getByRole('heading', { name: 'Anggota' })).toBeVisible()
   await win.waitForTimeout(400)

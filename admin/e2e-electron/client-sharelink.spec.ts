@@ -24,17 +24,23 @@ test('客户端打粉全链路：建工单→生成分享链接→公开看板�
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
+
+  await win.getByTitle('添加 WhatsApp 账号').click()
+  await win.locator('.picker-item', { hasText: 'WhatsApp' }).click()
+  await expect(win.locator('.account-platform-group', { hasText: 'WhatsApp' })).toBeVisible()
 
   // 建工单
-  await win.locator('.rail-nav', { hasText: '引流工单' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-management').click()
+  await win.getByTestId('management-workorders').click()
   await win.getByRole('button', { name: '新建工单' }).first().click()
   await win.locator('input[placeholder="如：八月东南亚推广"]').fill('打粉全链路工单')
   await win.locator('.check-grid .check-item').first().locator('input[type="checkbox"]').check()
   await win.getByRole('button', { name: '新建工单' }).last().click()
 
   // 打开工单详情 → 生成分享链接
-  await win.locator('.campaign-row', { hasText: '打粉全链路工单' }).first().click()
+  await win.locator('.campaign-table tbody tr', { hasText: '打粉全链路工单' }).first().getByRole('button', { name: '查看' }).click()
   await expect(win.getByRole('heading', { name: '分享链接' })).toBeVisible({ timeout: 10_000 })
   await win.getByRole('button', { name: '生成链接' }).click()
 

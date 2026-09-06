@@ -24,9 +24,10 @@ test('客户端套餐与余额：四页签均正常渲染（新老板空态）',
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
-  await win.locator('.rail-nav', { hasText: '套餐与余额' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-billing').click()
 
   // 概览：三张统计卡（余额/积分/账号配额）+ 未订阅提示
   await expect(win.locator('.stat-card')).toHaveCount(3, { timeout: 10_000 })

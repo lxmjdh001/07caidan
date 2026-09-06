@@ -44,13 +44,14 @@ test('客户端配置同步：只同步偏好，密钥/apiKey 绝不上云', asy
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
   // 改主题深色 + 保存 → 触发一次配置推送（连同翻译白名单字段）
-  await win.locator('.rail-nav', { hasText: '设置' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
   await win.locator('label').filter({ hasText: '深色' }).locator('input[type="radio"]').check()
   await win.getByRole('button', { name: '保存', exact: true }).click()
 

@@ -40,13 +40,15 @@ test('客户端会话列表：头像图经媒体协议渲染', async () => {
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
   // 会话列表里该会话头像是图片(.avatar-img)且真解码出像素
+  await win.locator('.account-row.all').click()
+
   const img = win.locator('.conversation-item', { hasText: '头像客户E2E' }).locator('img.avatar-img')
   await expect(img).toBeVisible({ timeout: 10_000 })
   await expect(async () => {

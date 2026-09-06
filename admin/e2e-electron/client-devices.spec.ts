@@ -33,10 +33,12 @@ test('客户端：注册登录 → 团队管理 → 登录设备（远程下线�
   await win.locator('.auth-submit').click()
 
   // 进入主界面：侧栏导航出现
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   // 打开「团队管理」（boss 有 team:manage）
-  await win.getByText(/团队管理|Team/).first().click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-management').click()
+  await win.getByTestId('management-subaccounts').click()
 
   // 「登录设备」区块出现，且至少列出本机（注册时已上报 deviceId）
   await expect(win.getByRole('heading', { name: /登录设备|Devices/ })).toBeVisible({ timeout: 10_000 })

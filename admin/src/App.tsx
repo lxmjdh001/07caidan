@@ -21,7 +21,7 @@ export function App(): React.JSX.Element {
   const [me, setMe] = useState<Me | null>(null)
   const [view, setView] = useState<'chats' | 'campaigns' | 'billing' | 'proxyVendors' | 'announcements' | 'support' | 'logs' | 'users' | 'registeredUsers'>('chats')
   const [conversations, setConversations] = useState<Conversation[]>([])
-  const [activeId, setActiveId] = useState<string | null>(null)
+  const [activeKey, setActiveKey] = useState<string | null>(null)
 
   const onLogin = useCallback(async (c: ApiClient, _url: string, user: Me) => {
     setClient(c)
@@ -45,13 +45,13 @@ export function App(): React.JSX.Element {
     setClient(null)
     setMe(null)
     setConversations([])
-    setActiveId(null)
+    setActiveKey(null)
     setView('chats')
   }, [client])
 
   const active = useMemo(
-    () => conversations.find((c) => c.id === activeId) ?? null,
-    [conversations, activeId]
+    () => conversations.find((c) => conversationKey(c) === activeKey) ?? null,
+    [conversations, activeKey]
   )
 
   if (!client || !me) return <Login onLogin={onLogin} />
@@ -175,8 +175,8 @@ export function App(): React.JSX.Element {
           <div className="body">
             <ConversationList
               conversations={conversations}
-              activeId={activeId}
-              onSelect={setActiveId}
+              activeKey={activeKey}
+              onSelect={(conversation) => setActiveKey(conversationKey(conversation))}
             />
             <ChatView client={client} conversation={active} />
             {active && (
@@ -191,6 +191,10 @@ export function App(): React.JSX.Element {
       </main>
     </div>
   )
+}
+
+function conversationKey(conversation: Conversation): string {
+  return `${encodeURIComponent(conversation.workspace ?? '')}|${conversation.id}`
 }
 
 function ChatIcon(): React.JSX.Element {

@@ -1,6 +1,10 @@
 import { join } from 'node:path'
 
 export interface ServerConfig {
+  /** 是否以生产模式运行；影响安全默认值，测试/本地开发可省略。 */
+  production?: boolean
+  /** 是否启用公网接口与登录限流；仅 NODE_ENV=test 时由加载器关闭。 */
+  rateLimitsEnabled?: boolean
   port: number
   host: string
   /** SQLite 文件路径 */
@@ -43,6 +47,8 @@ export interface ServerConfig {
    * 可选：省略等同 false（直连，不信任 XFF）。loadConfig 总会显式赋值。
    */
   trustProxy?: boolean | string
+  /** 允许跨域访问 API 的浏览器 Origin；生产环境应显式列出，留空即不开放跨域。 */
+  corsOrigins?: string[]
   /** 客户端自动更新产物目录（latest*.yml + 安装包）；发布 = 把文件拷进来 */
   updatesDir: string
   /** Crisp 在线客服 Website ID；未配置则客户端隐藏在线客服入口 */
@@ -79,12 +85,15 @@ export interface ServerConfig {
 }
 
 export function loadConfig(): ServerConfig {
+  const production = process.env.NODE_ENV === 'production'
   const dataDir = process.env.OMNI_DATA_DIR || join(process.cwd(), 'data')
   const tokens = (process.env.OMNI_TOKENS || 'dev-token')
     .split(',')
     .map((t) => t.trim())
     .filter(Boolean)
   return {
+    production,
+    rateLimitsEnabled: process.env.NODE_ENV !== 'test',
     port: Number(process.env.PORT || 8787),
     host: process.env.HOST || '0.0.0.0',
     dbPath: process.env.OMNI_DB_PATH || join(dataDir, 'omnichat.db'),
@@ -115,6 +124,7 @@ export function loadConfig(): ServerConfig {
     campaignShareDomain:
       process.env.OMNI_CAMPAIGN_SHARE_DOMAIN || process.env.OMNI_PUBLIC_URL || 'https://wzzapp.cloud',
     trustProxy: parseTrustProxy(process.env.OMNI_TRUST_PROXY),
+    corsOrigins: parseCorsOrigins(process.env.OMNI_CORS_ORIGINS, production),
     updatesDir: process.env.OMNI_UPDATES_DIR || join(dataDir, 'updates'),
     crispWebsiteId: process.env.OMNI_CRISP_WEBSITE_ID || undefined,
     metaAppId: process.env.META_APP_ID || undefined,
@@ -137,6 +147,62 @@ export function loadConfig(): ServerConfig {
     snapchatClientSecret: process.env.SNAPCHAT_CLIENT_SECRET || undefined,
     snapchatTokenEncryptionKey: process.env.SNAPCHAT_TOKEN_ENCRYPTION_KEY || undefined
   }
+}
+
+const DEVELOPMENT_CORS_ORIGINS = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:5198',
+  'http://127.0.0.1:5198'
+]
+
+/** 生产环境默认关闭跨域；开发环境只允许本机管理后台。 */
+export function parseCorsOrigins(raw: string | undefined, production: boolean): string[] {
+  if (!raw?.trim()) return production ? [] : [...DEVELOPMENT_CORS_ORIGINS]
+  return [...new Set(raw.split(',').map((origin) => origin.trim()).filter(Boolean))]
+}
+
+/**
+ * 对真正会造成生产暴露或账号失控的配置执行 fail-fast。
+ * 可选平台凭证不完整只会让对应平台保持“开发中”，因此不阻止核心三平台启动。
+ */
+export function productionConfigErrors(config: ServerConfig): string[] {
+  const errors: string[] = []
+  const weak = /^(?:admin|password|dev-token|change_me)/i
+  const loopbackHost = ['127.0.0.1', '::1', 'localhost'].includes(config.host)
+
+  if (!loopbackHost) errors.push('HOST 必须绑定回环地址，由 Caddy 统一对外提供 HTTPS')
+  try {
+    const publicUrl = new URL(config.publicUrl)
+    if (publicUrl.protocol !== 'https:' || !publicUrl.hostname) throw new Error('invalid URL')
+  } catch {
+    errors.push('OMNI_PUBLIC_URL 必须是有效的 HTTPS 地址')
+  }
+  if (config.adminPassword.length < 12 || weak.test(config.adminPassword)) {
+    errors.push('OMNI_ADMIN_PASSWORD 必须是至少 12 位的非默认密码')
+  }
+  if (!config.tokens.length || config.tokens.some((token) => token.length < 24 || weak.test(token))) {
+    errors.push('OMNI_TOKENS 中每个令牌必须是至少 24 位的随机值')
+  }
+  if (
+    config.requireEmailVerify &&
+    (!config.smtp || !config.smtp.host || !config.smtp.user || !config.smtp.pass || !config.smtp.from ||
+      !Number.isInteger(config.smtp.port) || config.smtp.port < 1 || config.smtp.port > 65_535)
+  ) {
+    errors.push('开启邮箱验证时必须完整配置 SMTP')
+  }
+  if (config.trustProxy && !loopbackHost) {
+    errors.push('仅允许在后端绑定回环地址时启用 OMNI_TRUST_PROXY')
+  }
+  for (const origin of config.corsOrigins ?? []) {
+    try {
+      const url = new URL(origin)
+      if (url.protocol !== 'https:' || url.origin !== origin) throw new Error('invalid origin')
+    } catch {
+      errors.push(`OMNI_CORS_ORIGINS 包含无效生产来源：${origin}`)
+    }
+  }
+  return errors
 }
 
 /**

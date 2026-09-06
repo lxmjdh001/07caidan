@@ -24,14 +24,16 @@ test('客户端团队：老板建客服子账号，子账号可登录', async ()
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   // 有启用的全员公告时会弹通知框，其 backdrop 会拦截后续点击，先关掉
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
-  await win.locator('.rail-nav', { hasText: '团队管理' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-management').click()
+  await win.getByTestId('management-subaccounts').click()
   await win.getByRole('button', { name: '新建子账号' }).click()
 
   const modal = win.locator('.modal')

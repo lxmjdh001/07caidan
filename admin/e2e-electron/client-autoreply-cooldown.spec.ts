@@ -25,7 +25,7 @@ test('客户端设置：自动回复最小间隔持久化且低于 5 秒被钳�
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
@@ -34,10 +34,12 @@ test('客户端设置：自动回复最小间隔持久化且低于 5 秒被钳�
   const openCooldown = () =>
     win.locator('label.field', { hasText: '同一会话最小间隔' }).locator('input')
   const gotoSettings = async (): Promise<void> => {
-    await win.locator('.rail-nav', { hasText: '设置' }).click()
+    await win.getByTestId('client-nav-trigger').click()
+    await win.getByTestId('client-nav-settings').click()
   }
   const leaveAndReturn = async (): Promise<void> => {
-    await win.locator('.rail-nav', { hasText: '套餐与余额' }).click()
+    await win.getByTestId('client-nav-trigger').click()
+    await win.getByTestId('client-nav-billing').click()
     await gotoSettings()
   }
 

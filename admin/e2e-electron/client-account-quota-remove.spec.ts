@@ -57,7 +57,7 @@ test('客户端账号配额：删账号腾出名额后加号即时恢复（删�
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
@@ -67,14 +67,12 @@ test('客户端账号配额：删账号腾出名额后加号即时恢复（删�
   await expect(addBtn).toBeDisabled({ timeout: 10_000 })
   await expect(win.locator('.account-quota-hint')).toHaveText('已达账号上限，请升级套餐')
 
-  // 打开待删账号的设置弹窗 → 删除账号（confirm 自动接受）
+  // 从账号右键菜单删除账号（confirm 自动接受）。
   const row = win.locator('.account-row', { hasText: `待删账号${TAG}` })
   await row.hover()
-  await row.locator('.account-row-gear').click()
-  const modal = win.locator('.modal')
-  await expect(modal).toBeVisible({ timeout: 10_000 })
-  await modal.getByRole('button', { name: '删除此账号' }).click()
-  await expect(modal).toBeHidden({ timeout: 10_000 })
+  await row.locator('.account-row-more').click()
+  await win.locator('.account-context-menu').getByRole('button', { name: '删除账号' }).click()
+  await expect(row).toHaveCount(0, { timeout: 10_000 })
 
   // 账号数回落到 1 < 配额 2 → 加号即时恢复、提示消失（软门可逆，不锁死）
   await expect(addBtn).toBeEnabled({ timeout: 10_000 })

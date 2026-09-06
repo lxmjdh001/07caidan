@@ -11,6 +11,9 @@ test -f /etc/omnichat/omnichat.env || {
   echo "缺少 /etc/omnichat/omnichat.env，请先按 deploy/omnichat.env.example 配置" >&2
   exit 1
 }
+chmod 600 /etc/omnichat/omnichat.env
+install -d -m 0700 /var/lib/omnichat
+find /var/lib/omnichat -maxdepth 1 -type f -name 'omnichat.db*' -exec chmod 600 {} +
 
 echo "==> [2/6] 安装后端生产依赖"
 (cd server && npm ci --omit=dev)
@@ -28,10 +31,15 @@ rsync -a --delete --exclude 'downloads/' --exclude '._*' website/ /var/www/omnic
 find /var/www/omnichat-site -type d -exec chmod 755 {} +
 find /var/www/omnichat-site -type f -exec chmod 644 {} +
 
-echo "==> [5/6] 更新 systemd 与 Caddy"
+echo "==> [5/6] 备份数据库并更新 systemd 与 Caddy"
+install -m 0755 deploy/backup.sh /usr/local/sbin/wzzscrm-backup
 install -m 0644 deploy/omnichat.service /etc/systemd/system/omnichat.service
+install -m 0644 deploy/omnichat-backup.service /etc/systemd/system/omnichat-backup.service
+install -m 0644 deploy/omnichat-backup.timer /etc/systemd/system/omnichat-backup.timer
 install -m 0644 deploy/Caddyfile /etc/caddy/Caddyfile
 systemctl daemon-reload
+systemctl enable --now omnichat-backup.timer
+systemctl start omnichat-backup.service
 systemctl enable --now omnichat
 systemctl restart omnichat
 caddy validate --config /etc/caddy/Caddyfile

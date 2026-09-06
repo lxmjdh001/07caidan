@@ -42,6 +42,8 @@ test('客户端聊天头部显示本地意向标签（高意向）', async () =>
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
 
+  await win.locator('.account-row.all').click()
+
   await expect(win.locator('.conversation-item').first()).toBeVisible({ timeout: 20_000 })
   await win.locator('.conversation-item').first().click()
   // 聊天头部出现「高意向」标签（本地关键词判定）

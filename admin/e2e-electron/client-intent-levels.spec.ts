@@ -42,12 +42,14 @@ test('客户端聊天：中意向显示标签、低意向不显示标签', async
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
   // 中意向会话 → 头部显示「中意向」标签
+  await win.locator('.account-row.all').click()
+
   await win.locator('.conversation-item', { hasText: '中意向客户E2E' }).click()
   await expect(win.locator('.chat-header .intent-chip.intent-medium')).toHaveText('中意向', { timeout: 10_000 })
   await win.waitForTimeout(200)

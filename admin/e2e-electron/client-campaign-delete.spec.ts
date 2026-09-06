@@ -38,20 +38,23 @@ test('客户端引流工单：删除工单从列表消失', async () => {
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
-  await win.locator('.rail-nav', { hasText: '引流工单' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-management').click()
+  await win.getByTestId('management-workorders').click()
   // 工单在列表 → 打开 → 删除
-  await expect(win.locator('.campaign-row', { hasText: name })).toBeVisible({ timeout: 10_000 })
-  await win.locator('.campaign-row', { hasText: name }).click()
+  const campaignRow = win.locator('.campaign-table tbody tr', { hasText: name })
+  await expect(campaignRow).toBeVisible({ timeout: 10_000 })
+  await campaignRow.getByRole('button', { name: '查看' }).click()
   await win.locator('.page-toolbar').getByRole('button', { name: '删除' }).click()
 
   // 回到列表，该工单已消失
-  await expect(win.locator('.campaign-row', { hasText: name })).toHaveCount(0, { timeout: 10_000 })
+  await expect(win.locator('.campaign-table tbody tr', { hasText: name })).toHaveCount(0, { timeout: 10_000 })
 
   await win.waitForTimeout(300)
   await win.screenshot({ path: `${SHOT_DIR}/client-78-campaign-delete.png` })

@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily WzzScrm database backup
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=30m
+Persistent=true
+Unit=omnichat-backup.service
+
+[Install]
+WantedBy=timers.target

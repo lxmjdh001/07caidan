@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto'
-import { and, eq, gte, inArray, isNotNull, lte, min, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNotNull, lte, min, or, sql } from 'drizzle-orm'
 import {
   computeCampaignStats,
   fillDays,
@@ -199,6 +199,38 @@ export class CampaignRepo {
       .map(toCampaign)
   }
 
+  /** 管理端可查看本租户下所有客户工作区，客户端仍只能查自己的精确 workspace。 */
+  listCampaignsForAdmin(tenant: string): Array<Campaign & { workspace: string }> {
+    const prefix = `${tenant}::workspace:`
+    return this.db
+      .select()
+      .from(campaigns)
+      .where(or(
+        eq(campaigns.tenant, tenant),
+        sql`substr(${campaigns.tenant}, 1, ${prefix.length}) = ${prefix}`
+      ))
+      .orderBy(sql`${campaigns.createdAt} DESC`)
+      .all()
+      .map((row) => ({ ...toCampaign(row), workspace: row.tenant }))
+  }
+
+  campaignWorkspacesForAdmin(tenant: string, id: string): string[] {
+    const prefix = `${tenant}::workspace:`
+    return this.db
+      .selectDistinct({ workspace: campaigns.tenant })
+      .from(campaigns)
+      .where(and(
+        eq(campaigns.id, id),
+        or(
+          eq(campaigns.tenant, tenant),
+          sql`substr(${campaigns.tenant}, 1, ${prefix.length}) = ${prefix}`
+        )
+      ))
+      .limit(2)
+      .all()
+      .map((row) => row.workspace)
+  }
+
   getCampaign(tenant: string, id: string): Campaign | null {
     const r = this.db
       .select()
@@ -298,6 +330,23 @@ export class CampaignRepo {
       .map((r) => toLink(r))
   }
 
+  linkWorkspacesForAdmin(tenant: string, token: string): string[] {
+    const prefix = `${tenant}::workspace:`
+    return this.db
+      .selectDistinct({ workspace: campaignLinks.tenant })
+      .from(campaignLinks)
+      .where(and(
+        eq(campaignLinks.token, token),
+        or(
+          eq(campaignLinks.tenant, tenant),
+          sql`substr(${campaignLinks.tenant}, 1, ${prefix.length}) = ${prefix}`
+        )
+      ))
+      .limit(2)
+      .all()
+      .map((row) => row.workspace)
+  }
+
   /** 手动失效，立即生效 */
   revokeLink(tenant: string, token: string): boolean {
     const res = this.db
@@ -382,6 +431,37 @@ export class CampaignRepo {
       .orderBy(sql`${fanLibraries.createdAt} DESC`)
       .all()
       .map(toLibrary)
+  }
+
+  listLibrariesForAdmin(tenant: string): Array<FanLibrary & { workspace: string }> {
+    const prefix = `${tenant}::workspace:`
+    return this.db
+      .select()
+      .from(fanLibraries)
+      .where(or(
+        eq(fanLibraries.tenant, tenant),
+        sql`substr(${fanLibraries.tenant}, 1, ${prefix.length}) = ${prefix}`
+      ))
+      .orderBy(sql`${fanLibraries.createdAt} DESC`)
+      .all()
+      .map((row) => ({ ...toLibrary(row), workspace: row.tenant }))
+  }
+
+  libraryWorkspacesForAdmin(tenant: string, id: string): string[] {
+    const prefix = `${tenant}::workspace:`
+    return this.db
+      .selectDistinct({ workspace: fanLibraries.tenant })
+      .from(fanLibraries)
+      .where(and(
+        eq(fanLibraries.id, id),
+        or(
+          eq(fanLibraries.tenant, tenant),
+          sql`substr(${fanLibraries.tenant}, 1, ${prefix.length}) = ${prefix}`
+        )
+      ))
+      .limit(2)
+      .all()
+      .map((row) => row.workspace)
   }
 
   getLibrary(tenant: string, id: string): FanLibrary | null {

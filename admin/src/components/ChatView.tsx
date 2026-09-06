@@ -20,7 +20,7 @@ export function ChatView({ client, conversation }: Props): React.JSX.Element {
     setErr('')
     setMessages([])
     client
-      .listMessages(conversation.id)
+      .listMessages(conversation.id, conversation.workspace)
       .then(({ messages }) => setMessages(messages))
       .catch((e) => setErr((e as Error).message))
       .finally(() => setLoading(false))

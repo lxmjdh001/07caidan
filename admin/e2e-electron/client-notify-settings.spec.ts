@@ -24,13 +24,14 @@ test('客户端设置：消息提醒开关持久化', async () => {
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
-  await win.locator('.rail-nav', { hasText: '设置' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
   // 消息提醒：三开关默认开，关掉“通知中显示消息内容”
   const preview = win.locator('label.field', { hasText: '通知中显示消息内容' }).locator('input[type="checkbox"]')
   await expect(preview).toBeChecked({ timeout: 10_000 })
@@ -41,8 +42,10 @@ test('客户端设置：消息提醒开关持久化', async () => {
   await win.screenshot({ path: `${SHOT_DIR}/client-65-notify.png` })
 
   // 跳走再回：仍为关
-  await win.locator('.rail-nav', { hasText: '设置' }).click()
-  await win.locator('.rail-nav', { hasText: '设置' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
   await expect(
     win.locator('label.field', { hasText: '通知中显示消息内容' }).locator('input[type="checkbox"]')
   ).not.toBeChecked()

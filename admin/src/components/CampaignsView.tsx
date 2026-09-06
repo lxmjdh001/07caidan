@@ -24,6 +24,10 @@ function fmtDuration(sec: number | null): string {
   return `${(sec / 3600).toFixed(1)}h`
 }
 
+function campaignKey(campaign: Campaign): string {
+  return `${encodeURIComponent(campaign.workspace ?? '')}|${campaign.id}`
+}
+
 /**
  * 引流工单（后台视角）。
  *
@@ -35,7 +39,7 @@ export function CampaignsView({ client }: Props): React.JSX.Element {
   const { t } = useI18n()
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [libraries, setLibraries] = useState<FanLibrary[]>([])
-  const [activeId, setActiveId] = useState<string | null>(null)
+  const [activeKey, setActiveKey] = useState<string | null>(null)
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(true)
   const [shareDomain, setShareDomain] = useState('')
@@ -60,7 +64,7 @@ export function CampaignsView({ client }: Props): React.JSX.Element {
     void load()
   }, [load])
 
-  const active = campaigns.find((c) => c.id === activeId) ?? null
+  const active = campaigns.find((c) => campaignKey(c) === activeKey) ?? null
 
   return (
     <div className="view">
@@ -93,10 +97,10 @@ export function CampaignsView({ client }: Props): React.JSX.Element {
             ) : (
               <ul className="campaign-list">
                 {campaigns.map((c) => (
-                  <li key={c.id}>
+                  <li key={campaignKey(c)}>
                     <button
-                      className={activeId === c.id ? 'on' : ''}
-                      onClick={() => setActiveId(c.id)}
+                      className={activeKey === campaignKey(c) ? 'on' : ''}
+                      onClick={() => setActiveKey(campaignKey(c))}
                     >
                       <span className="cl-name">{c.name}</span>
                       <span className="cl-meta">
@@ -125,7 +129,7 @@ export function CampaignsView({ client }: Props): React.JSX.Element {
                       className="danger small"
                       onClick={async () => {
                         if (!window.confirm(t('campaign.deleteLibConfirm'))) return
-                        await client.deleteLibrary(l.id)
+                        await client.deleteLibrary(l.id, l.workspace)
                         await load()
                       }}
                     >
@@ -168,8 +172,8 @@ function CampaignDetail({
     setErr('')
     try {
       const [s, l] = await Promise.all([
-        client.campaignStats(campaign.id),
-        client.listLinks(campaign.id)
+        client.campaignStats(campaign.id, campaign.workspace),
+        client.listLinks(campaign.id, campaign.workspace)
       ])
       setStats(s.stats)
       setLinks(l.links)
@@ -177,7 +181,7 @@ function CampaignDetail({
     } catch (e) {
       setErr((e as Error).message)
     }
-  }, [client, campaign.id])
+  }, [client, campaign.id, campaign.workspace])
 
   useEffect(() => {
     void refresh()
@@ -305,7 +309,7 @@ function CampaignDetail({
         <button
           className="primary"
           onClick={async () => {
-            await client.createLink(campaign.id, {})
+            await client.createLink(campaign.id, {}, campaign.workspace)
             await refresh()
           }}
         >
@@ -346,7 +350,7 @@ function CampaignDetail({
                     <button
                       className="danger small"
                       onClick={async () => {
-                        await client.revokeLink(l.token)
+                        await client.revokeLink(l.token, campaign.workspace)
                         await refresh()
                       }}
                     >

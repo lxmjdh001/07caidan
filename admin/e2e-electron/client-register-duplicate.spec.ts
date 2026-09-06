@@ -39,7 +39,7 @@ test('客户端注册：重复邮箱给出「该邮箱已注册」提示且不�
 
   // 显示「该邮箱已注册」，且仍停在登录/注册页（未进主界面）
   await expect(win.locator('.auth-err')).toContainText('该邮箱已注册', { timeout: 10_000 })
-  await expect(win.locator('.rail-nav')).toHaveCount(0)
+  await expect(win.getByTestId('client-nav-trigger')).toHaveCount(0)
 
   await win.waitForTimeout(300)
   await win.screenshot({ path: `${SHOT_DIR}/client-register-duplicate.png` })

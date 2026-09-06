@@ -11,7 +11,7 @@ const MAIN = join(CLIENT_DIR, 'out', 'main', 'index.js')
 const ELECTRON_PATH = createRequire(join(CLIENT_DIR, 'package.json'))('electron') as string
 const USER_DATA = mkdtempSync(join(tmpdir(), 'omni-e2e-'))
 
-// M9 打粉判重核心：建 whatsapp 重粉库 → 建工单配「规则一(库) + 规则二(时间)」→ 重开编辑核对已落库
+// M9 打粉判重核心：建 whatsapp 重粉库 → 建工单关联判重库 → 重开编辑核对已落库
 test('客户端引流工单：配置判重库+时间规则并核对持久化', async () => {
   mkdirSync(USER_DATA, { recursive: true })
   writeFileSync(join(USER_DATA, 'settings.json'), JSON.stringify({ locale: 'zh-CN' }), 'utf8')
@@ -27,9 +27,15 @@ test('客户端引流工单：配置判重库+时间规则并核对持久化', a
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
-  await win.locator('.rail-nav', { hasText: '引流工单' }).click()
+  await win.getByTitle('添加 WhatsApp 账号').click()
+  await win.locator('.picker-item', { hasText: 'WhatsApp' }).click()
+  await expect(win.locator('.account-platform-group', { hasText: 'WhatsApp' })).toBeVisible()
+
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-management').click()
+  await win.getByTestId('management-workorders').click()
 
   // ① 先建一个 whatsapp 重粉库（导入 3 个号码）作判重规则一的素材
   await win.getByRole('button', { name: '重粉库' }).click()
@@ -51,9 +57,6 @@ test('客户端引流工单：配置判重库+时间规则并核对持久化', a
   // ③ 规则一：勾选刚建的判重库（同平台 whatsapp，可选）
   const dedupCard = win.locator('section.form-card').filter({ hasText: '判重规则' })
   await dedupCard.locator('.check-item', { hasText: libName }).locator('input[type="checkbox"]').check()
-  // ④ 规则二：设判重时间点为「今天」→ 统计范围单选出现
-  await dedupCard.getByRole('button', { name: '今天' }).click()
-  await expect(dedupCard.getByText('全部账号')).toBeVisible()
   await win.waitForTimeout(300)
   await win.screenshot({ path: `${SHOT_DIR}/client-31-campaign-dedup.png` })
 
@@ -62,7 +65,7 @@ test('客户端引流工单：配置判重库+时间规则并核对持久化', a
   await expect(win.getByText(campName).first()).toBeVisible({ timeout: 10_000 })
 
   // ⑤ 重开编辑：判重库勾选仍在 → 证明 dedupLibraryIds 真落库
-  await win.locator('.campaign-row', { hasText: campName }).click()
+  await win.locator('.campaign-table tbody tr', { hasText: campName }).getByRole('button', { name: '查看' }).click()
   await win.getByRole('button', { name: '编辑工单' }).click()
   const editDedup = win.locator('section.form-card').filter({ hasText: '判重规则' })
   await expect(

@@ -43,7 +43,7 @@ test('客户端未读聚合：会话缺 unreadCount 时角标不显示 NaN', asy
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
@@ -53,6 +53,8 @@ test('客户端未读聚合：会话缺 unreadCount 时角标不显示 NaN', asy
   await expect(allBadge).toHaveText('3', { timeout: 10_000 })
   await expect(win.getByText('NaN')).toHaveCount(0)
   // 有未读会话有数字角标；缺字段会话按 0 计 → 无角标（不显示空/NaN 角标）
+  await win.locator('.account-row.all').click()
+
   await expect(win.locator('.conversation-item', { hasText: '有未读客户E2E' }).locator('.unread-badge')).toHaveText('3')
   await expect(win.locator('.conversation-item', { hasText: '缺字段客户E2E' }).locator('.unread-badge')).toHaveCount(0)
 

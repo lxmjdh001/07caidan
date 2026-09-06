@@ -457,8 +457,15 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
       // 新增账号只创建独立窗口与设备指纹，不强制打断用户填写代理。
       // 代理由账号右键菜单或聊天区右侧菜单按需打开；真正登录前仍执行网络门禁。
       navigateTo('chat')
+      const plugin = plugins.find((candidate) => candidate.kind === kind)
+      // 需要令牌/第三方授权的平台不能只留下一个离线账号；新增后直接展示其资料表单。
+      // 扫码或手机号平台仍在聊天区完成全部登录交互。
+      if (plugin?.authType === 'credentials' || plugin?.authType === 'oauth') {
+        setFocusProxyKey(null)
+        setAccountModalKey(key)
+      }
     },
-    [navigateTo]
+    [navigateTo, plugins]
   )
 
   // 未显式设置时按系统语言推断；navigator.language 在 Electron 渲染进程里就是系统语言
@@ -625,6 +632,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
 
   const can = (perm: string): boolean =>
     permissions === undefined || permissions.includes(perm)
+  const canOpenManagement = can('team:manage') || can('accounts:manage') || can('campaigns:manage') || can('settings:manage')
 
   // 账号数以账号注册表 settings.accounts 为准（含尚未连接的 stopped 账号，它们也占配额），
   // 而非 channels（stopped 新账号不发事件、会漏计）。settings 未就绪时回落 channels。
@@ -724,6 +732,7 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
             onOpenManagement={() => navigateTo(view === 'management' ? 'chat' : 'management')}
             onQuitApplication={() => setQuitConfirmOpen(true)}
             activeView={view === 'home' ? 'chat' : view === 'proxy' || view === 'quick-messages' ? 'management' : view}
+            showManagement={canOpenManagement}
             showBilling={can('billing:manage')}
             allowAddAccount={can('accounts:manage')}
             atAccountQuota={atAccountQuota}
@@ -768,21 +777,23 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
                   canSubaccounts={can('team:manage')}
                   canProxy={can('accounts:manage')}
                   canWorkorders={can('campaigns:manage')}
+                  canQuickMessages={can('settings:manage')}
                   onRefresh={() => void refreshData()}
                 />
               )}
             </main>
-          ) : view === 'management' ? (
+          ) : view === 'management' && canOpenManagement ? (
             <ManagementPage
               canSubaccounts={can('team:manage')}
               canProxy={can('accounts:manage')}
               canWorkorders={can('campaigns:manage')}
+              canQuickMessages={can('settings:manage')}
               onOpenSubaccounts={() => navigateTo('team')}
               onOpenProxy={() => navigateTo('proxy')}
               onOpenWorkorders={() => navigateTo('campaigns')}
               onOpenQuickMessages={() => navigateTo('quick-messages')}
             />
-          ) : view === 'proxy' && settings ? (
+          ) : view === 'proxy' && can('accounts:manage') && settings ? (
             <ProxyPage
               settings={settings}
               channels={channels}
@@ -799,16 +810,16 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
                 }
               }}
             />
-          ) : view === 'quick-messages' && settings ? (
+          ) : view === 'quick-messages' && can('settings:manage') && settings ? (
             <QuickMessagesPage
               quickReplies={settings.quickReplies}
               onSave={async (quickReplies) => { await saveSettings({ quickReplies }) }}
             />
-          ) : view === 'campaigns' ? (
+          ) : view === 'campaigns' && can('campaigns:manage') ? (
             <CampaignPage accounts={accountOptions} />
-          ) : view === 'billing' ? (
+          ) : view === 'billing' && can('billing:manage') ? (
             <BillingPage />
-          ) : view === 'team' ? (
+          ) : view === 'team' && can('team:manage') ? (
             <TeamPage />
           ) : view === 'support' ? (
             <SupportPage />

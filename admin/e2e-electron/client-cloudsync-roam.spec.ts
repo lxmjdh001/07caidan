@@ -30,7 +30,7 @@ test('客户端云端漫游：主题偏好跨设备同步', async () => {
     await win.locator('input[type="email"]').fill(email)
     await win.locator('input[type="password"]').fill('secret123')
     await win.locator('.auth-submit').click()
-    await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+    await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
     await win.waitForTimeout(1000)
     const gotIt = win.getByRole('button', { name: '我知道了' })
     if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
@@ -41,7 +41,8 @@ test('客户端云端漫游：主题偏好跨设备同步', async () => {
   const winA = await appA.firstWindow()
   await winA.waitForLoadState('domcontentloaded')
   await login(winA)
-  await winA.locator('.rail-nav', { hasText: '设置' }).click()
+  await winA.getByTestId('client-nav-trigger').click()
+  await winA.getByTestId('client-nav-settings').click()
   await winA.locator('label').filter({ hasText: '深色' }).locator('input[type="radio"]').check()
   await winA.getByRole('button', { name: '保存', exact: true }).click()
 

@@ -5,15 +5,28 @@
 # 因此后端开 OMNI_TRUST_PROXY=true 后，X-Forwarded-For 一定由 Caddy 写入、不可被外部伪造，
 # 公开看板的地区限制才成立（否则 req.ip=回环，限制形同虚设）。
 
+(security_headers) {
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+	}
+}
+
 # API + 公开引流看板（短链接 wzzapp.cloud/c/<token> 直接分享给打粉团队）
 wzzapp.cloud {
 	encode gzip zstd
+	import security_headers
 	reverse_proxy 127.0.0.1:8787
 }
 
 # 官网：独立静态站点（www.wzzapp.cloud）。
 www.wzzapp.cloud {
 	encode gzip zstd
+	import security_headers
 	root * /var/www/omnichat-site
 	file_server
 }
@@ -24,6 +37,7 @@ www.wzzapp.cloud {
 # 同源好处：不依赖 CORS、不涉及跨站 Cookie。公开看板短链在 apex（wzzapp.cloud/c/<token>），此处不放行。
 admin.wzzapp.cloud {
 	encode gzip zstd
+	import security_headers
 	handle /api/* {
 		reverse_proxy 127.0.0.1:8787
 	}
@@ -33,3 +47,6 @@ admin.wzzapp.cloud {
 		file_server
 	}
 }
+
+# 同机其它独立站点放在此目录；主项目更新时保留，避免覆盖相邻服务。
+import /etc/caddy/sites/*.caddy

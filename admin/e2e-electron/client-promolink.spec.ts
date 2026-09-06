@@ -23,9 +23,11 @@ test('客户端推广链接：填手机号+追踪码实时生成带 ref 的入�
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
-  await win.locator('.rail-nav', { hasText: '引流工单' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-management').click()
+  await win.getByTestId('management-workorders').click()
   await win.getByRole('button', { name: '推广链接' }).click()
 
   // 默认账号无自动手机号 → 手填联系方式 + 追踪码

@@ -32,6 +32,10 @@ deploy/deploy.sh
 4. 从该提交发布官网、systemd 服务和 Caddy 配置；
 5. 重启服务并检查 `/health`。
 
+每次部署会先通过 SQLite 联机备份 API 生成一份一致性快照；此外
+`omnichat-backup.timer` 每日自动备份到 `/var/backups/omnichat`，校验完整性后压缩，
+默认保留 14 天。可在备份服务环境中用 `OMNI_BACKUP_KEEP_DAYS` 调整保留天数。
+
 可覆盖默认目标：
 
 ```bash

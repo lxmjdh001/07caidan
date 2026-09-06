@@ -26,13 +26,14 @@ test('客户端通知设置：主开关关闭时子开关联动禁用并持久�
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
-  await win.locator('.rail-nav', { hasText: '设置' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
   const master = win.locator('label.field.checkbox', { hasText: '窗口未聚焦时弹系统通知' }).locator('input')
   const preview = win.locator('label.field.checkbox', { hasText: '通知中显示消息内容' }).locator('input')
   const sound = win.locator('label.field.checkbox', { hasText: '通知提示音' }).locator('input')
@@ -54,8 +55,10 @@ test('客户端通知设置：主开关关闭时子开关联动禁用并持久�
   await win.screenshot({ path: `${SHOT_DIR}/client-89-notify-dependent.png` })
 
   // 离开再回来：主开关关态与子开关禁用态都保持（落库）
-  await win.locator('.rail-nav', { hasText: '套餐与余额' }).click()
-  await win.locator('.rail-nav', { hasText: '设置' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-billing').click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
   const master2 = win.locator('label.field.checkbox', { hasText: '窗口未聚焦时弹系统通知' }).locator('input')
   const preview2 = win.locator('label.field.checkbox', { hasText: '通知中显示消息内容' }).locator('input')
   await expect(master2).not.toBeChecked({ timeout: 10_000 })

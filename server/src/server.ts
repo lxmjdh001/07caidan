@@ -61,6 +61,37 @@ import {
   ProxyVendorRepo,
   type ProxyVendorInput
 } from './proxy-vendor-repo.ts'
+import { FixedWindowRateLimiter } from './security/rate-limiter.ts'
+
+const DEVELOPMENT_CORS_ORIGINS = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:5198',
+  'http://127.0.0.1:5198'
+]
+
+const PUBLIC_API_PATHS = new Set([
+  '/api/logs',
+  '/api/login',
+  '/api/client/config',
+  '/api/client/register',
+  '/api/client/login',
+  '/api/client/send-code',
+  '/api/client/forgot-password',
+  '/api/client/reset-password'
+])
+
+const PUBLIC_RATE_LIMITS = new Map<string, { limit: number; windowMs: number }>([
+  ['POST /api/client/register', { limit: 20, windowMs: 10 * 60_000 }],
+  ['POST /api/client/send-code', { limit: 6, windowMs: 10 * 60_000 }],
+  ['POST /api/client/forgot-password', { limit: 6, windowMs: 10 * 60_000 }],
+  ['POST /api/client/reset-password', { limit: 20, windowMs: 10 * 60_000 }],
+  ['POST /api/logs', { limit: 120, windowMs: 60_000 }]
+])
+
+function requestPath(url: string): string {
+  return url.split('?', 1)[0] || '/'
+}
 
 /** 请求上下文：要么是同步客户端（仅 tenant），要么是登录的管理员（含权限） */
 interface ReqCtx {
@@ -141,10 +172,12 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   // trustProxy：前置反代（Caddy/nginx）终止 TLS 时，让 req.ip 取自 X-Forwarded-For，
   // 否则公开看板的地区限制会看到回环地址而全部放行。直连部署保持 false（默认）以防 XFF 伪造。
   const app = Fastify({ logger: true, bodyLimit: 64 * 1024 * 1024, trustProxy: config.trustProxy })
-  // 前后端分离：管理后台是独立前端（admin/），这里开放跨域即可
-  // 默认只放 GET/HEAD/POST，管理后台的 PATCH/DELETE 会被预检拦死
+  // 生产管理后台与 API 同源，不需要开放全网跨域；本地开发仅允许固定 Vite 地址。
+  const allowedCorsOrigins = new Set(
+    config.corsOrigins ?? (config.production ? [] : DEVELOPMENT_CORS_ORIGINS)
+  )
   void app.register(cors, {
-    origin: true,
+    origin: (origin, callback) => callback(null, !origin || allowedCorsOrigins.has(origin)),
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']
   })
 
@@ -184,14 +217,25 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     return a?.startsWith('Bearer ') ? a.slice(7).trim() : null
   }
 
-  // 公开路由前缀（无需鉴权）：管理员登录、客户端注册/登录/发码/配置
-  const PUBLIC = ['/api/logs', '/api/login', '/api/client/config', '/api/client/register', '/api/client/login', '/api/client/send-code', '/api/client/forgot-password', '/api/client/reset-password']
+  const publicRateLimiter = new FixedWindowRateLimiter()
 
   // 鉴权：/api 路由（公开的除外）需带有效令牌。
   // 令牌可为「管理员会话」「客户端用户会话」「静态同步令牌」，映射到不同上下文。
   app.addHook('onRequest', async (req, reply) => {
     if (!req.url.startsWith('/api')) return
-    if (PUBLIC.some((p) => req.url.startsWith(p))) return
+    const path = requestPath(req.url)
+    const rateRule = PUBLIC_RATE_LIMITS.get(`${req.method} ${path}`)
+    if (config.rateLimitsEnabled !== false && rateRule) {
+      const rate = publicRateLimiter.consume(`${req.ip}:${req.method}:${path}`, rateRule.limit, rateRule.windowMs)
+      reply.header('X-RateLimit-Remaining', rate.remaining)
+      if (!rate.allowed) {
+        return reply
+          .header('Retry-After', rate.retryAfterSeconds)
+          .code(429)
+          .send({ error: '请求过于频繁，请稍后再试' })
+      }
+    }
+    if (PUBLIC_API_PATHS.has(path)) return
     const token = bearer(req)
     if (token) {
       const principal = auth.resolve(token)
@@ -231,6 +275,49 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     return ctx.billingUserId === undefined
       ? ctx.tenant
       : `${ctx.tenant}::workspace:${ctx.billingUserId}`
+  }
+
+  /** 只允许管理员在自己租户的基础空间和数字客户工作区之间定位数据。 */
+  const requestedAdminWorkspace = (
+    req: FastifyRequest,
+    reply: FastifyReply
+  ): string | null | undefined => {
+    const ctx = ctxOf(req)
+    if (!ctx.principal) return undefined
+    const raw = (req.query as { workspace?: unknown }).workspace
+    if (raw === undefined) return undefined
+    if (typeof raw !== 'string' || raw.length > 256) {
+      void reply.code(400).send({ error: '工作区标识无效' })
+      return null
+    }
+    const prefix = `${ctx.tenant}::workspace:`
+    if (raw !== ctx.tenant && (!raw.startsWith(prefix) || !/^\d+$/.test(raw.slice(prefix.length)))) {
+      void reply.code(403).send({ error: 'forbidden' })
+      return null
+    }
+    return raw
+  }
+
+  /**
+   * 客户端永远锁定自己工作区；管理端优先用前端回传的 workspace。
+   * 兼容旧管理端：未传时按实体 id 解析，如果同 id 出现在多个客户下则拒绝猜测。
+   */
+  const resolvedWorkspace = (
+    req: FastifyRequest,
+    reply: FastifyReply,
+    candidates: () => string[]
+  ): string | null => {
+    const ctx = ctxOf(req)
+    if (!ctx.principal) return workspaceOf(req)
+    const requested = requestedAdminWorkspace(req, reply)
+    if (requested === null) return null
+    if (requested !== undefined) return requested
+    const matches = [...new Set(candidates())]
+    if (matches.length > 1) {
+      void reply.code(409).send({ error: '同名数据属于多个客户，请指定工作区' })
+      return null
+    }
+    return matches[0] ?? ctx.tenant
   }
 
   const syncUserOf = (req: FastifyRequest): number => ctxOf(req).clientUserId ?? 0
@@ -410,6 +497,9 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
 
   app.post('/api/client/send-code', async (req, reply) => {
     if (!config.requireEmailVerify) return reply.code(400).send({ error: '后台未开启邮箱验证' })
+    if (config.production && !config.smtp) {
+      return reply.code(503).send({ error: '邮件服务暂不可用' })
+    }
     const { email } = (req.body ?? {}) as { email?: string }
     if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
       return reply.code(400).send({ error: '邮箱格式不正确' })
@@ -436,7 +526,8 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
       return reply.code(400).send({ error: '邮箱格式不正确' })
     }
     const normalized = email.trim().toLowerCase()
-    if (clientAuth.hasUser(normalized)) {
+    // 生产环境未配置 SMTP 时绝不签发固定开发验证码，否则已知邮箱可被直接重置密码。
+    if (clientAuth.hasUser(normalized) && (config.smtp || !config.production)) {
       const code = clientAuth.issueCode(normalized, config.smtp ? undefined : '12345')
       try {
         await mailer.send(
@@ -500,8 +591,33 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
       deviceName?: string
     }
     if (!b.email || !b.password) return reply.code(400).send({ error: '邮箱和密码必填' })
+    const loginIdentity = b.email.trim().toLowerCase()
+    const clientIpKey = `client-login:ip:${req.ip}`
+    const clientAccountKey = `client-login:account:${loginIdentity}`
+    const clientIpRate = config.rateLimitsEnabled === false
+      ? { allowed: true, remaining: 30, retryAfterSeconds: 0 }
+      : publicRateLimiter.check(clientIpKey, 30, 5 * 60_000)
+    const clientAccountRate = config.rateLimitsEnabled === false
+      ? { allowed: true, remaining: 10, retryAfterSeconds: 0 }
+      : publicRateLimiter.check(clientAccountKey, 10, 5 * 60_000)
+    if (!clientIpRate.allowed || !clientAccountRate.allowed) {
+      return reply
+        .header('Retry-After', Math.max(clientIpRate.retryAfterSeconds, clientAccountRate.retryAfterSeconds))
+        .code(429)
+        .send({ error: '请求过于频繁，请稍后再试' })
+    }
     const r = clientAuth.login(b.email, b.password, { deviceId: b.deviceId, deviceName: b.deviceName })
-    if (!r) return reply.code(401).send({ error: '邮箱或密码错误' })
+    if (!r) {
+      if (config.rateLimitsEnabled !== false) {
+        publicRateLimiter.consume(clientIpKey, 30, 5 * 60_000)
+        publicRateLimiter.consume(clientAccountKey, 10, 5 * 60_000)
+      }
+      return reply.code(401).send({ error: '邮箱或密码错误' })
+    }
+    if (config.rateLimitsEnabled !== false) {
+      publicRateLimiter.reset(clientIpKey)
+      publicRateLimiter.reset(clientAccountKey)
+    }
     // 设备数超限：给出当前设备列表，让用户远程下线其一后再登录
     if ('deviceLimit' in r) {
       return reply.code(403).send({
@@ -768,8 +884,33 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   app.post('/api/login', async (req, reply) => {
     const { username, password } = (req.body ?? {}) as { username?: string; password?: string }
     if (!username || !password) return reply.code(400).send({ error: 'missing credentials' })
+    const loginIdentity = username.trim().toLowerCase()
+    const adminIpKey = `admin-login:ip:${req.ip}`
+    const adminAccountKey = `admin-login:account:${loginIdentity}`
+    const adminIpRate = config.rateLimitsEnabled === false
+      ? { allowed: true, remaining: 20, retryAfterSeconds: 0 }
+      : publicRateLimiter.check(adminIpKey, 20, 5 * 60_000)
+    const adminAccountRate = config.rateLimitsEnabled === false
+      ? { allowed: true, remaining: 10, retryAfterSeconds: 0 }
+      : publicRateLimiter.check(adminAccountKey, 10, 5 * 60_000)
+    if (!adminIpRate.allowed || !adminAccountRate.allowed) {
+      return reply
+        .header('Retry-After', Math.max(adminIpRate.retryAfterSeconds, adminAccountRate.retryAfterSeconds))
+        .code(429)
+        .send({ error: '请求过于频繁，请稍后再试' })
+    }
     const r = auth.login(username, password)
-    if (!r) return reply.code(401).send({ error: '账号或密码错误' })
+    if (!r) {
+      if (config.rateLimitsEnabled !== false) {
+        publicRateLimiter.consume(adminIpKey, 20, 5 * 60_000)
+        publicRateLimiter.consume(adminAccountKey, 10, 5 * 60_000)
+      }
+      return reply.code(401).send({ error: '账号或密码错误' })
+    }
+    if (config.rateLimitsEnabled !== false) {
+      publicRateLimiter.reset(adminIpKey)
+      publicRateLimiter.reset(adminAccountKey)
+    }
     return {
       token: r.token,
       user: {
@@ -1059,13 +1200,15 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   app.get('/api/conversations', async (req, reply) => {
     if (!requireConversationRead(req, reply)) return
     const q = req.query as { limit?: string; offset?: string }
-    const tenant = workspaceOf(req)
-    const convs = repo.listConversations(tenant, Number(q.limit) || 100, Number(q.offset) || 0)
+    const ctx = ctxOf(req)
+    const convs = ctx.principal
+      ? repo.listConversationsForAdmin(ctx.tenant, Number(q.limit) || 100, Number(q.offset) || 0)
+      : repo.listConversations(workspaceOf(req), Number(q.limit) || 100, Number(q.offset) || 0)
     // 附加已落库的意向标签（实时自动打标签结果），无则不带
-    const levels = intentRepo.levelsFor(tenant, convs.map((c) => c.id))
     return {
       conversations: convs.map((c) => {
-        const level = levels.get(c.id)
+        const tenant = (c as { workspace?: string }).workspace ?? workspaceOf(req)
+        const level = intentRepo.get(tenant, c.id)?.level
         return level ? { ...c, intentLevel: level } : c
       })
     }
@@ -1077,14 +1220,18 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     const q = req.query as { limit?: string; offset?: string }
     const limit = Math.max(1, Math.min(500, Number(q.limit) || 500))
     const offset = Math.max(0, Number(q.offset) || 0)
-    return { messages: repo.listMessages(workspaceOf(req), id, limit, offset) }
+    const tenant = resolvedWorkspace(req, reply, () => repo.conversationWorkspacesForAdmin(ctxOf(req).tenant, id))
+    if (tenant === null) return
+    return { messages: repo.listMessages(tenant, id, limit, offset) }
   })
 
   // 已落库的意向分析（实时自动打标签或按需深度分析的结果），供打开会话即展示
   app.get('/api/conversations/:id/intent', async (req, reply) => {
     if (!requirePerm(req, reply, 'conversations:read')) return
     const id = (req.params as { id: string }).id
-    const s = intentRepo.get(workspaceOf(req), id)
+    const tenant = resolvedWorkspace(req, reply, () => repo.conversationWorkspacesForAdmin(ctxOf(req).tenant, id))
+    if (tenant === null) return
+    const s = intentRepo.get(tenant, id)
     return {
       intent: s
         ? {
@@ -1838,9 +1985,21 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     return requirePerm(req, reply, 'campaigns:manage')
   }
 
+  const campaignWorkspace = (req: FastifyRequest, reply: FastifyReply, id: string): string | null =>
+    resolvedWorkspace(req, reply, () => campaignRepo.campaignWorkspacesForAdmin(ctxOf(req).tenant, id))
+  const campaignLinkWorkspace = (req: FastifyRequest, reply: FastifyReply, token: string): string | null =>
+    resolvedWorkspace(req, reply, () => campaignRepo.linkWorkspacesForAdmin(ctxOf(req).tenant, token))
+  const libraryWorkspace = (req: FastifyRequest, reply: FastifyReply, id: string): string | null =>
+    resolvedWorkspace(req, reply, () => campaignRepo.libraryWorkspacesForAdmin(ctxOf(req).tenant, id))
+
   app.get('/api/campaigns', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
-    return { campaigns: campaignRepo.listCampaigns(workspaceOf(req)) }
+    const ctx = ctxOf(req)
+    return {
+      campaigns: ctx.principal
+        ? campaignRepo.listCampaignsForAdmin(ctx.tenant)
+        : campaignRepo.listCampaigns(workspaceOf(req))
+    }
   })
 
   app.post('/api/campaigns', async (req, reply) => {
@@ -1891,7 +2050,9 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (!requireCampaign(req, reply)) return
     const id = (req.params as { id: string }).id
     const patch = (req.body ?? {}) as Partial<CampaignInput> & { endAt?: number | null }
-    const existing = campaignRepo.getCampaign(workspaceOf(req), id)
+    const tenant = campaignWorkspace(req, reply, id)
+    if (tenant === null) return
+    const existing = campaignRepo.getCampaign(tenant, id)
     if (!existing) return reply.code(404).send({ error: 'not found' })
     if (patch.name !== undefined && !patch.name.trim()) {
       return reply.code(400).send({ error: '工单名称不能为空' })
@@ -1911,22 +2072,26 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (end !== undefined && end <= start) {
       return reply.code(400).send({ error: '结束时间必须晚于开始时间' })
     }
-    campaignRepo.updateCampaign(workspaceOf(req), id, patch)
-    return { ok: true, campaign: campaignRepo.getCampaign(workspaceOf(req), id) }
+    campaignRepo.updateCampaign(tenant, id, patch)
+    return { ok: true, campaign: campaignRepo.getCampaign(tenant, id) }
   })
 
   app.delete('/api/campaigns/:id', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
     const id = (req.params as { id: string }).id
-    const ok = campaignRepo.deleteCampaign(workspaceOf(req), id)
+    const tenant = campaignWorkspace(req, reply, id)
+    if (tenant === null) return
+    const ok = campaignRepo.deleteCampaign(tenant, id)
     return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
   })
 
   /** 登录态下的统计预览（与公开看板同一份数据） */
   app.get('/api/campaigns/:id/stats', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
-    const tenant = workspaceOf(req)
-    const campaign = campaignRepo.getCampaign(tenant, (req.params as { id: string }).id)
+    const id = (req.params as { id: string }).id
+    const tenant = campaignWorkspace(req, reply, id)
+    if (tenant === null) return
+    const campaign = campaignRepo.getCampaign(tenant, id)
     if (!campaign) return reply.code(404).send({ error: 'not found' })
     return { campaign, stats: campaignRepo.statsOf(tenant, campaign) }
   })
@@ -1935,14 +2100,16 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   app.get('/api/campaigns/:id/links', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
     const id = (req.params as { id: string }).id
-    const tenant = workspaceOf(req)
+    const tenant = campaignWorkspace(req, reply, id)
+    if (tenant === null) return
     return { links: campaignRepo.listLinks(tenant, id), publicBase: publicBase(tenant) }
   })
 
   app.post('/api/campaigns/:id/links', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
-    const tenant = workspaceOf(req)
     const id = (req.params as { id: string }).id
+    const tenant = campaignWorkspace(req, reply, id)
+    if (tenant === null) return
     if (!campaignRepo.getCampaign(tenant, id)) return reply.code(404).send({ error: 'not found' })
     const b = (req.body ?? {}) as { label?: string; expiresAt?: number | null }
     const link = campaignRepo.createLink(tenant, id, {
@@ -1956,21 +2123,27 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   app.post('/api/campaigns/links/:token/revoke', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
     const token = (req.params as { token: string }).token
-    const ok = campaignRepo.revokeLink(workspaceOf(req), token)
+    const tenant = campaignLinkWorkspace(req, reply, token)
+    if (tenant === null) return
+    const ok = campaignRepo.revokeLink(tenant, token)
     return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
   })
 
   app.post('/api/campaigns/links/:token/restore', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
     const token = (req.params as { token: string }).token
-    const ok = campaignRepo.restoreLink(workspaceOf(req), token)
+    const tenant = campaignLinkWorkspace(req, reply, token)
+    if (tenant === null) return
+    const ok = campaignRepo.restoreLink(tenant, token)
     return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
   })
 
   app.delete('/api/campaigns/links/:token', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
     const token = (req.params as { token: string }).token
-    const ok = campaignRepo.deleteLink(workspaceOf(req), token)
+    const tenant = campaignLinkWorkspace(req, reply, token)
+    if (tenant === null) return
+    const ok = campaignRepo.deleteLink(tenant, token)
     return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
   })
 
@@ -2015,7 +2188,12 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   // ── 重粉库 ──
   app.get('/api/fan-libraries', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
-    return { libraries: campaignRepo.listLibraries(workspaceOf(req)) }
+    const ctx = ctxOf(req)
+    return {
+      libraries: ctx.principal
+        ? campaignRepo.listLibrariesForAdmin(ctx.tenant)
+        : campaignRepo.listLibraries(workspaceOf(req))
+    }
   })
 
   /** 导入外部名单：脏格式在这里归一化，问题行原样回报给用户 */
@@ -2070,8 +2248,9 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   /** 追加名单到已有库 */
   app.post('/api/fan-libraries/:id/entries', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
-    const tenant = workspaceOf(req)
     const id = (req.params as { id: string }).id
+    const tenant = libraryWorkspace(req, reply, id)
+    if (tenant === null) return
     const library = campaignRepo.getLibrary(tenant, id)
     if (!library) return reply.code(404).send({ error: 'not found' })
     if (!isLibraryChannel(library.channel)) {
@@ -2088,7 +2267,10 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
 
   app.delete('/api/fan-libraries/:id', async (req, reply) => {
     if (!requireCampaign(req, reply)) return
-    const ok = campaignRepo.deleteLibrary(workspaceOf(req), (req.params as { id: string }).id)
+    const id = (req.params as { id: string }).id
+    const tenant = libraryWorkspace(req, reply, id)
+    if (tenant === null) return
+    const ok = campaignRepo.deleteLibrary(tenant, id)
     return ok ? { ok: true } : reply.code(404).send({ error: 'not found' })
   })
 
@@ -2512,7 +2694,8 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (!requirePerm(req, reply, 'analyze:run')) return
     if (!analyzer) return reply.code(501).send({ error: 'AI 分析未配置（缺少 ANTHROPIC_API_KEY）' })
     const id = (req.params as { id: string }).id
-    const tenant = ctxOf(req).tenant
+    const tenant = resolvedWorkspace(req, reply, () => repo.conversationWorkspacesForAdmin(ctxOf(req).tenant, id))
+    if (tenant === null) return
     const messages = repo.listMessages(tenant, id, 500)
     const analysis = await analyzer.analyze(messages)
     // 按需深度分析的结果也落库，覆盖关键词自动标签（更准）
@@ -2526,7 +2709,9 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     if (!requirePerm(req, reply, 'analyze:run')) return
     if (!analyzer) return reply.code(501).send({ error: 'AI 分析未配置（缺少 ANTHROPIC_API_KEY）' })
     const contactId = decodeURIComponent((req.params as { contactId: string }).contactId)
-    const messages = repo.messagesByContact(ctxOf(req).tenant, contactId)
+    const tenant = resolvedWorkspace(req, reply, () => repo.contactWorkspacesForAdmin(ctxOf(req).tenant, contactId))
+    if (tenant === null) return
+    const messages = repo.messagesByContact(tenant, contactId)
     return { analysis: await analyzer.analyze(messages) }
   })
 

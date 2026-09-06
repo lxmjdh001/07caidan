@@ -48,7 +48,7 @@ test('客户端聊天视图：本地会话收发气泡与译文渲染', async ()
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   // 启动公告弹窗可能挡住界面（共享租户里别的用例发过全员公告），先关掉
   await win.waitForTimeout(1000)
@@ -59,6 +59,8 @@ test('客户端聊天视图：本地会话收发气泡与译文渲染', async ()
   }
 
   // 预置的会话出现在列表 → 点开
+  await win.locator('.account-row.all').click()
+
   await win.locator('.conversation-item', { hasText: '本地客户E2E' }).click()
 
   // 入站气泡：原文 + 行内译文

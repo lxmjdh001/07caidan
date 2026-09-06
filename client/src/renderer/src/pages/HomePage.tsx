@@ -50,6 +50,7 @@ interface Props {
   canSubaccounts: boolean
   canProxy: boolean
   canWorkorders: boolean
+  canQuickMessages: boolean
   onRefresh: () => void
 }
 
@@ -76,7 +77,7 @@ function dateText(ts?: number): string {
   return ts ? new Date(ts).toLocaleDateString() : '—'
 }
 
-export function HomePage({ settings, channels, plugins, onOpenApp, onOpenManagement, onOpenProxy, onOpenSubaccounts, onOpenWorkorders, onOpenQuickMessages, canSubaccounts, canProxy, canWorkorders, onRefresh }: Props): React.JSX.Element {
+export function HomePage({ settings, channels, plugins, onOpenApp, onOpenManagement, onOpenProxy, onOpenSubaccounts, onOpenWorkorders, onOpenQuickMessages, canSubaccounts, canProxy, canWorkorders, canQuickMessages, onRefresh }: Props): React.JSX.Element {
   const { t } = useI18n()
   const [billing, setBilling] = useState<BillingMe | null>(null)
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
@@ -140,26 +141,26 @@ export function HomePage({ settings, channels, plugins, onOpenApp, onOpenManagem
         </div>
       </section>
 
-      <section className="home-section management-section">
+      {(canSubaccounts || canProxy || canWorkorders || canQuickMessages) && <section className="home-section management-section">
         <div className="section-title-row">
           <div className="section-title"><h2>{t('management.nav')}</h2></div>
           <button type="button" className="section-link" onClick={onOpenManagement}>{t('management.openCenter')} <ArrowRight size={15} /></button>
         </div>
         <div className="home-management-grid">
           {[
-            { id: 'subaccounts', title: t('management.subaccounts'), desc: t('management.subaccountsDesc'), available: canSubaccounts, action: onOpenSubaccounts },
-            { id: 'proxy', title: t('management.proxy'), desc: t('management.proxyDesc'), available: canProxy, action: onOpenProxy },
-            { id: 'workorders', title: t('management.workorders'), desc: t('management.workordersDesc'), available: canWorkorders, action: onOpenWorkorders },
-            { id: 'invites', title: t('management.invites'), desc: t('management.invitesDesc'), available: false },
-            { id: 'quick-messages', title: t('management.quickMessages'), desc: t('management.quickMessagesDesc'), available: true, action: onOpenQuickMessages }
-          ].map((item) => (
-            <button key={item.id} type="button" className={`home-management-card ${item.available ? '' : 'is-pending'}`} disabled={!item.available} onClick={item.action}>
+            { id: 'subaccounts', title: t('management.subaccounts'), desc: t('management.subaccountsDesc'), available: true, visible: canSubaccounts, action: onOpenSubaccounts },
+            { id: 'proxy', title: t('management.proxy'), desc: t('management.proxyDesc'), available: true, visible: canProxy, action: onOpenProxy },
+            { id: 'workorders', title: t('management.workorders'), desc: t('management.workordersDesc'), available: true, visible: canWorkorders, action: onOpenWorkorders },
+            { id: 'invites', title: t('management.invites'), desc: t('management.invitesDesc'), available: false, visible: canSubaccounts },
+            { id: 'quick-messages', title: t('management.quickMessages'), desc: t('management.quickMessagesDesc'), available: true, visible: canQuickMessages, action: onOpenQuickMessages }
+          ].filter((item) => item.visible).map((item) => (
+            <button key={item.id} type="button" data-testid={`management-${item.id}`} className={`home-management-card ${item.available ? '' : 'is-pending'}`} disabled={!item.available} onClick={item.action}>
               <span className="home-management-copy"><strong>{item.title}</strong><span>{item.desc}</span></span>
               <span className="home-management-badge">{item.available ? t('management.available') : t('management.pending')}</span>
             </button>
           ))}
         </div>
-      </section>
+      </section>}
 
       <section className="home-section app-section">
         <div className="section-title-row">

@@ -33,13 +33,19 @@ test('客户端工单：地区限制勾选允许大陆并持久化回显', async
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
-  await win.locator('.rail-nav', { hasText: '引流工单' }).click()
+  await win.getByTitle('添加 WhatsApp 账号').click()
+  await win.locator('.picker-item', { hasText: 'WhatsApp' }).click()
+  await expect(win.locator('.account-platform-group', { hasText: 'WhatsApp' })).toBeVisible()
+
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-management').click()
+  await win.getByTestId('management-workorders').click()
   await win.getByRole('button', { name: '新建工单' }).first().click()
 
   await win.locator('input[placeholder="如：八月东南亚推广"]').fill(name)
@@ -67,7 +73,7 @@ test('客户端工单：地区限制勾选允许大陆并持久化回显', async
   expect(mine?.allowHkIp).toBe(false)
 
   // 重开工单 → 详情 → 编辑 → 复选框回显持久态（大陆勾选、香港未勾）
-  await win.locator('.campaign-row', { hasText: name }).click()
+  await win.locator('.campaign-table tbody tr', { hasText: name }).getByRole('button', { name: '查看' }).click()
   await win.getByRole('button', { name: '编辑工单' }).click()
   const cnBox2 = win.locator('label.check-row', { hasText: '允许中国大陆 IP 访问' }).locator('input')
   const hkBox2 = win.locator('label.check-row', { hasText: '允许香港 IP 访问' }).locator('input')

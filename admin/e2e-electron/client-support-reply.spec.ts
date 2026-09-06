@@ -27,16 +27,17 @@ test('客户端帮助与反馈：收到客服回复并显示在工单里', async
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
   // 客户端提交工单
-  await win.locator('.rail-nav', { hasText: '帮助与反馈' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-support').click()
   await win.getByRole('button', { name: '提交问题' }).first().click()
-  await win.locator('input[type="text"]').first().fill(subject)
+  await win.locator('.form-page input[type="text"]').first().fill(subject)
   await win.locator('textarea').first().fill('打开软件后一直卡在登录页。')
   await win.getByRole('button', { name: '提交', exact: true }).click()
   await expect(win.getByText(subject).first()).toBeVisible({ timeout: 10_000 })

@@ -25,13 +25,14 @@ test('客户端翻译设置：入站/预览确认开关与本地语言跨导航�
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
-  await win.locator('.rail-nav', { hasText: '设置' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
   await win.locator('.page-tabs button', { hasText: '聊天翻译' }).click()
 
   const inbound = win.locator('label.field.checkbox', { hasText: '自动翻译收到的消息' }).locator('input')
@@ -54,8 +55,10 @@ test('客户端翻译设置：入站/预览确认开关与本地语言跨导航�
   await win.screenshot({ path: `${SHOT_DIR}/client-88-translation-toggles.png` })
 
   // 离开到别的页面再回设置（整页重挂载，回显来自落库）
-  await win.locator('.rail-nav', { hasText: '套餐与余额' }).click()
-  await win.locator('.rail-nav', { hasText: '设置' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-billing').click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
   await win.locator('.page-tabs button', { hasText: '聊天翻译' }).click()
 
   await expect(win.locator('label.field.checkbox', { hasText: '自动翻译收到的消息' }).locator('input')).toBeChecked({ checked: inbTarget })

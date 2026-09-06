@@ -23,9 +23,11 @@ test('Cliente en español: página Equipo y navegación en español', async () =
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
-  await win.locator('.rail-nav', { hasText: 'Gestión del equipo' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-management').click()
+  await win.getByTestId('management-subaccounts').click()
   await expect(win.getByRole('heading', { name: 'Dispositivos con sesión' })).toBeVisible({ timeout: 10_000 })
   await expect(win.getByRole('heading', { name: 'Miembros' })).toBeVisible()
   await win.waitForTimeout(400)

@@ -50,10 +50,11 @@ test('客户端公告：点「我知道了」后该公告标记已读，不再�
     await win.locator('input[type="email"]').fill(email)
     await win.locator('input[type="password"]').fill('secret123')
     await win.locator('.auth-submit').click()
-    await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+    await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
     // 公告弹窗出现并显示该公告
-    await expect(win.getByText(title)).toBeVisible({ timeout: 10_000 })
+    const modal = win.locator('.modal-backdrop').filter({ hasText: '通知' })
+    await expect(modal.getByText(title)).toBeVisible({ timeout: 10_000 })
 
     await win.waitForTimeout(300)
     await win.screenshot({ path: `${SHOT_DIR}/client-announcement-dismiss.png` })

@@ -60,23 +60,19 @@ test('公开看板 /c/:token：免登录聚合统计页渲染', async ({ page })
   // 页面拉 /public/campaign/:token 后渲染工单名与进线数字
   await expect(page.getByText('公开看板演示')).toBeVisible({ timeout: 15_000 })
 
-  // 三张聚合卡：进线总数 1 / 重复 0 / 有效 1（1 条入站、无去重）
-  await expect(page.locator('.card', { hasText: '进线总数' }).locator('.v')).toHaveText('1')
-  await expect(page.locator('.card', { hasText: '有效' }).locator('.v')).toHaveText('1')
+  // 新版看板的紧凑概览卡：总申请与今日申请均为 1。
+  await expect(page.locator('.summary-card', { hasText: '引流统计总览' }).locator('.summary-value')).toHaveText('1')
+  await expect(page.locator('.summary-card', { hasText: '今日引流统计' }).locator('.summary-value')).toHaveText('1')
 
   // 账号明细（老板分享给团队看的按账号拆分）：显示账号备注名「主号」+ 平台 whatsapp + 进线 1
   // accountRows() 此前无任何断言；这是看板核心可分享内容，且必须只出备注名不出号码
-  const acctRow = page.locator('section', { hasText: '账号明细' }).locator('table tbody tr', { hasText: '主号' })
+  const acctRow = page.locator('#account-body tr', { hasText: '主号' })
   await expect(acctRow).toBeVisible({ timeout: 10_000 })
-  await expect(acctRow).toContainText('whatsapp')
-  await expect(acctRow.locator('td.num').first()).toHaveText('1')
+  await expect(acctRow).toContainText('WhatsApp')
+  await expect(acctRow.locator('td.num').first()).toHaveText('1/0')
 
-  // 投放来源拆分（引流入口链接成效）：带 leadSourceCode 的进线要归到该来源。
-  // sourceRows() 此前无断言；这条端到端串起 sync(leadSourceCode)→bySource→看板渲染
-  const srcRow = page.locator('section', { hasText: '投放来源' }).locator('table tbody tr', { hasText: srcCode })
-  await expect(srcRow).toBeVisible({ timeout: 10_000 })
-  await expect(srcRow).toContainText('追踪码') // via='code' 渲染为追踪码
-  await expect(srcRow.locator('td.num').first()).toHaveText('1')
+  // 来源码只用于服务端归因，新版首页不展示该内部标识。
+  await expect(page.getByText(srcCode)).toHaveCount(0)
 
   // 红线：公开页绝不含粉丝身份（号码/contactId），账号列只出备注名
   const html = await page.content()

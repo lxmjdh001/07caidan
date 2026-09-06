@@ -23,17 +23,20 @@ test('客户端设置里切换语言（英→日）实时生效', async () => {
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   // 打开设置（英文界面）→ 语言下拉选日本語 → 保存
-  await win.locator('.rail-nav', { hasText: 'Settings' }).click()
-  const localeSelect = win.locator('select').filter({ has: win.locator('option[value="ja"]') })
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
+  const localeSelect = win.locator('.form-page select').filter({ has: win.locator('option[value="ja"]') })
   await localeSelect.selectOption('ja')
   await win.getByRole('button', { name: 'Save' }).click()
 
   // 整个界面实时切到日语（无需重启）
-  await expect(win.locator('.rail-nav', { hasText: 'チーム管理' })).toBeVisible({ timeout: 10_000 })
-  await expect(win.locator('.rail-nav', { hasText: '設定' })).toBeVisible()
+  await expect(win.getByTestId('client-nav-trigger')).toContainText('設定', { timeout: 10_000 })
+  await win.getByTestId('client-nav-trigger').click()
+  await expect(win.getByTestId('client-nav-billing')).toContainText('プランと残高')
+  await expect(win.getByTestId('client-nav-settings')).toContainText('設定')
   await win.waitForTimeout(400)
   await win.screenshot({ path: `${SHOT_DIR}/client-15-langswitch-ja.png` })
   await app.close()

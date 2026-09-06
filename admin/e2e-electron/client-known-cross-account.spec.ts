@@ -43,12 +43,14 @@ test('客户端聊天：同一客户在其他账号联系过时头部提示', as
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
   // 打开甲号会话 → 头部出现「已在其他账号联系过」老客提示
+  await win.locator('.account-row.all').click()
+
   await win.locator('.conversation-item', { hasText: '甲号客户E2E' }).click()
   await expect(win.locator('.known-chip', { hasText: '已在其他账号联系过' })).toBeVisible({ timeout: 10_000 })
 

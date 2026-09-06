@@ -23,13 +23,14 @@ test('客户端帮助与反馈：提交支持工单并在列表核对', async ()
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
-  await win.locator('.rail-nav', { hasText: '帮助与反馈' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-support').click()
   await win.getByRole('button', { name: '提交问题' }).first().click()
 
   // 填标题 + 描述 → 提交
-  await win.locator('input[type="text"]').first().fill('E2E 反馈测试')
+  await win.locator('.form-page input[type="text"]').first().fill('E2E 反馈测试')
   await win.locator('textarea').first().fill('这是一条端到端测试的软件问题反馈。')
   await win.getByRole('button', { name: '提交', exact: true }).click()
 

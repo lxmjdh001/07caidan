@@ -105,6 +105,7 @@ interface Props {
   onQuitApplication: () => void
   /** 当前主视图，用于底部导航高亮 */
   activeView: 'chat' | 'campaigns' | 'billing' | 'support' | 'settings' | 'team' | 'management'
+  showManagement: boolean
   showBilling: boolean
   allowAddAccount: boolean
   /** 已达套餐账号配额上限：有权限但不能再加，加号禁用并提示升级 */
@@ -134,6 +135,7 @@ export function AccountList({
   onOpenManagement,
   onQuitApplication,
   activeView,
+  showManagement,
   showBilling,
   allowAddAccount,
   atAccountQuota,
@@ -425,6 +427,7 @@ export function AccountList({
         <button
           type="button"
           className={`account-settings-trigger ${navMenuOpen ? 'open' : ''}`}
+          data-testid="client-nav-trigger"
           title={t('settings.title')}
           aria-label={t('settings.title')}
           aria-expanded={navMenuOpen}
@@ -442,20 +445,24 @@ export function AccountList({
               onClick={() => setNavMenuOpen(false)}
             />
             <nav className="account-settings-menu" aria-label={t('settings.title')}>
-              <button
-                type="button"
-                className={activeView === 'management' ? 'active' : ''}
-                onClick={() => {
-                  setNavMenuOpen(false)
-                  onOpenManagement()
-                }}
-              >
-                <BriefcaseBusiness size={21} strokeWidth={1.8} />
-                <span>{t('management.nav')}</span>
-              </button>
+              {showManagement && (
+                <button
+                  type="button"
+                  data-testid="client-nav-management"
+                  className={activeView === 'management' ? 'active' : ''}
+                  onClick={() => {
+                    setNavMenuOpen(false)
+                    onOpenManagement()
+                  }}
+                >
+                  <BriefcaseBusiness size={21} strokeWidth={1.8} />
+                  <span>{t('management.nav')}</span>
+                </button>
+              )}
               {showBilling && (
                 <button
                   type="button"
+                  data-testid="client-nav-billing"
                   className={activeView === 'billing' ? 'active' : ''}
                   onClick={() => {
                     setNavMenuOpen(false)
@@ -468,6 +475,7 @@ export function AccountList({
               )}
               <button
                 type="button"
+                data-testid="client-nav-support"
                 className={activeView === 'support' ? 'active' : ''}
                 onClick={() => {
                   setNavMenuOpen(false)
@@ -479,6 +487,7 @@ export function AccountList({
               </button>
               <button
                 type="button"
+                data-testid="client-nav-settings"
                 className={activeView === 'settings' ? 'active' : ''}
                 onClick={() => {
                   setNavMenuOpen(false)

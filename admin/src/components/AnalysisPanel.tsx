@@ -23,7 +23,7 @@ export function AnalysisPanel({ client, conversation, canAnalyze }: Props): Reac
     setErr('')
     let cancelled = false
     void client
-      .getIntent(conversation.id)
+      .getIntent(conversation.id, conversation.workspace)
       .then((r) => {
         if (cancelled || !r.intent) return
         const { analyzedAt: at, ...a } = r.intent
@@ -34,7 +34,7 @@ export function AnalysisPanel({ client, conversation, canAnalyze }: Props): Reac
     return () => {
       cancelled = true
     }
-  }, [conversation.id, client])
+  }, [conversation.id, conversation.workspace, client])
 
   const run = async (): Promise<void> => {
     setBusy(true)
@@ -42,8 +42,8 @@ export function AnalysisPanel({ client, conversation, canAnalyze }: Props): Reac
     try {
       // 有客户标识时按客户跨账号聚合分析，否则按当前会话
       const { analysis } = conversation.contactId
-        ? await client.analyzeContact(conversation.contactId)
-        : await client.analyzeConversation(conversation.id)
+        ? await client.analyzeContact(conversation.contactId, conversation.workspace)
+        : await client.analyzeConversation(conversation.id, conversation.workspace)
       setAnalysis(analysis)
       setAnalyzedAt(Date.now())
     } catch (e) {

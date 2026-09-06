@@ -46,13 +46,15 @@ test('客户端统一收件箱：多渠道会话各显渠道标签', async () =>
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
   // 「全部消息」聚合视图里两条会话各带渠道标签
+  await win.locator('.account-row.all').click()
+
   const waRow = win.locator('.conversation-item', { hasText: 'WA客户E2E' })
   const tgRow = win.locator('.conversation-item', { hasText: 'TG客户E2E' })
   await expect(waRow.locator('.channel-tag-label', { hasText: 'WhatsApp' })).toBeVisible({ timeout: 10_000 })

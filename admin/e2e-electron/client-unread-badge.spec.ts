@@ -37,13 +37,15 @@ test('客户端会话列表：未读角标显示数字', async () => {
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
   // 会话项未读角标 = 5
+  await win.locator('.account-row.all').click()
+
   const convBadge = win.locator('.conversation-item', { hasText: '未读客户E2E' }).locator('.unread-badge')
   await expect(convBadge).toHaveText('5', { timeout: 10_000 })
   // 账号栏至少有一处未读角标（聚合/按账号）

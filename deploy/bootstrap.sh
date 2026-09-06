@@ -47,8 +47,8 @@ fi
 
 echo "==> 安装编译工具（better-sqlite3 原生编译）"
 case "$PM" in
-  apt) apt-get install -y build-essential python3 ;;
-  dnf|yum) "$PM" groupinstall -y "Development Tools" || "$PM" install -y gcc gcc-c++ make; "$PM" install -y python3 ;;
+    apt) apt-get install -y build-essential python3 sqlite3 gzip ;;
+    dnf|yum) "$PM" groupinstall -y "Development Tools" || "$PM" install -y gcc gcc-c++ make; "$PM" install -y python3 sqlite gzip ;;
 esac
 
 echo "==> 安装 Caddy（自动 HTTPS 反代）"
@@ -69,7 +69,8 @@ else
 fi
 
 echo "==> 建配置目录 /etc/omnichat 与数据目录 /var/lib/omnichat"
-mkdir -p /etc/omnichat /var/lib/omnichat /etc/caddy /var/www/omnichat-admin /var/www/omnichat-site
+mkdir -p /etc/omnichat /var/lib/omnichat /etc/caddy/sites /var/backups/omnichat /var/www/omnichat-admin /var/www/omnichat-site
+chmod 700 /var/lib/omnichat /var/backups/omnichat
 
 echo ""
 echo "完成。下一步："

@@ -27,16 +27,17 @@ test('客户端帮助与反馈：提交工单时 UI 附加截图', async () => {
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
-  await win.locator('.rail-nav', { hasText: '帮助与反馈' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-support').click()
   await win.getByRole('button', { name: '提交问题' }).first().click()
 
-  await win.locator('input[type="text"]').first().fill(title)
+  await win.locator('.form-page input[type="text"]').first().fill(title)
   await win.locator('textarea').first().fill('界面异常，随单附一张截图说明。')
 
   // 点「附加截图」→ 拦截文件选择器 → 选本地图片

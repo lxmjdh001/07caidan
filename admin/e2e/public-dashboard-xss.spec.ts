@@ -26,9 +26,10 @@ test('公开看板：恶意工单名经转义不执行', async ({ page }) => {
   }).then((r) => r.json() as Promise<{ link: { token: string } }>)
 
   await page.goto(`${API}/c/${link.link.token}`)
-  // 看板名以转义文本显示，含字面 <img；未注入真实 img、未触发 onerror
-  await expect(page.locator('h1')).toContainText(`<img src=x onerror=`, { timeout: 15_000 })
-  await expect(page.locator('h1')).toContainText(`看板注入${TAG}`)
+  // 看板名在“工单名称”字段以转义文本显示，未注入真实 img。
+  const name = page.locator('.info-row', { hasText: '工单名称' }).locator('.info-value')
+  await expect(name).toContainText(`<img src=x onerror=`, { timeout: 15_000 })
+  await expect(name).toContainText(`看板注入${TAG}`)
   await expect(page.locator('img')).toHaveCount(0)
   const fired = await page.evaluate(() => (window as unknown as { __DASH_XSS?: number }).__DASH_XSS ?? 0)
   expect(fired).toBe(0)
@@ -77,8 +78,8 @@ test('公开看板：恶意账号标签/来源码同样经转义不执行', asyn
   // byAccount 行以转义文本显示恶意标签；未注入真实 img、未触发 onerror
   await expect(page.getByText(`标签${TAG}`).first()).toBeVisible({ timeout: 15_000 })
   await expect(page.locator('img')).toHaveCount(0)
-  // byCode 行同样转义显示来源码字面量
-  await expect(page.getByText(`码${TAG}`).first()).toBeVisible()
+  // 新版首页不渲染内部来源码，因此它更不能成为 DOM 注入点。
+  await expect(page.getByText(`码${TAG}`).first()).toHaveCount(0)
   const fired = await page.evaluate(() => {
     const w = window as unknown as { __LBL_XSS?: number; __CODE_XSS?: number }
     return (w.__LBL_XSS ?? 0) + (w.__CODE_XSS ?? 0)

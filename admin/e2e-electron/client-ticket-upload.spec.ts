@@ -24,7 +24,7 @@ test('客户端工单贴图上传：字节经 IPC 完整送达服务端', async 
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   // 渲染端构造已知字节 0..255（256 字节），经 uploadTicketImage 送主进程→服务端
   const mediaId = await win.evaluate(async () => {
@@ -35,12 +35,14 @@ test('客户端工单贴图上传：字节经 IPC 完整送达服务端', async 
   })
   expect(typeof mediaId).toBe('string')
 
-  // 用临时令牌把上传的媒体取回，逐字节核对是否仍是 0..255
-  const tmpClient = await fetch(`${API}/api/client/register`, {
+  // 用同一租户令牌把上传的媒体取回，逐字节核对是否仍是 0..255。
+  // 媒体按租户隔离，其他新注册用户理应拿到 404，不能用于完整性校验。
+  const sameClient = await fetch(`${API}/api/client/login`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email: `d_${Date.now().toString(36)}@e2e.test`, password: 'secret123' })
+    body: JSON.stringify({ email, password: 'secret123' })
   }).then((r) => r.json() as Promise<{ token: string }>)
-  const back = await fetch(`${API}/api/media/${mediaId}`, { headers: { authorization: `Bearer ${tmpClient.token}` } })
+  const back = await fetch(`${API}/api/media/${mediaId}`, { headers: { authorization: `Bearer ${sameClient.token}` } })
+  expect(back.ok).toBe(true)
   const buf = new Uint8Array(await back.arrayBuffer())
   console.log('[DIAG] uploaded back length =', buf.length, '(expect 256)')
   expect(buf.length).toBe(256)

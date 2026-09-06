@@ -156,6 +156,64 @@ export class Repo {
       .map(toConversation)
   }
 
+  /**
+   * 管理端汇总查看基础租户与其客户工作区。
+   * workspace 会跟随每条记录返回，后续查消息时必须精确带回，防止不同客户的相同会话 id 串数据。
+   */
+  listConversationsForAdmin(
+    tenant: string,
+    limit = 100,
+    offset = 0
+  ): Array<SyncConversation & { workspace: string }> {
+    const prefix = `${tenant}::workspace:`
+    return this.db
+      .select()
+      .from(conversations)
+      .where(or(
+        eq(conversations.tenant, tenant),
+        sql`substr(${conversations.tenant}, 1, ${prefix.length}) = ${prefix}`
+      ))
+      .orderBy(desc(conversations.lastMessageAt))
+      .limit(limit)
+      .offset(offset)
+      .all()
+      .map((row) => ({ ...toConversation(row), workspace: row.tenant }))
+  }
+
+  conversationWorkspacesForAdmin(tenant: string, conversationId: string): string[] {
+    const prefix = `${tenant}::workspace:`
+    return this.db
+      .selectDistinct({ workspace: conversations.tenant })
+      .from(conversations)
+      .where(and(
+        eq(conversations.id, conversationId),
+        or(
+          eq(conversations.tenant, tenant),
+          sql`substr(${conversations.tenant}, 1, ${prefix.length}) = ${prefix}`
+        )
+      ))
+      .limit(2)
+      .all()
+      .map((row) => row.workspace)
+  }
+
+  contactWorkspacesForAdmin(tenant: string, contactId: string): string[] {
+    const prefix = `${tenant}::workspace:`
+    return this.db
+      .selectDistinct({ workspace: conversations.tenant })
+      .from(conversations)
+      .where(and(
+        eq(conversations.contactId, contactId),
+        or(
+          eq(conversations.tenant, tenant),
+          sql`substr(${conversations.tenant}, 1, ${prefix.length}) = ${prefix}`
+        )
+      ))
+      .limit(2)
+      .all()
+      .map((row) => row.workspace)
+  }
+
   pullConversations(tenant: string, updatedAt: number, id: string, limit = 500): SyncConversation[] {
     return this.db.select().from(conversations).where(and(
       eq(conversations.tenant, tenant),

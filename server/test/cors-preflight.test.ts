@@ -64,7 +64,7 @@ describe('CORS 预检放行改删方法', () => {
       assert.ok(res.statusCode >= 200 && res.statusCode < 300, `预检返回 ${res.statusCode}`)
       const allow = String(res.headers['access-control-allow-methods'] ?? '')
       assert.ok(allow.includes(method), `allow-methods=「${allow}」缺 ${method} → 浏览器会静默拦死`)
-      // 反射式跨域：允许来源回显请求 Origin
+      // 仅白名单来源回显请求 Origin
       assert.equal(res.headers['access-control-allow-origin'], 'http://localhost:5173')
     })
   }
@@ -79,5 +79,17 @@ describe('CORS 预检放行改删方法', () => {
     for (const m of ['GET', 'POST', 'PATCH', 'DELETE']) {
       assert.ok(allow.includes(m), `allow-methods 缺 ${m}`)
     }
+  })
+
+  test('未知网站不能跨域调用 API', async () => {
+    const res = await app.inject({
+      method: 'OPTIONS',
+      url: '/api/campaigns/x',
+      headers: {
+        origin: 'https://evil.example',
+        'access-control-request-method': 'PATCH'
+      }
+    })
+    assert.equal(res.headers['access-control-allow-origin'], undefined)
   })
 })

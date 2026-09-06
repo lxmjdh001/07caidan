@@ -24,14 +24,16 @@ test('客户端团队：老板建自定义角色并勾选权限子集，列表�
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   // 有启用的全员公告时会弹通知框，其 backdrop 会拦截后续点击，先关掉
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
-  await win.locator('.rail-nav', { hasText: '团队管理' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-management').click()
+  await win.getByTestId('management-subaccounts').click()
   const roleName = `组长${Date.now().toString(36).slice(-4)}`
 
   // 打开「创建角色」弹窗（此时页面上只有区块按钮这一个同名按钮）

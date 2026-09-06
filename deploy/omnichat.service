@@ -8,6 +8,7 @@ Type=simple
 # 生产代码来自 git@github.com:lxmjdh001/07caidan.git 的服务器工作树。
 WorkingDirectory=/opt/omnichat/repo/server
 EnvironmentFile=/etc/omnichat/omnichat.env
+Environment=NODE_ENV=production
 # 需 Node ≥ 22.18（--experimental-strip-types 稳定）；nvm 安装时改成绝对路径
 ExecStart=/usr/bin/node --experimental-strip-types src/index.ts
 Restart=always
@@ -18,6 +19,14 @@ StateDirectory=omnichat
 NoNewPrivileges=true
 ProtectSystem=full
 ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictRealtime=true
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target

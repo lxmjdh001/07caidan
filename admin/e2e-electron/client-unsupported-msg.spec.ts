@@ -38,10 +38,12 @@ test('客户端聊天：不支持的消息类型显示占位提示', async () =>
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
+
+  await win.locator('.account-row.all').click()
 
   await win.locator('.conversation-item', { hasText: '位置客户E2E' }).click()
   // 不支持消息优雅降级为占位文本；文本消息仍正常

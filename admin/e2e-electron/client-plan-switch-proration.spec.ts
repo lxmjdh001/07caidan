@@ -54,12 +54,13 @@ test('客户端套餐：已订阅后切换套餐走折算，徽标转移且余�
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
-  await win.locator('.rail-nav', { hasText: '套餐与余额' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-billing').click()
   // 概览：初始余额 $100.00
   await expect(win.locator('.stat-card').filter({ hasText: '余额' }).locator('.v')).toHaveText('$100.00', { timeout: 10_000 })
 

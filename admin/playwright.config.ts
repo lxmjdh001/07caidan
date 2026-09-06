@@ -1,4 +1,6 @@
 import { defineConfig } from '@playwright/test'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 /**
  * 管理后台 UI 冒烟：真实起 server + admin，用浏览器登录并逐页截图。
@@ -8,8 +10,16 @@ const SERVER_PORT = 8798
 const ADMIN_PORT = 5198
 const DATA_DIR = process.env.E2E_DATA_DIR || '/private/tmp/omnichat-e2e-data'
 
+// 截图属于临时测试产物。外置工作盘写入截图时会同时生成 AppleDouble 文件，
+// 若放在 Vite 根目录下会触发文件监听和页面热更新，造成与产品无关的点击/截图假超时。
+process.env.SHOT_DIR ||= join(tmpdir(), 'wzzscrm-admin-e2e-shots')
+
 export default defineConfig({
   testDir: './e2e',
+  // 外置盘可能生成 AppleDouble `._*` 元数据；它不是源码，禁止 Playwright 当作 spec 解析。
+  testIgnore: ['**/._*'],
+  // 即使上一次调试被中断，本次也从干净的专用 E2E 数据开始。
+  globalSetup: './e2e/global-setup.ts',
   // 跑完把共享持久库重置到只剩引导管理员，清掉后台套件累积的套餐/通道/工单/订单/用户等，
   // 防跨运行无限累积拖慢列表渲染类用例（与电子端 teardown 同一治理）
   globalTeardown: './e2e/global-teardown.ts',
@@ -35,6 +45,7 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 90_000,
       env: {
+        NODE_ENV: 'test',
         PORT: String(SERVER_PORT),
         HOST: '127.0.0.1',
         OMNI_DATA_DIR: DATA_DIR,

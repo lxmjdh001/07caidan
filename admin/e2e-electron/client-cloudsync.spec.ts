@@ -30,10 +30,11 @@ test('客户端：设置里「云端漫游偏好」开关存在且默认开启',
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   // 打开「设置」→ 最后一个页签（后台账号），云同步开关在此
-  await win.locator('.rail-nav', { hasText: /设置|Settings/ }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
   await expect(win.locator('.page-tabs button')).not.toHaveCount(0)
   await win.locator('.page-tabs button').last().click()
 

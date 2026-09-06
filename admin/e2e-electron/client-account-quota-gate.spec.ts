@@ -14,10 +14,10 @@ const API = 'http://127.0.0.1:8798'
 
 // M11 账号配额软门：套餐 maxAccounts 此前只展示不强制（accountQuotaState/canAddMore 零生产调用），
 // 10 账号套餐的老板能加任意多个。现把加号接上配额：有套餐且账号数已达上限 → 加号禁用 + 提示升级；
-// 升级到更大配额后加号即时恢复。默认主账号 whatsapp:main 已占 1 个，故 maxAccounts=1 即到顶。
+// 升级到更大配额后加号即时恢复。用例预置一个账号，故 maxAccounts=1 即到顶。
 test('客户端账号配额：到套餐上限禁用加号并提示，升级后恢复', async () => {
   mkdirSync(USER_DATA, { recursive: true })
-  writeFileSync(join(USER_DATA, 'settings.json'), JSON.stringify({ locale: 'zh-CN' }), 'utf8')
+  writeFileSync(join(USER_DATA, 'settings.json'), JSON.stringify({ locale: 'zh-CN', accounts: { 'whatsapp:main': {} } }), 'utf8')
 
   const TAG = Date.now().toString(36).slice(-5)
   const plan1Name = `单账号套餐${TAG}`
@@ -45,7 +45,7 @@ test('客户端账号配额：到套餐上限禁用加号并提示，升级后�
   await fetch(`${API}/api/admin/balance-adjust`, {
     method: 'POST', headers: aAuth, body: JSON.stringify({ email, deltaCents: 10000, note: 'e2e' })
   })
-  // 先订 maxAccounts=1 套餐 → 配额 1，主账号已占满
+  // 先订 maxAccounts=1 套餐 → 配额 1，预置账号已占满
   await fetch(`${API}/api/billing/subscribe`, { method: 'POST', headers: bAuth, body: JSON.stringify({ planId: plan1.plan.id }) })
 
   const app = await electron.launch({ executablePath: ELECTRON_PATH, args: [MAIN, `--user-data-dir=${join(tmpdir(), 'omni-quota-ignored')}`], env: { ...process.env, OMNI_USER_DATA: USER_DATA } })
@@ -55,7 +55,7 @@ test('客户端账号配额：到套餐上限禁用加号并提示，升级后�
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
@@ -70,7 +70,8 @@ test('客户端账号配额：到套餐上限禁用加号并提示，升级后�
 
   // 升级到 maxAccounts=5 → 切视图触发 /billing/me 重取配额 → 加号恢复、提示消失
   await fetch(`${API}/api/billing/subscribe`, { method: 'POST', headers: bAuth, body: JSON.stringify({ planId: plan5.plan.id }) })
-  await win.locator('.rail-nav', { hasText: '套餐与余额' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-billing').click()
   await expect(addBtn).toBeEnabled({ timeout: 10_000 })
   await expect(win.locator('.account-quota-hint')).toHaveCount(0)
 

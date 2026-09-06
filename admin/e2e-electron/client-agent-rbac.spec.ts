@@ -37,7 +37,7 @@ test('客户端 RBAC：客服子账号登录后导航按权限隐藏', async () 
   await win.locator('input[type="email"]').fill(member.member.email)
   await win.locator('input[type="password"]').fill('agentpass123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
@@ -45,11 +45,13 @@ test('客户端 RBAC：客服子账号登录后导航按权限隐藏', async () 
 
   // 基础能力可见：全部消息(聊天) + 帮助与反馈
   await expect(win.locator('.account-row', { hasText: '全部消息' })).toBeVisible()
-  await expect(win.locator('.rail-nav', { hasText: '帮助与反馈' })).toBeVisible()
-  // 管理类按权限隐藏：引流工单 / 套餐与余额 / 团队管理 均不可见
-  await expect(win.locator('.rail-nav', { hasText: '引流工单' })).toHaveCount(0)
-  await expect(win.locator('.rail-nav', { hasText: '套餐与余额' })).toHaveCount(0)
-  await expect(win.locator('.rail-nav', { hasText: '团队管理' })).toHaveCount(0)
+  await expect(win.getByTestId('management-workorders')).toHaveCount(0)
+  await expect(win.getByTestId('management-subaccounts')).toHaveCount(0)
+  await win.getByTestId('client-nav-trigger').click()
+  await expect(win.getByTestId('client-nav-support')).toBeVisible()
+  // 管理入口与账单按权限隐藏。
+  await expect(win.getByTestId('client-nav-management')).toHaveCount(0)
+  await expect(win.getByTestId('client-nav-billing')).toHaveCount(0)
   // 加账号“+”按钮也隐藏（无 accounts:manage）
   await expect(win.getByTitle('添加 WhatsApp 账号')).toHaveCount(0)
 

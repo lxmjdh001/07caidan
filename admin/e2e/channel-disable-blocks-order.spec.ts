@@ -47,7 +47,10 @@ test('后台支付通道：停用后客户端下单被拒、启用后可下单',
   await expect(row).toBeVisible({ timeout: 10_000 })
 
   // 点「停用」→ 行变停用态
-  await row.getByRole('button', { name: '停用' }).click()
+  await Promise.all([
+    page.waitForResponse((response) => response.url().includes(`/api/admin/channels/${ch.channel.id}`) && response.request().method() === 'PATCH'),
+    row.getByRole('button', { name: '停用' }).click()
+  ])
   await expect(row).toHaveClass(/row-off/, { timeout: 10_000 })
 
   await page.waitForTimeout(300)
@@ -59,7 +62,11 @@ test('后台支付通道：停用后客户端下单被拒、启用后可下单',
   expect(blocked.error).toBe('支付通道不可用')
 
   // 点「启用」→ 恢复可下单（生成付款单 200）
-  await row.getByRole('button', { name: '启用' }).click()
+  await Promise.all([
+    page.waitForResponse((response) => response.url().includes(`/api/admin/channels/${ch.channel.id}`) && response.request().method() === 'PATCH'),
+    row.getByRole('button', { name: '启用' }).click()
+  ])
+  await expect(row.getByRole('button', { name: '停用' })).toBeVisible({ timeout: 10_000 })
   await expect(row).not.toHaveClass(/row-off/, { timeout: 10_000 })
   const ok = await order()
   expect(ok.status).toBe(200)

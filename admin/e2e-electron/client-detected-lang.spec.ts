@@ -37,14 +37,16 @@ test('客户端会话设置：自动项显示检测到的客户语言', async ()
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
+  await win.locator('.account-row.all').click()
+
   await win.locator('.conversation-item', { hasText: '日语客户E2E' }).click()
-  await win.locator('.conv-settings-btn').click()
+  await win.getByTitle('会话设置').click()
   const popover = win.locator('.conv-settings-popover')
   await expect(popover).toBeVisible({ timeout: 10_000 })
 

@@ -14,11 +14,11 @@ const API = 'http://127.0.0.1:8798'
 
 // M11 账号配额软门·计数方向：quota-gate 只测了「改套餐→配额变」这个方向，
 // 「加账号使账号数触达上限→加号即时禁用」这条计数方向的响应此前没测。
-// 这才是老板真实操作路径：不停加账号直到撞上套餐上限。maxAccounts=2、主账号占 1，
+// 这才是老板真实操作路径：不停加账号直到撞上套餐上限。maxAccounts=2、预置账号占 1，
 // 通过选择器新增一个 Telegram Bot 账号（选中即创建）→ 账号数变 2 = 配额 → 加号禁用。
 test('客户端账号配额：加账号触达上限后加号即时禁用（计数方向）', async () => {
   mkdirSync(USER_DATA, { recursive: true })
-  writeFileSync(join(USER_DATA, 'settings.json'), JSON.stringify({ locale: 'zh-CN' }), 'utf8')
+  writeFileSync(join(USER_DATA, 'settings.json'), JSON.stringify({ locale: 'zh-CN', accounts: { 'whatsapp:main': {} } }), 'utf8')
 
   const TAG = Date.now().toString(36).slice(-5)
   const planName = `双账号套餐${TAG}`
@@ -52,12 +52,12 @@ test('客户端账号配额：加账号触达上限后加号即时禁用（计�
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
-  // 配额 2、当前 1 个（主账号）→ 加号可点、无提示
+  // 配额 2、当前 1 个（预置账号）→ 加号可点、无提示
   const addBtn = win.locator('.account-list-header .icon-btn')
   await expect(addBtn).toBeEnabled({ timeout: 10_000 })
   await expect(win.locator('.account-quota-hint')).toHaveCount(0)
@@ -67,7 +67,7 @@ test('客户端账号配额：加账号触达上限后加号即时禁用（计�
   await win.locator('.picker-item', { hasText: 'Telegram Bot' }).click()
   const modal = win.locator('.modal')
   await expect(modal).toBeVisible({ timeout: 10_000 })
-  await modal.getByRole('button', { name: '取消' }).click()
+  await modal.locator('.account-modal-footer .ghost-btn').click()
   await expect(modal).toBeHidden({ timeout: 10_000 })
 
   // 账号数已达配额（2/2）→ 加号即时禁用 + 升级提示

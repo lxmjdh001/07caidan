@@ -44,17 +44,19 @@ test('客户端会话设置：手动指定客户语言并持久化', async () =>
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   // 关掉可能的启动公告弹窗
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
+  await win.locator('.account-row.all').click()
+
   await win.locator('.conversation-item', { hasText: '语言设置客户E2E' }).click()
 
   // 打开会话设置弹层
-  await win.locator('.conv-settings-btn').click()
+  await win.getByTitle('会话设置').click()
   const popover = win.locator('.conv-settings-popover')
   await expect(popover).toBeVisible({ timeout: 10_000 })
   const langSel = popover.locator('select')
@@ -73,9 +75,9 @@ test('客户端会话设置：手动指定客户语言并持久化', async () =>
   await win.screenshot({ path: `${SHOT_DIR}/client-34-conv-settings.png` })
 
   // 持久化：关闭再打开弹层，指定语言仍在（证明经主进程落库并回灌）
-  await win.locator('.conv-settings-btn').click()
+  await win.getByTitle('会话设置').click()
   await expect(popover).toBeHidden()
-  await win.locator('.conv-settings-btn').click()
+  await win.getByTitle('会话设置').click()
   await expect(win.locator('.conv-settings-popover select')).toHaveValue(chosen)
 
   await app.close()

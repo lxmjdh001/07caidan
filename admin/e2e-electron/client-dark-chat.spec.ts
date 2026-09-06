@@ -44,7 +44,7 @@ test('客户端深色主题：聊天气泡与译文对比度截图核对', async
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
@@ -52,6 +52,8 @@ test('客户端深色主题：聊天气泡与译文对比度截图核对', async
 
   // 深色主题已生效（根节点 data-theme=dark）
   await expect(win.locator('html')).toHaveAttribute('data-theme', 'dark')
+
+  await win.locator('.account-row.all').click()
 
   await win.locator('.conversation-item', { hasText: '深色客户E2E' }).click()
   await expect(win.locator('.bubble-row.in').filter({ hasText: '晚上好' })).toBeVisible({ timeout: 10_000 })

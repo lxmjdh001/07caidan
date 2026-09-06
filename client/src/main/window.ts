@@ -1,6 +1,7 @@
 import { join } from 'node:path'
 import { BrowserWindow, shell } from 'electron'
 import { brand } from '@shared/branding'
+import { isSafeExternalUrl } from './core/external-url'
 
 /** 自绘标题栏高度，与渲染层 styles.css 的 --titlebar-h 保持一致 */
 export const TITLEBAR_HEIGHT = 40
@@ -42,7 +43,7 @@ export function createMainWindow(): BrowserWindow {
 
   // 外链交给系统浏览器
   win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url)
+    if (isSafeExternalUrl(url)) void shell.openExternal(url)
     return { action: 'deny' }
   })
 

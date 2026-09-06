@@ -23,9 +23,11 @@ test('Client tiếng Việt: trang Nhóm và điều hướng đều là tiếng
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
-  await win.locator('.rail-nav', { hasText: 'Quản lý nhóm' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-management').click()
+  await win.getByTestId('management-subaccounts').click()
   await expect(win.getByRole('heading', { name: 'Thiết bị đăng nhập' })).toBeVisible({ timeout: 10_000 })
   await expect(win.getByRole('heading', { name: 'Thành viên' })).toBeVisible()
   await win.waitForTimeout(400)

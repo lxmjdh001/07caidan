@@ -12,5 +12,10 @@ const brand = JSON.parse(
 export default defineConfig({
   plugins: [react()],
   define: { __BRAND__: JSON.stringify(brand) },
-  server: { port: 5180 }
+  server: {
+    port: 5180,
+    watch: {
+      ignored: ['**/e2e/shots/**', '**/e2e-electron/shots/**', '**/test-results/**', '**/playwright-report/**']
+    }
+  }
 })

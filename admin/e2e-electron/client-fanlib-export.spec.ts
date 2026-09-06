@@ -24,14 +24,16 @@ test('客户端重粉库：从历史导出建库并在列表核对', async () =>
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   // 关掉可能的启动公告弹窗（共享租户里别的用例发过全员公告，居中弹层会挡住页签点击）
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
-  await win.locator('.rail-nav', { hasText: '引流工单' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-management').click()
+  await win.getByTestId('management-workorders').click()
   await win.getByRole('button', { name: '重粉库' }).click()
 
   const libName = `历史导出库${Date.now().toString(36).slice(-4)}`

@@ -23,7 +23,7 @@ test('客户端凭证类账号配置：Telegram Bot 弹出 Token 表单（含代
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   // + → 选 Telegram Bot（凭证类）→ 弹出账号配置弹窗
   await win.getByTitle('添加 WhatsApp 账号').click()

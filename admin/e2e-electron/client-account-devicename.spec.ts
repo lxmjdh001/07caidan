@@ -26,14 +26,18 @@ test('客户端账号设置：设备名保存并持久化', async () => {
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
-  const accRow = win.locator('.account-row').filter({ has: win.locator('.account-row-gear') }).first()
+  await win.getByTitle('添加 WhatsApp 账号').click()
+  await win.locator('.picker-item', { hasText: 'WhatsApp' }).click()
+
+  const accRow = win.locator('.account-row').filter({ has: win.locator('.account-row-more') }).first()
   await accRow.hover()
-  await accRow.locator('.account-row-gear').click()
+  await accRow.locator('.account-row-more').click()
+  await win.locator('.account-context-menu').getByRole('button', { name: '编辑' }).click()
   const modal = win.locator('.modal')
   await expect(modal).toBeVisible({ timeout: 10_000 })
 
@@ -50,7 +54,8 @@ test('客户端账号设置：设备名保存并持久化', async () => {
 
   // 重开 → 设备名仍在（落库）
   await accRow.hover()
-  await accRow.locator('.account-row-gear').click()
+  await accRow.locator('.account-row-more').click()
+  await win.locator('.account-context-menu').getByRole('button', { name: '编辑' }).click()
   await expect(win.locator('.modal').locator('label.field', { hasText: '设备名' }).locator('input')).toHaveValue(devName)
 
   await app.close()

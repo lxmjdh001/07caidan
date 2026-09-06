@@ -23,10 +23,11 @@ test('客户端设置里切换深色主题实时生效', async () => {
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   // 打开设置（一般页有外观单选）→ 选「深色」→ 保存
-  await win.locator('.rail-nav', { hasText: '设置' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
   await win.locator('label', { hasText: '深色' }).locator('input[type="radio"]').check()
   await win.getByRole('button', { name: '保存', exact: true }).click()
 

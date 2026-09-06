@@ -2,6 +2,8 @@
 
 export interface Conversation {
   id: string
+  /** 管理端精确定位客户工作区，防止不同客户的相同会话 id 串数据。 */
+  workspace?: string
   channel: string
   accountId: string
   contactId?: string
@@ -40,6 +42,7 @@ export interface IntentAnalysis {
  */
 export interface Campaign {
   id: string
+  workspace?: string
   name: string
   accountIds: string[]
   accountLabels: Record<string, string>
@@ -87,6 +90,7 @@ export interface CampaignLink {
 
 export interface FanLibrary {
   id: string
+  workspace?: string
   name: string
   channel: string
   source: string
@@ -323,6 +327,11 @@ export class ApiClient {
     private readonly token: string
   ) {}
 
+  private scoped(path: string, workspace?: string): string {
+    if (!workspace) return path
+    return `${path}${path.includes('?') ? '&' : '?'}workspace=${encodeURIComponent(workspace)}`
+  }
+
   private async req<T>(path: string, opts: RequestInit = {}): Promise<T> {
     const res = await fetch(this.base.replace(/\/$/, '') + path, {
       ...opts,
@@ -345,21 +354,21 @@ export class ApiClient {
     return this.req(`/api/conversations?limit=${limit}`)
   }
 
-  listMessages(id: string): Promise<{ messages: Message[] }> {
-    return this.req(`/api/conversations/${encodeURIComponent(id)}/messages`)
+  listMessages(id: string, workspace?: string): Promise<{ messages: Message[] }> {
+    return this.req(this.scoped(`/api/conversations/${encodeURIComponent(id)}/messages`, workspace))
   }
 
-  analyzeConversation(id: string): Promise<{ analysis: IntentAnalysis }> {
-    return this.req(`/api/analyze/conversation/${encodeURIComponent(id)}`, { method: 'POST' })
+  analyzeConversation(id: string, workspace?: string): Promise<{ analysis: IntentAnalysis }> {
+    return this.req(this.scoped(`/api/analyze/conversation/${encodeURIComponent(id)}`, workspace), { method: 'POST' })
   }
 
   /** 已落库的意向分析（自动打标签/深度分析结果），打开会话即读，无需 key */
-  getIntent(id: string): Promise<{ intent: (IntentAnalysis & { analyzedAt: number }) | null }> {
-    return this.req(`/api/conversations/${encodeURIComponent(id)}/intent`)
+  getIntent(id: string, workspace?: string): Promise<{ intent: (IntentAnalysis & { analyzedAt: number }) | null }> {
+    return this.req(this.scoped(`/api/conversations/${encodeURIComponent(id)}/intent`, workspace))
   }
 
-  analyzeContact(contactId: string): Promise<{ analysis: IntentAnalysis }> {
-    return this.req(`/api/analyze/contact/${encodeURIComponent(contactId)}`, { method: 'POST' })
+  analyzeContact(contactId: string, workspace?: string): Promise<{ analysis: IntentAnalysis }> {
+    return this.req(this.scoped(`/api/analyze/contact/${encodeURIComponent(contactId)}`, workspace), { method: 'POST' })
   }
 
   me(): Promise<Me> {
@@ -377,12 +386,12 @@ export class ApiClient {
     return this.req('/api/campaigns')
   }
 
-  campaignStats(id: string): Promise<{ campaign: Campaign; stats: CampaignStats }> {
-    return this.req(`/api/campaigns/${encodeURIComponent(id)}/stats`)
+  campaignStats(id: string, workspace?: string): Promise<{ campaign: Campaign; stats: CampaignStats }> {
+    return this.req(this.scoped(`/api/campaigns/${encodeURIComponent(id)}/stats`, workspace))
   }
 
-  listLinks(id: string): Promise<{ links: CampaignLink[]; publicBase: string }> {
-    return this.req(`/api/campaigns/${encodeURIComponent(id)}/links`)
+  listLinks(id: string, workspace?: string): Promise<{ links: CampaignLink[]; publicBase: string }> {
+    return this.req(this.scoped(`/api/campaigns/${encodeURIComponent(id)}/links`, workspace))
   }
 
   campaignShareDomain(): Promise<{ domain: string }> {
@@ -395,24 +404,25 @@ export class ApiClient {
 
   createLink(
     id: string,
-    body: { label?: string; expiresAt?: number }
+    body: { label?: string; expiresAt?: number },
+    workspace?: string
   ): Promise<{ link: CampaignLink; url: string }> {
-    return this.req(`/api/campaigns/${encodeURIComponent(id)}/links`, {
+    return this.req(this.scoped(`/api/campaigns/${encodeURIComponent(id)}/links`, workspace), {
       method: 'POST',
       body: JSON.stringify(body)
     })
   }
 
-  revokeLink(token: string): Promise<{ ok: boolean }> {
-    return this.req(`/api/campaigns/links/${encodeURIComponent(token)}/revoke`, { method: 'POST' })
+  revokeLink(token: string, workspace?: string): Promise<{ ok: boolean }> {
+    return this.req(this.scoped(`/api/campaigns/links/${encodeURIComponent(token)}/revoke`, workspace), { method: 'POST' })
   }
 
   listLibraries(): Promise<{ libraries: FanLibrary[] }> {
     return this.req('/api/fan-libraries')
   }
 
-  deleteLibrary(id: string): Promise<{ ok: boolean }> {
-    return this.req(`/api/fan-libraries/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  deleteLibrary(id: string, workspace?: string): Promise<{ ok: boolean }> {
+    return this.req(this.scoped(`/api/fan-libraries/${encodeURIComponent(id)}`, workspace), { method: 'DELETE' })
   }
 
   // ── 计费管理（需 billing:manage）──

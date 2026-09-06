@@ -24,16 +24,20 @@ test('客户端账号设置：按账号默认客户语言持久化', async () =>
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
-  // 打开默认 whatsapp:main 账号的设置（齿轮默认 display:none，hover 账号行才显示）
-  const accRow = win.locator('.account-row').filter({ has: win.locator('.account-row-gear') }).first()
+  await win.getByTitle('添加 WhatsApp 账号').click()
+  await win.locator('.picker-item', { hasText: 'WhatsApp' }).click()
+
+  // 从账号更多菜单打开编辑。
+  const accRow = win.locator('.account-row').filter({ has: win.locator('.account-row-more') }).first()
   await accRow.hover()
-  await accRow.locator('.account-row-gear').click()
+  await accRow.locator('.account-row-more').click()
+  await win.locator('.account-context-menu').getByRole('button', { name: '编辑' }).click()
   const modal = win.locator('.modal')
   await expect(modal).toBeVisible({ timeout: 10_000 })
 
@@ -50,9 +54,10 @@ test('客户端账号设置：按账号默认客户语言持久化', async () =>
   await modal.getByRole('button', { name: '保存', exact: true }).click()
   await expect(modal).toBeHidden({ timeout: 10_000 })
 
-  // 重开齿轮 → 该账号默认语言仍是所选值（落库）
+  // 重开编辑 → 该账号默认语言仍是所选值（落库）
   await accRow.hover()
-  await accRow.locator('.account-row-gear').click()
+  await accRow.locator('.account-row-more').click()
+  await win.locator('.account-context-menu').getByRole('button', { name: '编辑' }).click()
   await expect(
     win.locator('.modal').locator('label', { hasText: '本账号默认客户语言' }).locator('select')
   ).toHaveValue(chosen)

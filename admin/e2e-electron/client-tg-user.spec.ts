@@ -11,8 +11,8 @@ const MAIN = join(CLIENT_DIR, 'out', 'main', 'index.js')
 const ELECTRON_PATH = createRequire(join(CLIENT_DIR, 'package.json'))('electron') as string
 const USER_DATA = mkdtempSync(join(tmpdir(), 'omni-e2e-'))
 
-// Telegram 普通账号(MTProto/phone_code) —— 打粉主推渠道：选账号后弹出扫码/手机号登录 UI
-test('客户端添加 Telegram 普通账号：弹出扫码/手机号登录切换', async () => {
+// Telegram 普通账号(MTProto/phone_code)：新增时先创建隔离账号，代理就绪后在聊天区完成登录。
+test('客户端添加 Telegram 普通账号：创建独立账号并进入消息页', async () => {
   mkdirSync(USER_DATA, { recursive: true })
   writeFileSync(join(USER_DATA, 'settings.json'), JSON.stringify({ locale: 'zh-CN' }), 'utf8')
   const app = await electron.launch({ executablePath: ELECTRON_PATH, args: [MAIN, `--user-data-dir=${join(tmpdir(), 'omni-tguser-ignored')}`], env: { ...process.env, OMNI_USER_DATA: USER_DATA } })
@@ -24,7 +24,7 @@ test('客户端添加 Telegram 普通账号：弹出扫码/手机号登录切换
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
@@ -34,14 +34,10 @@ test('客户端添加 Telegram 普通账号：弹出扫码/手机号登录切换
   await win.getByTitle('添加 WhatsApp 账号').click()
   await win.locator('.picker-item', { hasText: 'Telegram（账号）' }).click()
 
-  // 账号弹窗：phone_code 类型显示「扫码登录 / 手机号登录」切换，且带保存并连接
-  const modal = win.locator('.modal')
-  await expect(modal).toBeVisible({ timeout: 10_000 })
-  const tabs = modal.locator('.login-tabs')
-  await expect(tabs.getByRole('button', { name: '扫码登录' })).toBeVisible()
-  await expect(tabs.getByRole('button', { name: '手机号登录' })).toBeVisible()
-  // 有「保存并连接」（phone_code 与 credentials 都需要）
-  await expect(modal.getByRole('button', { name: '保存并连接' })).toBeVisible()
+  const group = win.locator('.account-platform-group', { hasText: 'Telegram' })
+  await expect(group).toBeVisible({ timeout: 10_000 })
+  await expect(group.locator('.account-row')).toHaveCount(1)
+  await expect(win.locator('.modal')).toHaveCount(0)
 
   await win.waitForTimeout(300)
   await win.screenshot({ path: `${SHOT_DIR}/client-42-tg-user.png` })

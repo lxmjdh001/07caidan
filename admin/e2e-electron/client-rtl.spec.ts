@@ -84,6 +84,8 @@ test('客户端 RTL：阿拉伯语下气泡收发方向与时间戳镜像', asyn
   await win.locator('.auth-submit').click()
 
   // 进主界面：根节点应为 rtl（App 依据 locale=ar 设置 documentElement.dir）
+  await win.locator('.account-row.all').click()
+
   await expect(win.locator('.conversation-item').first()).toBeVisible({ timeout: 20_000 })
   await expect
     .poll(async () => win.evaluate(() => document.documentElement.dir), { timeout: 10_000 })

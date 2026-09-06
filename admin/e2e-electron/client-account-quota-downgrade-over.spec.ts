@@ -56,7 +56,7 @@ test('客户端账号配额：降级到低于在用数——禁新增但不踢�
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
@@ -69,7 +69,8 @@ test('客户端账号配额：降级到低于在用数——禁新增但不踢�
 
   // 降级到 2 账号套餐 → 切视图触发配额重取 → 账号数(3) > 配额(2)
   await fetch(`${API}/api/billing/subscribe`, { method: 'POST', headers: bAuth, body: JSON.stringify({ planId: plan2.plan.id }) })
-  await win.locator('.rail-nav', { hasText: '套餐与余额' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-billing').click()
 
   // 超限：加号禁用 + 提示；但已有 3 个账号一个不少（不踢下线）
   await expect(addBtn).toBeDisabled({ timeout: 10_000 })

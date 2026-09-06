@@ -25,19 +25,20 @@ test('客户端退出账号：从设置退出后回到登录页', async () => {
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
   // 设置 → 账号页 → 退出账号
-  await win.locator('.rail-nav', { hasText: '设置' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
   await win.locator('.page-tabs button', { hasText: '账号' }).click()
   await win.getByRole('button', { name: '退出账号' }).click()
 
   // 回到登录页：主界面导航消失，登录按钮出现
-  await expect(win.locator('.rail-nav')).toHaveCount(0, { timeout: 10_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toHaveCount(0, { timeout: 10_000 })
   await expect(win.locator('.auth-submit')).toBeVisible()
 
   await win.waitForTimeout(300)

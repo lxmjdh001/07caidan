@@ -24,13 +24,14 @@ test('客户端翻译设置：LLM 引擎条件字段填写并持久化', async (
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
-  await win.locator('.rail-nav', { hasText: '设置' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
   await win.locator('.page-tabs button', { hasText: '聊天翻译' }).click()
 
   // 选 LLM 引擎
@@ -50,8 +51,10 @@ test('客户端翻译设置：LLM 引擎条件字段填写并持久化', async (
   await win.screenshot({ path: `${SHOT_DIR}/client-56-llm-engine.png` })
 
   // 跳走再回：引擎仍 LLM，接口地址持久化
-  await win.locator('.rail-nav', { hasText: '设置' }).click()
-  await win.locator('.rail-nav', { hasText: '设置' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
   await win.locator('.page-tabs button', { hasText: '聊天翻译' }).click()
   await expect(win.locator('label.field', { hasText: '翻译引擎' }).locator('select')).toHaveValue('llm')
   await expect(win.locator('label.field', { hasText: '接口地址' }).locator('input')).toHaveValue('https://api.test.local/v1')

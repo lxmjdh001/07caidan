@@ -23,7 +23,7 @@ test('客户端添加账号：+ 弹出平台选择器（含 WhatsApp/Telegram/LI
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   // 点账号栏「+」弹出平台选择器
   await win.getByTitle('添加 WhatsApp 账号').click()

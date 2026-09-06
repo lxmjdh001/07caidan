@@ -35,7 +35,7 @@ test('客户端登录：密码错误给出提示且不进入主界面', async ()
 
   // 出现错误提示，且不进入主界面（无 rail-nav）
   await expect(win.locator('.auth-err')).toBeVisible({ timeout: 10_000 })
-  await expect(win.locator('.rail-nav')).toHaveCount(0)
+  await expect(win.getByTestId('client-nav-trigger')).toHaveCount(0)
 
   await win.waitForTimeout(300)
   await win.screenshot({ path: `${SHOT_DIR}/client-59-login-fail.png` })
@@ -43,7 +43,7 @@ test('客户端登录：密码错误给出提示且不进入主界面', async ()
   // 用正确密码则能进入（对照，确认账号本身有效）
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await app.close()
 })

@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -26,12 +26,38 @@ const winIcon = join(iconDir, 'icon.ico')
  */
 const updateUrl = process.env.UPDATE_URL || 'https://example.com/updates'
 
+/**
+ * FAT/exFAT 外置盘会把 macOS 扩展属性写成 `._*` AppleDouble 侧文件。
+ * electron-builder 在生成安装器前会扫描 appOutDir，因此打包和签名两个阶段后都清理一次，
+ * 防止这些无关文件进入 DMG/NSIS 安装包。
+ */
+function removeAppleDoubleFiles(root) {
+  let removed = 0
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const path = join(root, entry.name)
+    if (entry.name.startsWith('._')) {
+      rmSync(path, { recursive: true, force: true })
+      removed += 1
+    } else if (entry.isDirectory()) {
+      removed += removeAppleDoubleFiles(path)
+    }
+  }
+  return removed
+}
+
+async function cleanPackagedAppleDouble({ appOutDir }) {
+  const removed = removeAppleDoubleFiles(appOutDir)
+  if (removed > 0) console.log(`Removed ${removed} AppleDouble files from ${appOutDir}`)
+}
+
 export default {
   publish: [{ provider: 'generic', url: updateUrl }],
   appId: `com.${brand.shortName || 'wzzscrm'}.desktop`,
   productName: brand.appName,
   // 各品牌独立输出目录，多品牌连续打包互不覆盖
   directories: { output: `release/${brandName}` },
+  afterPack: cleanPackagedAppleDouble,
+  afterSign: cleanPackagedAppleDouble,
   files: ['out/**', 'package.json'],
   // 外置磁盘上的 macOS 构建目录可能生成 AppleDouble（._*）元数据文件；
   // electron-builder 的完整性扫描会误把 ._app.asar 当成 ASAR 读取而失败。

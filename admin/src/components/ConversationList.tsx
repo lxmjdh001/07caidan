@@ -5,14 +5,14 @@ import { CHANNELS, INTENT_LABEL, avatarColor } from '../util'
 
 interface Props {
   conversations: Conversation[]
-  activeId: string | null
-  onSelect: (id: string) => void
+  activeKey: string | null
+  onSelect: (conversation: Conversation) => void
 }
 
 type IntentFilter = 'all' | 'high' | 'medium' | 'low'
 const INTENT_FILTERS: IntentFilter[] = ['all', 'high', 'medium', 'low']
 
-export function ConversationList({ conversations, activeId, onSelect }: Props): React.JSX.Element {
+export function ConversationList({ conversations, activeKey, onSelect }: Props): React.JSX.Element {
   const { t } = useI18n()
   const [query, setQuery] = useState('')
   const [intent, setIntent] = useState<IntentFilter>('all')
@@ -50,11 +50,12 @@ export function ConversationList({ conversations, activeId, onSelect }: Props): 
       <div className="list-scroll">
         {filtered.map((c) => {
           const ch = CHANNELS[c.channel] ?? { label: c.channel, cls: '' }
+          const key = `${encodeURIComponent(c.workspace ?? '')}|${c.id}`
           return (
             <div
-              key={c.id}
-              className={`conv ${c.id === activeId ? 'active' : ''}`}
-              onClick={() => onSelect(c.id)}
+              key={key}
+              className={`conv ${key === activeKey ? 'active' : ''}`}
+              onClick={() => onSelect(c)}
             >
               <span className="avatar" style={{ background: avatarColor(c.id) }}>
                 {c.title.slice(0, 1).toUpperCase()}

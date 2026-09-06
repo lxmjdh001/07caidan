@@ -24,10 +24,11 @@ test('客户端翻译设置：切换翻译引擎并跨导航持久化', async ()
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   // 侧栏「设置」→「聊天翻译」页签
-  await win.locator('.rail-nav', { hasText: '设置' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
   await win.locator('.page-tabs button', { hasText: '聊天翻译' }).click()
 
   // 翻译引擎下拉
@@ -46,8 +47,10 @@ test('客户端翻译设置：切换翻译引擎并跨导航持久化', async ()
   await win.screenshot({ path: `${SHOT_DIR}/client-27-translation.png` })
 
   // 跳去聊天再回设置：引擎仍是切换后的值（证明真落盘，非仅本地态）
-  await win.locator('.rail-nav', { hasText: '设置' }).click() // 切回聊天
-  await win.locator('.rail-nav', { hasText: '设置' }).click() // 再进设置
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click() // 切回聊天
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click() // 再进设置
   await win.locator('.page-tabs button', { hasText: '聊天翻译' }).click()
   const persisted = win.locator('label.field', { hasText: '翻译引擎' }).locator('select')
   await expect(persisted).toHaveValue(after)

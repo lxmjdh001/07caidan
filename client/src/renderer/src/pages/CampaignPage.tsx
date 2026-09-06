@@ -221,8 +221,8 @@ export function CampaignPage({ accounts }: Props): React.JSX.Element {
   const [detailId, setDetailId] = useState<string | null>(null)
   const [editing, setEditing] = useState<Campaign | null>(null)
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (showLoading = false) => {
+    if (showLoading) setLoading(true)
     setErr('')
     try {
       const [c, l] = await Promise.all([
@@ -239,7 +239,7 @@ export function CampaignPage({ accounts }: Props): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    void load()
+    void load(true)
   }, [load])
 
   const detail = detailId ? campaigns.find((c) => c.id === detailId) : undefined

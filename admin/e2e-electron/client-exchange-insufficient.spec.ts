@@ -41,13 +41,14 @@ test('客户端钱包：兑换积分超出余额时提示余额不足且不扣�
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
-  await win.locator('.rail-nav', { hasText: '套餐与余额' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-billing').click()
   const balance = win.locator('.stat-card').filter({ hasText: '余额' }).locator('.v')
   const credits = win.locator('.stat-card').filter({ hasText: '模型积分' }).locator('.v')
   await expect(balance).toHaveText('$1.00', { timeout: 10_000 })

@@ -52,7 +52,7 @@ test('客户端找回密码：忘记密码→验证码重置→新密码登录',
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('newpass456')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await app.close()
 })

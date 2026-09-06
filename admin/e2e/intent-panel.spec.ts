@@ -6,8 +6,10 @@ const SHOT_DIR = process.env.SHOT_DIR || join(import.meta.dirname, 'shots')
 mkdirSync(SHOT_DIR, { recursive: true })
 const API = 'http://127.0.0.1:8798'
 
-async function seed(): Promise<void> {
-  const email = `boss_${Date.now().toString(36)}@e2e.test`
+async function seed(): Promise<string> {
+  const tag = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+  const title = `高意向客户${tag}`
+  const email = `boss_${tag}@e2e.test`
   const reg = await fetch(`${API}/api/client/register`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -15,12 +17,12 @@ async function seed(): Promise<void> {
   }).then((r) => r.json() as Promise<{ token: string }>)
   const auth = { authorization: `Bearer ${reg.token}`, 'content-type': 'application/json' }
   const now = Date.now()
-  const id = 'whatsapp:a1:高意向客户'
+  const id = `whatsapp:a1:${title}`
   await fetch(`${API}/api/sync`, {
     method: 'POST',
     headers: auth,
     body: JSON.stringify({
-      conversations: [{ id, channel: 'whatsapp', accountId: 'a1', contactId: '高意向客户', title: '高意向客户', isGroup: false, lastMessageAt: now }],
+      conversations: [{ id, channel: 'whatsapp', accountId: 'a1', contactId: title, title, isGroup: false, lastMessageAt: now }],
       messages: [{ externalId: `${id}:in`, conversationId: id, channel: 'whatsapp', accountId: 'a1', direction: 'in', bodyType: 'text', text: '这个多少钱？怎么买', timestamp: now }]
     })
   })
@@ -31,10 +33,11 @@ async function seed(): Promise<void> {
   }).then((r) => r.json() as Promise<{ token: string }>)
   await expect
     .poll(async () => {
-      const r = (await fetch(`${API}/api/conversations`, { headers: { authorization: `Bearer ${admin.token}` } }).then((x) => x.json())) as { conversations?: Array<{ intentLevel?: string }> }
-      return (r.conversations ?? []).some((c) => c.intentLevel === 'high')
+      const r = (await fetch(`${API}/api/conversations`, { headers: { authorization: `Bearer ${admin.token}` } }).then((x) => x.json())) as { conversations?: Array<{ title?: string; intentLevel?: string }> }
+      return (r.conversations ?? []).some((c) => c.title === title && c.intentLevel === 'high')
     }, { timeout: 10_000 })
     .toBe(true)
+  return title
 }
 
 async function login(page: Page): Promise<void> {
@@ -46,12 +49,12 @@ async function login(page: Page): Promise<void> {
 }
 
 test('打开会话即显示已存意向分析（无需点分析、无需 key）', async ({ page }) => {
-  await seed()
+  const title = await seed()
   await login(page)
   await page.getByRole('button', { name: /聊天记录|Chats/ }).click()
   // 先搜索过滤再点，避免共享租户会话多时列表拥挤/时序竞态
-  await page.locator('input[placeholder="搜索客户…"]').fill('高意向客户')
-  await page.locator('.conv', { hasText: '高意向客户' }).click({ timeout: 15_000 })
+  await page.locator('input[placeholder="搜索客户…"]').fill(title)
+  await page.locator('.conv', { hasText: title }).click({ timeout: 15_000 })
 
   // AnalysisPanel 自动读取并显示已落库意向，无需点「分析」
   await expect(page.locator('.analysis .level.high')).toHaveText('高意向', { timeout: 10_000 })

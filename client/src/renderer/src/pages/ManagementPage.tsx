@@ -6,6 +6,7 @@ interface Props {
   canSubaccounts: boolean
   canProxy: boolean
   canWorkorders: boolean
+  canQuickMessages: boolean
   onOpenSubaccounts: () => void
   onOpenProxy: () => void
   onOpenWorkorders: () => void
@@ -17,6 +18,7 @@ interface Card {
   titleKey: 'management.subaccounts' | 'management.proxy' | 'management.workorders' | 'management.invites' | 'management.quickMessages'
   descKey: 'management.subaccountsDesc' | 'management.proxyDesc' | 'management.workordersDesc' | 'management.invitesDesc' | 'management.quickMessagesDesc'
   available: boolean
+  visible: boolean
   action?: () => void
 }
 
@@ -24,6 +26,7 @@ export function ManagementPage({
   canSubaccounts,
   canProxy,
   canWorkorders,
+  canQuickMessages,
   onOpenSubaccounts,
   onOpenProxy,
   onOpenWorkorders,
@@ -35,34 +38,39 @@ export function ManagementPage({
       id: 'subaccounts',
       titleKey: 'management.subaccounts',
       descKey: 'management.subaccountsDesc',
-      available: canSubaccounts,
+      available: true,
+      visible: canSubaccounts,
       action: onOpenSubaccounts
     },
     {
       id: 'proxy',
       titleKey: 'management.proxy',
       descKey: 'management.proxyDesc',
-      available: canProxy,
+      available: true,
+      visible: canProxy,
       action: onOpenProxy
     },
     {
       id: 'workorders',
       titleKey: 'management.workorders',
       descKey: 'management.workordersDesc',
-      available: canWorkorders,
+      available: true,
+      visible: canWorkorders,
       action: onOpenWorkorders
     },
     {
       id: 'invites',
       titleKey: 'management.invites',
       descKey: 'management.invitesDesc',
-      available: false
+      available: false,
+      visible: canSubaccounts
     },
     {
       id: 'quick-messages',
       titleKey: 'management.quickMessages',
       descKey: 'management.quickMessagesDesc',
       available: true,
+      visible: canQuickMessages,
       action: onOpenQuickMessages
     }
   ]
@@ -78,10 +86,11 @@ export function ManagementPage({
       </header>
       <div className="page-body management-body">
         <div className="management-grid">
-          {cards.map((card) => (
+          {cards.filter((card) => card.visible).map((card) => (
             <button
               key={card.id}
               type="button"
+              data-testid={`management-${card.id}`}
               className={`management-card ${card.available ? '' : 'is-pending'}`}
               disabled={!card.available}
               onClick={card.action}

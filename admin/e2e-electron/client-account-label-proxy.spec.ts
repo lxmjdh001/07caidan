@@ -11,9 +11,8 @@ const MAIN = join(CLIENT_DIR, 'out', 'main', 'index.js')
 const ELECTRON_PATH = createRequire(join(CLIENT_DIR, 'package.json'))('electron') as string
 const USER_DATA = mkdtempSync(join(tmpdir(), 'omni-e2e-'))
 
-// M6 账号设置：备注名 + 代理 保存并持久化。account-lang 只覆盖默认语言，
-// 备注名（会成为侧栏账号显示名）与代理这两个字段的保存/回显此前没测。
-test('客户端账号设置：备注名与代理保存并持久化、备注名回显到侧栏', async () => {
+// 账号资料与代理已拆成两个独立入口；分别核对保存与回显。
+test('客户端账号设置：备注名与代理分开配置并持久化', async () => {
   mkdirSync(USER_DATA, { recursive: true })
   writeFileSync(join(USER_DATA, 'settings.json'), JSON.stringify({ locale: 'zh-CN' }), 'utf8')
   const app = await electron.launch({ executablePath: ELECTRON_PATH, args: [MAIN, `--user-data-dir=${join(tmpdir(), 'omni-acclp-ignored')}`], env: { ...process.env, OMNI_USER_DATA: USER_DATA } })
@@ -27,21 +26,25 @@ test('客户端账号设置：备注名与代理保存并持久化、备注名�
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
-  const accRow = win.locator('.account-row').filter({ has: win.locator('.account-row-gear') }).first()
+  await win.getByTitle('添加 WhatsApp 账号').click()
+  await win.locator('.picker-item', { hasText: 'WhatsApp' }).click()
+
+  const accRow = win.locator('.account-row').filter({ has: win.locator('.account-row-more') }).first()
   await accRow.hover()
-  await accRow.locator('.account-row-gear').click()
+  await accRow.locator('.account-row-more').click()
+  await win.locator('.account-context-menu').getByRole('button', { name: '编辑' }).click()
   const modal = win.locator('.modal')
   await expect(modal).toBeVisible({ timeout: 10_000 })
 
-  // 填备注名 + 代理
+  // 编辑页只处理账号资料，不重复展示代理字段。
   await modal.locator('label.field', { hasText: '备注名' }).locator('input').fill(label)
-  await modal.locator('input[placeholder="socks5://127.0.0.1:1080"]').fill(proxy)
+  await expect(modal.getByText('代理服务器')).toHaveCount(0)
 
   await win.waitForTimeout(200)
   await win.screenshot({ path: `${SHOT_DIR}/client-87-account-label-proxy.png` })
@@ -52,12 +55,30 @@ test('客户端账号设置：备注名与代理保存并持久化、备注名�
   // 备注名回显到侧栏账号行（成为账号显示名）
   await expect(win.getByText(label).first()).toBeVisible({ timeout: 10_000 })
 
-  // 重开 → 两字段仍在（落库）
+  // 重开编辑 → 备注名仍在（落库）
   await accRow.hover()
-  await accRow.locator('.account-row-gear').click()
+  await accRow.locator('.account-row-more').click()
+  await win.locator('.account-context-menu').getByRole('button', { name: '编辑' }).click()
   const modal2 = win.locator('.modal')
   await expect(modal2.locator('label.field', { hasText: '备注名' }).locator('input')).toHaveValue(label)
-  await expect(modal2.locator('input[placeholder="socks5://127.0.0.1:1080"]')).toHaveValue(proxy)
+  await modal2.locator('.account-modal-footer .ghost-btn').click()
+
+  // 代理配置走独立入口；保存不强制先检测，平台连接结果不作为保存前置。
+  await accRow.hover()
+  await accRow.locator('.account-row-more').click()
+  await win.locator('.account-context-menu').getByRole('button', { name: '代理配置' }).click()
+  const proxyModal = win.locator('.proxy-config-modal')
+  await proxyModal.locator('input[placeholder="IP:端口 或 IP:端口:账号:密码"]').fill(proxy)
+  await proxyModal.getByRole('button', { name: '保存并连接' }).click()
+  await win.waitForTimeout(300)
+  if (await proxyModal.isVisible().catch(() => false)) {
+    await proxyModal.locator('.account-modal-footer .ghost-btn').click()
+  }
+
+  await accRow.hover()
+  await accRow.locator('.account-row-more').click()
+  await win.locator('.account-context-menu').getByRole('button', { name: '代理配置' }).click()
+  await expect(win.locator('.proxy-config-modal input[placeholder="IP:端口 或 IP:端口:账号:密码"]')).toHaveValue('127.0.0.1:1080')
 
   await app.close()
 })

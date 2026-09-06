@@ -12,7 +12,6 @@ const MAIN = join(CLIENT_DIR, 'out', 'main', 'index.js')
 const ELECTRON_PATH = createRequire(join(CLIENT_DIR, 'package.json'))('electron') as string
 const USER_DATA = mkdtempSync(join(tmpdir(), 'omni-e2e-'))
 const API = 'http://127.0.0.1:8798'
-const ICON_BYTES = 56575 // branding/default/icon.png
 
 // M18 支持工单贴图：鉴权媒体通道（红线：受保护图片仅带令牌可下载，字节完整）
 // + 客户端经 fetchMedia(base64 data URL)渲染客服回复的图片（曾因 IPC 传二进制损坏
@@ -32,37 +31,40 @@ test('M18 支持工单贴图：鉴权下载通道 + 客户端渲染客服回复�
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
   // 客户端提交工单
-  await win.locator('.rail-nav', { hasText: '帮助与反馈' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-support').click()
   await win.getByRole('button', { name: '提交问题' }).first().click()
-  await win.locator('input[type="text"]').first().fill(title)
+  await win.locator('.form-page input[type="text"]').first().fill(title)
   await win.locator('textarea').first().fill('界面显示异常，见客服稍后发的图。')
   await win.getByRole('button', { name: '提交', exact: true }).click()
   await expect(win.getByText(title).first()).toBeVisible({ timeout: 10_000 })
 
-  // 临时客户 sync 令牌上传图片（PUT /api/media 需 requireSync）
-  const tmpClient = await fetch(`${API}/api/client/register`, {
+  // 使用工单所属租户的 sync 令牌上传图片（PUT /api/media 需 requireSync）。
+  // 媒体严格按租户隔离，不能拿另一个临时客户的令牌上传后再跨租户引用。
+  const sameClient = await fetch(`${API}/api/client/login`, {
     method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email: `up_${TAG}@e2e.test`, password: 'secret123' })
+    body: JSON.stringify({ email, password: 'secret123' })
   }).then((r) => r.json() as Promise<{ token: string }>)
+  const iconBytes = readFileSync(join(REPO, 'branding', 'default', 'icon.png'))
   const up = await fetch(`${API}/api/media/${mediaId}`, {
     method: 'PUT',
-    headers: { authorization: `Bearer ${tmpClient.token}`, 'content-type': 'image/png' },
-    body: readFileSync(join(REPO, 'branding', 'default', 'icon.png'))
+    headers: { authorization: `Bearer ${sameClient.token}`, 'content-type': 'image/png' },
+    body: iconBytes
   })
   expect(up.ok).toBeTruthy()
 
   // 红线1：带令牌下载 → 200 + image/png + 字节完整
-  const ok = await fetch(`${API}/api/media/${mediaId}`, { headers: { authorization: `Bearer ${tmpClient.token}` } })
+  const ok = await fetch(`${API}/api/media/${mediaId}`, { headers: { authorization: `Bearer ${sameClient.token}` } })
   expect(ok.status).toBe(200)
   expect(ok.headers.get('content-type')).toContain('image/png')
-  expect((await ok.arrayBuffer()).byteLength).toBe(ICON_BYTES)
+  expect((await ok.arrayBuffer()).byteLength).toBe(iconBytes.byteLength)
 
   // 红线2：无令牌 → 拿不到（tenant 无法解析 → 非 200）
   const noAuth = await fetch(`${API}/api/media/${mediaId}`)

@@ -24,14 +24,15 @@ test('客户端设置：AI 自动回复话术与转人工关键词持久化', as
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
 
   // 设置 → 通用（默认）→ AI 自动回复区
-  await win.locator('.rail-nav', { hasText: '设置' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
   const enable = win.locator('label.field', { hasText: '启用自动回复' }).locator('input[type="checkbox"]')
   await expect(enable).toBeVisible({ timeout: 10_000 })
   await enable.check()
@@ -45,8 +46,10 @@ test('客户端设置：AI 自动回复话术与转人工关键词持久化', as
   await win.screenshot({ path: `${SHOT_DIR}/client-61-autoreply.png` })
 
   // 跳走再回：启用仍勾选 + 话术持久化
-  await win.locator('.rail-nav', { hasText: '设置' }).click()
-  await win.locator('.rail-nav', { hasText: '设置' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
   await expect(
     win.locator('label.field', { hasText: '启用自动回复' }).locator('input[type="checkbox"]')
   ).toBeChecked()

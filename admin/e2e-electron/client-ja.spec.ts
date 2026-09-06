@@ -23,16 +23,19 @@ test('クライアント日本語：チーム/ナビが全て日本語（英語�
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
-  await win.locator('.rail-nav', { hasText: 'チーム管理' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-management').click()
+  await win.getByTestId('management-subaccounts').click()
   await expect(win.getByRole('heading', { name: 'ログインデバイス' })).toBeVisible({ timeout: 10_000 })
   await expect(win.getByRole('heading', { name: 'メンバー' })).toBeVisible()
   await win.waitForTimeout(400)
   await win.screenshot({ path: `${SHOT_DIR}/client-08-ja-team.png` })
 
   // 以前英語に落ちていた下部ナビも日本語であること
-  await expect(win.locator('.rail-nav', { hasText: 'プランと残高' })).toBeVisible()
-  await expect(win.locator('.rail-nav', { hasText: 'ヘルプとフィードバック' })).toBeVisible()
+  await win.getByTestId('client-nav-trigger').click()
+  await expect(win.getByTestId('client-nav-billing')).toContainText('プランと残高')
+  await expect(win.getByTestId('client-nav-support')).toContainText('ヘルプとフィードバック')
   await app.close()
 })

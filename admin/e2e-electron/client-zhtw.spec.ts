@@ -30,18 +30,21 @@ test('客户端繁中：团队/方案页全繁体，无英文回落', async () =
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   // 团队管理页：之前 zh-TW 缺键会回落英文，现应全繁体
-  await win.locator('.rail-nav', { hasText: '團隊管理' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-management').click()
+  await win.getByTestId('management-subaccounts').click()
   await expect(win.getByRole('heading', { name: '登入裝置' })).toBeVisible({ timeout: 10_000 })
   await expect(win.getByRole('heading', { name: '成員' })).toBeVisible()
   await win.waitForTimeout(400)
   await win.screenshot({ path: `${SHOT_DIR}/client-05-zhtw-team.png` })
 
   // 底部导航也应全繁体（此前 Plan & Balance / Help & Feedback 回落英文）
-  await expect(win.locator('.rail-nav', { hasText: '方案與餘額' })).toBeVisible()
-  await expect(win.locator('.rail-nav', { hasText: '說明與意見回饋' })).toBeVisible()
+  await win.getByTestId('client-nav-trigger').click()
+  await expect(win.getByTestId('client-nav-billing')).toContainText('方案與餘額')
+  await expect(win.getByTestId('client-nav-support')).toContainText('說明與意見回饋')
 
   await app.close()
 })

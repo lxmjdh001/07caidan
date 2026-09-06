@@ -24,10 +24,11 @@ test('客户端关于面板：显示版本号且「检查更新」可点', async
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
   // 侧栏「设置」→ 通用页签默认打开，底部即「关于」区
-  await win.locator('.rail-nav', { hasText: '设置' }).click()
+  await win.getByTestId('client-nav-trigger').click()
+  await win.getByTestId('client-nav-settings').click()
   await expect(win.getByRole('heading', { name: '关于' })).toBeVisible({ timeout: 10_000 })
 
   // 版本号是真实 semver（来自 app.getVersion）

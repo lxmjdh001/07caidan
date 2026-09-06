@@ -22,9 +22,16 @@ async function purgeAnnouncement(title: string): Promise<void> {
 
 async function login(page: Page): Promise<void> {
   await page.goto('/')
-  await page.locator('input[placeholder="admin"]').fill('admin')
-  await page.locator('input[type="password"]').fill('admin')
-  await page.getByRole('button', { name: /登录|Sign in|Login/i }).click()
+  const username = page.locator('input[placeholder="admin"]')
+  const password = page.locator('input[type="password"]')
+  await username.fill('admin')
+  await password.fill('admin')
+  await expect(username).toHaveValue('admin')
+  await expect(password).toHaveValue('admin')
+  await Promise.all([
+    page.waitForResponse((response) => response.url().endsWith('/api/login') && response.request().method() === 'POST'),
+    page.getByRole('button', { name: /登录|Sign in|Login/i }).click()
+  ])
   await expect(page.locator('.sidebar-nav')).toBeVisible({ timeout: 15_000 })
 }
 

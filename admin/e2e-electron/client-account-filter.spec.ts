@@ -44,10 +44,12 @@ test('客户端统一收件箱：点账号筛选只看该账号会话，全部�
   await win.locator('input[type="email"]').fill(email)
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
-  await expect(win.locator('.rail-nav').first()).toBeVisible({ timeout: 20_000 })
+  await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()
+
+  await win.locator('.account-row.all').click()
 
   const waConv = win.locator('.conversation-item', { hasText: 'WA客户E2E' })
   const tgConv = win.locator('.conversation-item', { hasText: 'TG客户E2E' })
