@@ -1,4 +1,5 @@
-import type { Translator, TranslateResult } from '../translator'
+import { randomUUID } from 'node:crypto'
+import type { TranslateContext, Translator, TranslateResult } from '../translator'
 
 export interface AiServerConfig {
   /** 后台地址与登录令牌（来自同步配置） */
@@ -32,7 +33,7 @@ export class AiServerTranslator implements Translator {
     this.cfg = cfg
   }
 
-  async translate(text: string, targetLang: string): Promise<TranslateResult> {
+  async translate(text: string, targetLang: string, context?: TranslateContext): Promise<TranslateResult> {
     const { serverUrl, token } = this.cfg.getBackend()
     if (!serverUrl || !token) return this.fallback(text, targetLang, '未登录后台')
     if (Date.now() < this.suspendedUntil) return this.fallback(text, targetLang, '冷却中')
@@ -42,11 +43,11 @@ export class AiServerTranslator implements Translator {
       const res = await doFetch(`${serverUrl.replace(/\/$/, '')}/api/ai/translate`, {
         method: 'POST',
         headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ text, targetLang })
+        body: JSON.stringify({ text, targetLang, ...context, requestId: context?.requestId ?? randomUUID() })
       })
       if (res.ok) {
-        const json = (await res.json()) as { text?: string }
-        if (typeof json.text === 'string' && json.text) return { text: json.text }
+        const json = (await res.json()) as { text?: string; metered?: boolean }
+        if (typeof json.text === 'string' && json.text) return { text: json.text, metered: json.metered === true }
         return this.fallback(text, targetLang, '空响应')
       }
       // 付费/配置类失败进入冷却，别的错误只降级本次

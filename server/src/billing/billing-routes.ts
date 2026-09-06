@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
+import { randomUUID } from 'node:crypto'
 import type { AiClient } from '../ai/ai-client.ts'
 import { translatePrompt } from '../ai/ai-client.ts'
 import type { AiRepo } from '../ai/ai-repo.ts'
@@ -36,6 +37,8 @@ export interface BillingRouteDeps {
   emailOf?: (userId: number) => string | undefined
   /** 手动调余额时用邮箱定位用户 */
   userIdOf?: (email: string) => number | undefined
+  /** 子账号映射到主账号计费主体。 */
+  billingUserIdOf?: (userId: number) => number | undefined
   invites: InviteRepo
 }
 
@@ -57,7 +60,7 @@ const PERIOD_UNITS: PeriodUnit[] = ['month', 'quarter', 'half_year', 'year', 'da
  * - 支付通道（公开回调）：/pay/notify/:tenant/:channelId，靠各通道自己的验签
  */
 export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDeps): void {
-  const { billing, orders, channels, ai, aiClient, ctxOf, requirePerm, publicBase, emailOf, userIdOf, invites } = deps
+  const { billing, orders, channels, ai, aiClient, ctxOf, requirePerm, publicBase, emailOf, userIdOf, billingUserIdOf, invites } = deps
 
   /**
    * 客户端用户守卫：必须是邮箱登录的桌面端用户（静态同步令牌没有身份，不能有钱包）。
@@ -118,6 +121,8 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
       periodCount: Number(b.periodCount ?? 1),
       maxAccounts: Number(b.maxAccounts ?? 1),
       maxDevices: Number(b.maxDevices ?? 0),
+      tier: typeof b.tier === 'string' ? b.tier as Parameters<BillingRepo['createPlan']>[1]['tier'] : 'custom',
+      includedCharacters: Number(b.includedCharacters ?? 0),
       description: typeof b.description === 'string' ? b.description : '',
       enabled: b.enabled !== false,
       sortOrder: Number(b.sortOrder ?? 0)
@@ -300,8 +305,9 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
       note?: string
     }
     const tenant = ctxOf(req).tenant
-    const userId =
+    const rawUserId =
       typeof b.userId === 'number' ? b.userId : b.email ? userIdOf?.(b.email) : undefined
+    const userId = rawUserId === undefined ? undefined : (billingUserIdOf?.(rawUserId) ?? rawUserId)
     if (userId === undefined) return reply.code(400).send({ error: '用户不存在（userId 或 email 必填）' })
     const delta = Math.round(Number(b.deltaCents ?? 0))
     if (!Number.isFinite(delta) || delta === 0) {
@@ -316,6 +322,36 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     })
     if (!r.ok) return reply.code(400).send({ error: '余额不足，不能扣成负数', reason: r.reason })
     return { ok: true, balance: r.balance }
+  })
+
+  /** 管理员给主账号赠送翻译字符或额外端口；子账号自动归到所属老板。 */
+  app.post('/api/admin/entitlements-adjust', async (req, reply) => {
+    if (!requirePerm(req, reply, 'users:manage')) return
+    const b = (req.body ?? {}) as {
+      userId?: number
+      email?: string
+      characters?: number
+      ports?: number
+      note?: string
+    }
+    const tenant = ctxOf(req).tenant
+    const rawUserId = typeof b.userId === 'number' ? b.userId : b.email ? userIdOf?.(b.email) : undefined
+    if (rawUserId === undefined) return reply.code(400).send({ error: '用户不存在' })
+    const characters = Math.floor(Number(b.characters ?? 0))
+    const ports = Math.floor(Number(b.ports ?? 0))
+    if (!Number.isFinite(characters) || !Number.isFinite(ports) || (characters === 0 && ports === 0)) {
+      return reply.code(400).send({ error: '赠送字符或赠送端口至少填写一项' })
+    }
+    if (characters < 0 || ports < 0) return reply.code(400).send({ error: '赠送数量不能为负数' })
+    const billingUserId = billingUserIdOf?.(rawUserId) ?? rawUserId
+    const result = billing.mutateEntitlements(tenant, {
+      userId: billingUserId,
+      kind: 'admin_gift',
+      charactersDelta: characters,
+      portsDelta: ports,
+      note: b.note?.trim() || '管理员赠送额度'
+    })
+    return result.ok ? result : reply.code(400).send({ error: '额度调整失败', reason: result.reason })
   })
 
   // ── 订单（手动补单：测试或线下收款时管理员直接标记已支付）──
@@ -367,6 +403,18 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
         from: q.from ? Number(q.from) : undefined,
         to: q.to ? Number(q.to) : undefined
       })
+    }
+  })
+
+  app.get('/api/admin/translation-usage-summary', async (req, reply) => {
+    if (!requirePerm(req, reply, 'billing:manage')) return
+    const q = req.query as { userId?: string }
+    const userId = q.userId ? Number(q.userId) : undefined
+    return {
+      summary: billing.translationUsageSummary(
+        ctxOf(req).tenant,
+        Number.isFinite(userId) ? userId : undefined
+      )
     }
   })
 
@@ -432,11 +480,14 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     if (userId === null) return
     const tenant = ctxOf(req).tenant
     const sub = billing.getSubscription(tenant, userId)
+    const activeSub = sub && sub.status === 'active' && sub.expiresAt > Date.now() ? sub : null
     return {
       balance: billing.getBalance(tenant, userId),
       subscription: sub,
       plan: sub ? billing.getPlan(tenant, sub.planId) : null,
       accountQuota: billing.accountQuota(tenant, userId),
+      membershipTier: activeSub ? (billing.getPlan(tenant, activeSub.planId)?.tier ?? 'custom') : 'free',
+      entitlements: billing.getEntitlements(tenant, userId),
       settings: ai.getSettings(tenant)
     }
   })
@@ -444,7 +495,19 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
   app.get('/api/billing/ledger', async (req, reply) => {
     const userId = requireClientUser(req, reply, 'billing:manage')
     if (userId === null) return
-    return { ledger: billing.listLedger(ctxOf(req).tenant, userId) }
+    return {
+      ledger: billing.listLedger(ctxOf(req).tenant, userId),
+      entitlementLedger: billing.listEntitlementLedger(ctxOf(req).tenant, userId)
+    }
+  })
+
+  app.get('/api/billing/translation-usage', async (req, reply) => {
+    const userId = requireClientUser(req, reply, 'billing:manage')
+    if (userId === null) return
+    return {
+      entitlements: billing.getEntitlements(ctxOf(req).tenant, userId),
+      summary: billing.translationUsageSummary(ctxOf(req).tenant, userId)
+    }
   })
 
   app.get('/api/billing/orders', async (req, reply) => {
@@ -529,7 +592,9 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
           ? '余额不足，请先充值'
           : r.reason === 'plan_disabled'
             ? '套餐已停用'
-            : '套餐不存在'
+            : r.reason === 'already_subscribed'
+              ? '当前套餐已在生效，无需重复购买'
+              : '套餐不存在'
       return reply.code(400).send({ error: msg, reason: r.reason })
     }
     return r
@@ -554,6 +619,51 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     })
     if (!r.ok) return reply.code(400).send({ error: '余额不足', reason: r.reason })
     return r
+  })
+
+  /** 余额兑换翻译字符；字符与 AI 模型积分是两套独立账本。 */
+  app.post('/api/billing/exchange-characters', async (req, reply) => {
+    const userId = requireClientUser(req, reply, 'billing:manage')
+    if (userId === null) return
+    const cents = Math.round(Number((req.body as { cents?: number } | undefined)?.cents ?? 0))
+    if (!Number.isFinite(cents) || cents <= 0) return reply.code(400).send({ error: '兑换金额不合法' })
+    const tenant = ctxOf(req).tenant
+    const result = billing.purchaseCharacters(tenant, userId, cents, ai.getSettings(tenant).charactersPerUsd)
+    if (!result.ok) return reply.code(402).send({ error: '余额不足', reason: result.reason })
+    return result
+  })
+
+  /** 所有客户端翻译引擎在成功得到译文后统一调用；requestId 负责幂等。 */
+  app.post('/api/billing/translation/charge', async (req, reply) => {
+    const userId = requireClientUser(req, reply)
+    if (userId === null) return
+    const ctx = ctxOf(req)
+    const b = (req.body ?? {}) as {
+      requestId?: string
+      characters?: number
+      engine?: string
+      channel?: string
+      accountId?: string
+      direction?: string
+    }
+    if (!b.requestId || b.requestId.length > 120) return reply.code(400).send({ error: 'requestId 不合法' })
+    const characters = Math.floor(Number(b.characters ?? 0))
+    if (!Number.isFinite(characters) || characters <= 0 || characters > 100000) {
+      return reply.code(400).send({ error: '字符数不合法' })
+    }
+    const result = billing.chargeTranslation(ctx.tenant, {
+      userId,
+      actorUserId: ctx.clientUserId ?? userId,
+      requestId: b.requestId,
+      characters,
+      engine: b.engine,
+      channel: b.channel,
+      accountId: b.accountId,
+      direction: b.direction
+    })
+    return result.ok
+      ? result
+      : reply.code(402).send({ error: '翻译字符不足', reason: result.reason, remaining: result.remaining })
   })
 
   // ── 客户端可见的模型与计费 ──
@@ -605,7 +715,7 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     const userId = requireClientUser(req, reply)
     if (userId === null) return
     const tenant = ctxOf(req).tenant
-    const b = (req.body ?? {}) as { text?: string; targetLang?: string; modelId?: string }
+    const b = (req.body ?? {}) as { text?: string; targetLang?: string; modelId?: string; requestId?: string; channel?: string; accountId?: string; direction?: string }
     if (!b.text?.trim()) return reply.code(400).send({ error: 'text 必填' })
     if (!b.targetLang) return reply.code(400).send({ error: 'targetLang 必填' })
     if (b.text.length > 8000) return reply.code(400).send({ error: '文本过长' })
@@ -618,20 +728,9 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     const provider = ai.providerConfig(tenant, model.providerId)
     if (!provider) return reply.code(501).send({ error: '模型所属供应商不可用' })
 
-    // 粗预检：按「字符数≈token 数」高估一次调用的成本，付不起就不去花供应商的钱
-    const roughTokens = Math.max(200, b.text.length * 2)
-    const estimated = ai.estimate(tenant, model.id, {
-      inputTokens: roughTokens,
-      outputTokens: roughTokens
-    })
-    const bal = billing.getBalance(tenant, userId)
-    const settings = ai.getSettings(tenant)
-    const affordable =
-      bal.credits >= estimated ||
-      (settings.autoTopUpCredits &&
-        bal.balanceCents * (settings.creditsPerUsd / 100) + bal.credits >= estimated)
-    if (!affordable) {
-      return reply.code(402).send({ error: '积分不足', reason: 'insufficient_credits' })
+    const characters = Array.from(b.text).length
+    if (billing.getEntitlements(tenant, userId).characters < characters) {
+      return reply.code(402).send({ error: '翻译字符不足', reason: 'insufficient_characters' })
     }
 
     const outcome = await aiClient.chat(provider, {
@@ -642,11 +741,19 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     })
     if (!outcome.ok) return reply.code(502).send({ error: outcome.error ?? '翻译失败' })
 
-    const charge = ai.chargeUsage(tenant, userId, model.id, 'translate', outcome.usage)
-    if (!charge.ok) {
-      return reply.code(402).send({ error: '扣费失败', reason: charge.reason })
-    }
-    return { text: outcome.text, credits: charge.credits, usage: outcome.usage, modelId: model.id }
+    const charge = billing.chargeTranslation(tenant, {
+      userId,
+      actorUserId: ctxOf(req).clientUserId ?? userId,
+      requestId: b.requestId || randomUUID(),
+      characters,
+      engine: 'ai-server',
+      channel: b.channel,
+      accountId: b.accountId,
+      direction: b.direction
+    })
+    if (!charge.ok) return reply.code(402).send({ error: '翻译字符不足', reason: charge.reason })
+    ai.recordUsage(tenant, userId, model.id, 'translate', outcome.usage)
+    return { text: outcome.text, characters: charge.charged, remaining: charge.remaining, metered: true, usage: outcome.usage, modelId: model.id }
   })
 
   /**

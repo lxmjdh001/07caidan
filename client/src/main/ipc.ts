@@ -91,6 +91,8 @@ const BILLING_METHODS: Record<string, true> = {
   subscribe: true,
   setAutoRenew: true,
   exchangeCredits: true,
+  exchangeCharacters: true,
+  translationUsage: true,
   listNotices: true,
   markNoticesRead: true,
   listTickets: true,

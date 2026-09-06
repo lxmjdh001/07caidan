@@ -214,6 +214,25 @@ describe('ChannelManager', () => {
     expect(events.filter((e) => e.type === 'message:new')).toHaveLength(1)
   })
 
+  it('重复投递在翻译计费前拦截，只消费一次字符', async () => {
+    const translating = new TranslationPipeline(
+      { name: 'paid', translate: async (text) => ({ text: `译:${text}` }) },
+      { inboundEnabled: true, outboundEnabled: false, displayLang: 'zh-CN' }
+    )
+    const charge = vi.fn(async () => undefined)
+    translating.setUsageRecorder(charge)
+    const mgr = new ChannelManager(store, translating, (evt) => events.push(evt), noopLogger)
+    const a2 = new FakeAdapter()
+    mgr.register(a2)
+
+    a2.fakeIncoming({ externalId: 'BILL-ONCE', id: 'first' })
+    await flushAsync()
+    a2.fakeIncoming({ externalId: 'BILL-ONCE', id: 'retry' })
+    await flushAsync()
+
+    expect(charge).toHaveBeenCalledTimes(1)
+  })
+
   it('手机端发出的消息也入库，但不累计未读或触发入站翻译', async () => {
     adapter.fakeIncoming({
       id: 'mobile-outbound',

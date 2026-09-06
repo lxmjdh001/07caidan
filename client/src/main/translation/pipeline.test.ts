@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { UnifiedMessage } from '@shared/domain'
 import type { TranslationConfig } from '@shared/settings'
 import { PassthroughTranslator } from './passthrough-translator'
-import { TranslationPipeline } from './pipeline'
+import { TranslationPipeline, type TranslationUsageCharge } from './pipeline'
 import { createTranslatorRegistry, configurePipeline } from './plugins'
 import type { Translator } from './translator'
 
@@ -140,6 +140,63 @@ describe('TranslationPipeline.processOutbound', () => {
     expect(await broken.processOutbound('hi', 'en')).toEqual({
       send: 'hi',
       original: 'hi',
+      error: '翻译服务暂不可用，请稍后重试或在设置中切换翻译引擎。'
+    })
+  })
+})
+
+describe('TranslationPipeline 字符计费', () => {
+  it('只在得到不同译文后按 Unicode 源字符计费，并带平台与账号上下文', async () => {
+    const p = new TranslationPipeline(upperCaser, SETTINGS_ON)
+    const recorder = vi.fn<(usage: TranslationUsageCharge) => Promise<void>>(async () => undefined)
+    p.setUsageRecorder(recorder)
+    await p.processInbound(textMsg('A😀b'))
+    expect(recorder).toHaveBeenCalledTimes(1)
+    expect(recorder.mock.calls[0]?.[0]).toMatchObject({
+      characters: 3,
+      engine: 'upper',
+      channel: 'whatsapp',
+      accountId: 'main',
+      direction: 'in'
+    })
+    expect(recorder.mock.calls[0]?.[0].requestId).toMatch(/^in:[0-9a-f]{64}$/)
+  })
+
+  it('同语言原样返回与服务失败都不扣字符', async () => {
+    const recorder = vi.fn<(usage: TranslationUsageCharge) => Promise<void>>(async () => undefined)
+    const same = new TranslationPipeline(
+      { name: 'same', translate: async (text) => ({ text }) },
+      { ...SETTINGS_ON, outboundEnabled: true }
+    )
+    same.setUsageRecorder(recorder)
+    await same.processOutbound('hello', 'en')
+
+    const broken = new TranslationPipeline(
+      { name: 'broken', translate: async () => Promise.reject(new Error('down')) },
+      { ...SETTINGS_ON, outboundEnabled: true }
+    )
+    broken.setUsageRecorder(recorder)
+    await broken.processOutbound('hello', 'en')
+    expect(recorder).not.toHaveBeenCalled()
+  })
+
+  it('服务端已扣费的 AI 译文不会在客户端重复扣费', async () => {
+    const p = new TranslationPipeline(
+      { name: 'ai-server', translate: async () => ({ text: 'HELLO', metered: true }) },
+      { ...SETTINGS_ON, outboundEnabled: true }
+    )
+    const recorder = vi.fn<(usage: TranslationUsageCharge) => Promise<void>>(async () => undefined)
+    p.setUsageRecorder(recorder)
+    expect(await p.processOutbound('你好', 'en')).toMatchObject({ send: 'HELLO' })
+    expect(recorder).not.toHaveBeenCalled()
+  })
+
+  it('字符不足导致扣费失败时，出站不发送未付费译文', async () => {
+    const p = new TranslationPipeline(upperCaser, { ...SETTINGS_ON, outboundEnabled: true })
+    p.setUsageRecorder(async () => Promise.reject(new Error('insufficient_characters')))
+    expect(await p.processOutbound('hello', 'en')).toEqual({
+      send: 'hello',
+      original: 'hello',
       error: '翻译服务暂不可用，请稍后重试或在设置中切换翻译引擎。'
     })
   })

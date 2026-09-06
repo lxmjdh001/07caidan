@@ -359,6 +359,8 @@ export function openDb(dbPath: string): Db {
       period_count INTEGER NOT NULL DEFAULT 1,
       max_accounts INTEGER NOT NULL DEFAULT 1,
       max_devices INTEGER NOT NULL DEFAULT 0,
+      tier TEXT NOT NULL DEFAULT 'custom',
+      included_characters INTEGER NOT NULL DEFAULT 0,
       description TEXT NOT NULL DEFAULT '',
       enabled INTEGER NOT NULL DEFAULT 1,
       sort_order INTEGER NOT NULL DEFAULT 0,
@@ -382,6 +384,38 @@ export function openDb(dbPath: string): Db {
       updated_at INTEGER NOT NULL,
       PRIMARY KEY (tenant, user_id)
     );
+
+    CREATE TABLE IF NOT EXISTS entitlements (
+      tenant TEXT NOT NULL, user_id INTEGER NOT NULL,
+      characters INTEGER NOT NULL DEFAULT 0,
+      bonus_ports INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS entitlement_ledger (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant TEXT NOT NULL, user_id INTEGER NOT NULL, kind TEXT NOT NULL,
+      characters_delta INTEGER NOT NULL DEFAULT 0,
+      ports_delta INTEGER NOT NULL DEFAULT 0,
+      characters_after INTEGER NOT NULL, ports_after INTEGER NOT NULL,
+      ref_type TEXT, ref_id TEXT, note TEXT, created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_entitlement_ledger_user
+      ON entitlement_ledger (tenant, user_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS translation_usage (
+      tenant TEXT NOT NULL, request_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL, actor_user_id INTEGER NOT NULL,
+      engine TEXT NOT NULL DEFAULT 'unknown', channel TEXT NOT NULL DEFAULT '',
+      account_id TEXT NOT NULL DEFAULT '', direction TEXT NOT NULL DEFAULT 'unknown',
+      source_characters INTEGER NOT NULL, created_at INTEGER NOT NULL,
+      PRIMARY KEY (tenant, user_id, request_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_translation_usage_user
+      ON translation_usage (tenant, user_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_translation_usage_tenant
+      ON translation_usage (tenant, created_at);
 
     CREATE TABLE IF NOT EXISTS ledger (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -506,6 +540,7 @@ export function openDb(dbPath: string): Db {
       tenant TEXT PRIMARY KEY,
       credits_per_usd INTEGER NOT NULL DEFAULT 1000,
       auto_top_up_credits INTEGER NOT NULL DEFAULT 1,
+      characters_per_usd INTEGER NOT NULL DEFAULT 10000,
       updated_at INTEGER NOT NULL
     );
   `)
@@ -558,6 +593,9 @@ function migrate(sqlite: BetterSqlite3.Database): void {
     ['client_users', 'permissions', "TEXT NOT NULL DEFAULT '[]'"],
     ['client_users', 'enabled', 'INTEGER NOT NULL DEFAULT 1'],
     ['plans', 'max_devices', 'INTEGER NOT NULL DEFAULT 0'],
+    ['plans', 'tier', "TEXT NOT NULL DEFAULT 'custom'"],
+    ['plans', 'included_characters', 'INTEGER NOT NULL DEFAULT 0'],
+    ['billing_settings', 'characters_per_usd', 'INTEGER NOT NULL DEFAULT 10000'],
     ['client_sessions', 'device_id', 'TEXT'],
     ['client_sessions', 'device_name', 'TEXT'],
     ['client_sessions', 'last_seen_at', 'INTEGER'],

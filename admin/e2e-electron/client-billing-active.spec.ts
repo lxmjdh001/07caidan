@@ -29,7 +29,7 @@ test('客户端套餐与余额：已订阅套餐在概览正确显示', async ()
   const aAuth = { authorization: `Bearer ${admin.token}`, 'content-type': 'application/json' }
   const plan = await fetch(`${API}/api/admin/plans`, {
     method: 'POST', headers: aAuth,
-    body: JSON.stringify({ name: planName, priceCents: 990, periodUnit: 'month', periodCount: 1, maxAccounts: 20, maxDevices: 0 })
+    body: JSON.stringify({ name: planName, tier: 'vip1', priceCents: 990, periodUnit: 'month', periodCount: 1, maxAccounts: 20, maxDevices: 0, includedCharacters: 50_000 })
   }).then((r) => r.json() as Promise<{ plan: { id: string } }>)
   expect(plan.plan?.id).toBeTruthy()
 
@@ -61,12 +61,12 @@ test('客户端套餐与余额：已订阅套餐在概览正确显示', async ()
   await win.getByTestId('client-nav-trigger').click()
   await win.getByTestId('client-nav-billing').click()
 
-  // 概览：当前套餐显示该套餐名 + 账号配额=20 + 自动续费开关
+  // 概览：当前套餐显示该套餐名 + 端口额度=20 + 购买赠送字符 + 自动续费开关。
   await expect(win.getByText('当前套餐')).toBeVisible({ timeout: 10_000 })
   await expect(win.getByText(planName)).toBeVisible()
   await expect(win.getByText('到期自动从余额续费')).toBeVisible()
-  // 账号配额卡应为套餐上限 20
-  await expect(win.locator('.stat-card').filter({ hasText: '账号配额' }).locator('.v')).toHaveText('20')
+  await expect(win.locator('.stat-card').filter({ hasText: '端口额度' }).locator('.v')).toHaveText('20')
+  await expect(win.locator('.stat-card').filter({ hasText: '翻译字符' }).locator('.v')).toHaveText('50,000')
 
   await win.waitForTimeout(300)
   await win.screenshot({ path: `${SHOT_DIR}/client-49-billing-active.png` })

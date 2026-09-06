@@ -25,8 +25,9 @@ function make(status: number, body: unknown, backend = { serverUrl: 'https://b',
 
 describe('AiServerTranslator', () => {
   it('成功时返回后台译文', async () => {
-    const r = await make(200, { text: 'HELLO' }).translate('你好', 'en')
+    const r = await make(200, { text: 'HELLO', metered: true }).translate('你好', 'en')
     expect(r.text).toBe('HELLO')
+    expect(r.metered).toBe(true)
   })
 
   it('未登录后台直接走免费引擎', async () => {
@@ -34,8 +35,8 @@ describe('AiServerTranslator', () => {
     expect((await t.translate('你好', 'en')).text).toBe('FREE:你好')
   })
 
-  it('402 积分不足 → 回落免费引擎', async () => {
-    const r = await make(402, { error: '积分不足' }).translate('你好', 'en')
+  it('402 字符不足 → 回落免费引擎', async () => {
+    const r = await make(402, { error: '字符不足' }).translate('你好', 'en')
     expect(r.text).toBe('FREE:你好')
   })
 

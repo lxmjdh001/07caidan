@@ -724,6 +724,16 @@ export class ClientAuthRepo {
     return r?.id
   }
 
+  /** 子账号的钱包、字符和端口都归属主账号。 */
+  billingUserIdOf(userId: number): number | undefined {
+    const row = this.db
+      .select({ id: clientUsers.id, ownerId: clientUsers.ownerId })
+      .from(clientUsers)
+      .where(eq(clientUsers.id, userId))
+      .get()
+    return row ? (row.ownerId ?? row.id) : undefined
+  }
+
   emailOf(userId: number): string | undefined {
     const r = this.db
       .select({ email: clientUsers.email })

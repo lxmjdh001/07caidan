@@ -52,6 +52,8 @@ export class ChannelManager {
   private readonly contactAttempted = new Set<string>()
   /** 被用户禁用的账号；禁用时丢弃迟到的渠道事件，避免重新接收消息 */
   private readonly disabledAccounts = new Set<string>()
+  /** 同一平台消息可能并发重投；副作用执行期间先占位，防止重复翻译与扣费。 */
+  private readonly incomingInFlight = new Set<string>()
   private networkPolicy: ChannelNetworkPolicy | undefined
 
   constructor(
@@ -393,7 +395,8 @@ export class ChannelManager {
   /** 出站翻译预览：完成翻译但不发送（预览确认交互用） */
   async previewOutbound(convId: string, text: string): Promise<OutboundPreview> {
     const targetLang = await this.resolveTargetLang(convId)
-    const outbound = await this.translation.processOutbound(text, targetLang)
+    const { channel, accountId } = parseConversationId(convId)
+    const outbound = await this.translation.processOutbound(text, targetLang, { channel, accountId })
     return { ...outbound, targetLang }
   }
 
@@ -413,7 +416,7 @@ export class ChannelManager {
     this.assertNetworkUsable(adapter.key)
 
     const targetLang = prepared?.targetLang ?? (await this.resolveTargetLang(convId))
-    const outbound = prepared ?? (await this.translation.processOutbound(text, targetLang))
+    const outbound = prepared ?? (await this.translation.processOutbound(text, targetLang, { channel, accountId }))
     if (outbound.error) throw new Error(outbound.error)
 
     const msg: UnifiedMessage = {
@@ -559,7 +562,11 @@ export class ChannelManager {
 
   private async handleIncoming(raw: UnifiedMessage): Promise<void> {
     if (this.disabledAccounts.has(`${raw.channel}:${raw.accountId}`)) return
+    const messageKey = `${raw.channel}:${raw.accountId}:${raw.conversationId}:${raw.externalId || raw.id}`
+    if (this.incomingInFlight.has(messageKey)) return
+    this.incomingInFlight.add(messageKey)
     try {
+      if (await this.store.hasMessage(raw)) return
       // 渠道也会上报手机端发出的消息。它们需要入库以保持完整会话历史，
       // 但不能当作客户来信翻译或用于客户语言/投放来源识别。
       const { message: msg, detectedLang } = raw.direction === 'in'
@@ -597,6 +604,8 @@ export class ChannelManager {
       this.ensureContactId(conversation)
     } catch (err) {
       this.logger.error('入站消息处理失败', err)
+    } finally {
+      this.incomingInFlight.delete(messageKey)
     }
   }
 

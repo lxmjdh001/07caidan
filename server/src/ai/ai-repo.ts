@@ -62,6 +62,7 @@ export interface AiModelInput {
 export interface BillingSettings {
   creditsPerUsd: number
   autoTopUpCredits: boolean
+  charactersPerUsd: number
 }
 
 export interface UsageRecord {
@@ -259,7 +260,8 @@ export class AiRepo {
       .get()
     return {
       creditsPerUsd: r?.creditsPerUsd ?? 1000,
-      autoTopUpCredits: (r?.autoTopUpCredits ?? 1) === 1
+      autoTopUpCredits: (r?.autoTopUpCredits ?? 1) === 1,
+      charactersPerUsd: r?.charactersPerUsd ?? 10000
     }
   }
 
@@ -268,7 +270,8 @@ export class AiRepo {
     const next: BillingSettings = {
       // 兑换比例至少为 1，否则积分换钱会除零
       creditsPerUsd: Math.max(1, Math.floor(patch.creditsPerUsd ?? current.creditsPerUsd)),
-      autoTopUpCredits: patch.autoTopUpCredits ?? current.autoTopUpCredits
+      autoTopUpCredits: patch.autoTopUpCredits ?? current.autoTopUpCredits,
+      charactersPerUsd: Math.max(1, Math.floor(patch.charactersPerUsd ?? current.charactersPerUsd))
     }
     this.db
       .insert(billingSettings)
@@ -276,6 +279,7 @@ export class AiRepo {
         tenant,
         creditsPerUsd: next.creditsPerUsd,
         autoTopUpCredits: next.autoTopUpCredits ? 1 : 0,
+        charactersPerUsd: next.charactersPerUsd,
         updatedAt: Date.now()
       })
       .onConflictDoUpdate({
@@ -283,6 +287,7 @@ export class AiRepo {
         set: {
           creditsPerUsd: sql`excluded.credits_per_usd`,
           autoTopUpCredits: sql`excluded.auto_top_up_credits`,
+          charactersPerUsd: sql`excluded.characters_per_usd`,
           updatedAt: sql`excluded.updated_at`
         }
       })
@@ -291,6 +296,32 @@ export class AiRepo {
   }
 
   // ── 用量计费 ──
+
+  /** 仅记录模型真实用量，不向客户扣模型积分；翻译请求由字符账本统一计费。 */
+  recordUsage(
+    tenant: string,
+    userId: number,
+    modelId: string,
+    purpose: ModelPurpose,
+    usage: TokenUsage,
+    now = Date.now()
+  ): number {
+    const res = this.db
+      .insert(modelUsage)
+      .values({
+        tenant,
+        userId,
+        modelId,
+        purpose,
+        inputTokens: nonNeg(usage.inputTokens),
+        outputTokens: nonNeg(usage.outputTokens),
+        audioSeconds: nonNeg(usage.audioSeconds),
+        credits: 0,
+        createdAt: now
+      })
+      .run()
+    return Number(res.lastInsertRowid)
+  }
 
   /** 只算钱不落库，供调用前预估与前端展示 */
   estimate(tenant: string, modelId: string, usage: TokenUsage): number {

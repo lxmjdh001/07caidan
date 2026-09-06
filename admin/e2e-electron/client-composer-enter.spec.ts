@@ -11,6 +11,7 @@ const CLIENT_DIR = resolve(import.meta.dirname, '..', '..', 'client')
 const MAIN = join(CLIENT_DIR, 'out', 'main', 'index.js')
 const ELECTRON_PATH = createRequire(join(CLIENT_DIR, 'package.json'))('electron') as string
 const USER_DATA = mkdtempSync(join(tmpdir(), 'omni-e2e-'))
+const API = 'http://127.0.0.1:8798'
 
 function startStub(): Promise<{ server: Server; url: string }> {
   return new Promise((res) => {
@@ -59,6 +60,16 @@ test('客户端聊天：Enter 发送、Shift+Enter 换行不发送', async () =>
   await win.locator('input[type="password"]').fill('secret123')
   await win.locator('.auth-submit').click()
   await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
+  const admin = await fetch(`${API}/api/login`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: 'admin', password: 'admin' })
+  }).then((r) => r.json() as Promise<{ token: string }>)
+  const gift = await fetch(`${API}/api/admin/entitlements-adjust`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${admin.token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ email, characters: 10_000, note: 'e2e translation allowance' })
+  })
+  expect(gift.ok, `赠送字符应成功: ${await gift.clone().text()}`).toBeTruthy()
   await win.waitForTimeout(1000)
   const gotIt = win.getByRole('button', { name: '我知道了' })
   if (await gotIt.isVisible().catch(() => false)) await gotIt.click()

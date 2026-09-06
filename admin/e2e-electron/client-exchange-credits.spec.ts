@@ -12,8 +12,8 @@ const ELECTRON_PATH = createRequire(join(CLIENT_DIR, 'package.json'))('electron'
 const USER_DATA = mkdtempSync(join(tmpdir(), 'omni-e2e-'))
 const API = 'http://127.0.0.1:8798'
 
-// M12 余额兑换积分：$5 余额兑换 $2 → 积分 +2000（1 美元=1000 积分）、余额 -$2
-test('客户端钱包：余额兑换积分（$2→2000积分）', async () => {
+// 余额购买翻译字符：$5 余额支付 $2 → 字符 +20000（1 美元=10000 字符）、余额 -$2。
+test('客户端会员：余额购买翻译字符（$2→20000字符）', async () => {
   mkdirSync(USER_DATA, { recursive: true })
   writeFileSync(join(USER_DATA, 'settings.json'), JSON.stringify({ locale: 'zh-CN' }), 'utf8')
 
@@ -28,6 +28,10 @@ test('客户端钱包：余额兑换积分（$2→2000积分）', async () => {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ username: 'admin', password: 'admin' })
   }).then((r) => r.json() as Promise<{ token: string }>)
+  await fetch(`${API}/api/admin/billing-settings`, {
+    method: 'PUT', headers: { authorization: `Bearer ${admin.token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ charactersPerUsd: 10_000 })
+  })
   await fetch(`${API}/api/admin/balance-adjust`, {
     method: 'POST', headers: { authorization: `Bearer ${admin.token}`, 'content-type': 'application/json' },
     body: JSON.stringify({ email, deltaCents: 500, note: 'e2e' })
@@ -48,15 +52,16 @@ test('客户端钱包：余额兑换积分（$2→2000积分）', async () => {
 
   await win.getByTestId('client-nav-trigger').click()
   await win.getByTestId('client-nav-billing').click()
-  // 概览：余额 $5.00、积分 0
+  // 概览：余额 $5.00、翻译字符 0。
   await expect(win.locator('.stat-card').filter({ hasText: '余额' }).locator('.v')).toHaveText('$5.00', { timeout: 10_000 })
+  await expect(win.locator('.stat-card').filter({ hasText: '翻译字符' }).locator('.v')).toHaveText('0')
 
-  // 余额兑换积分：金额 2.00 → 兑换
+  // 余额购买字符：金额 2.00 → 兑换。
   await win.locator('label.field', { hasText: '金额（美元）' }).locator('input').fill('2.00')
   await win.getByRole('button', { name: '兑换', exact: true }).click()
 
-  // 积分 +2000、余额 -$2 → $3.00
-  await expect(win.locator('.stat-card').filter({ hasText: '模型积分' }).locator('.v')).toHaveText('2000', { timeout: 10_000 })
+  // 字符 +20000、余额 -$2 → $3.00。
+  await expect(win.locator('.stat-card').filter({ hasText: '翻译字符' }).locator('.v')).toHaveText('20,000', { timeout: 10_000 })
   await expect(win.locator('.stat-card').filter({ hasText: '余额' }).locator('.v')).toHaveText('$3.00')
 
   await win.waitForTimeout(300)

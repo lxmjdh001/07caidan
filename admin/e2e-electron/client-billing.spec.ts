@@ -11,8 +11,8 @@ const MAIN = join(CLIENT_DIR, 'out', 'main', 'index.js')
 const ELECTRON_PATH = createRequire(join(CLIENT_DIR, 'package.json'))('electron') as string
 const USER_DATA = mkdtempSync(join(tmpdir(), 'omni-e2e-'))
 
-// M11 客户端「套餐与余额」钱包页：概览/套餐/充值/账单四页签逐个点开渲染
-test('客户端套餐与余额：四页签均正常渲染（新老板空态）', async () => {
+// 客户端「会员与字符」页：概览/套餐/充值/字符消耗/账单五页签逐个点开渲染。
+test('客户端会员与字符：五页签均正常渲染（新老板空态）', async () => {
   mkdirSync(USER_DATA, { recursive: true })
   writeFileSync(join(USER_DATA, 'settings.json'), JSON.stringify({ locale: 'zh-CN' }), 'utf8')
   const app = await electron.launch({ executablePath: ELECTRON_PATH, args: [MAIN, `--user-data-dir=${join(tmpdir(), 'omni-bill-ignored')}`], env: { ...process.env, OMNI_USER_DATA: USER_DATA } })
@@ -29,22 +29,28 @@ test('客户端套餐与余额：四页签均正常渲染（新老板空态）',
   await win.getByTestId('client-nav-trigger').click()
   await win.getByTestId('client-nav-billing').click()
 
-  // 概览：三张统计卡（余额/积分/账号配额）+ 未订阅提示
+  // 概览：三张统计卡（余额/翻译字符/端口额度）+ 未订阅提示。
   await expect(win.locator('.stat-card')).toHaveCount(3, { timeout: 10_000 })
   await expect(win.getByText('余额', { exact: true })).toBeVisible()
-  await expect(win.getByText('模型积分')).toBeVisible()
-  await expect(win.getByText('账号配额')).toBeVisible()
+  await expect(win.getByText('翻译字符', { exact: true })).toBeVisible()
+  await expect(win.getByText('端口额度', { exact: true })).toBeVisible()
   await expect(win.getByText('还没有订阅套餐。前往「套餐」页签选购。')).toBeVisible()
   await win.waitForTimeout(300)
   await win.screenshot({ path: `${SHOT_DIR}/client-29-billing-overview.png` })
 
   // 套餐页：说明文案渲染（无套餐时列表空，容器仍在）
   await win.locator('.page-tabs button', { hasText: '套餐' }).click()
-  await expect(win.getByText('套餐决定可同时登录的平台账号数量。用余额支付；余额不足请先充值。')).toBeVisible()
+  await expect(win.getByText('免费用户永久 10 个端口；VIP1 默认 200、VIP2 默认 1000、VIP3 不限。具体套餐价格和额度以管理员配置为准。')).toBeVisible()
 
   // 充值页渲染（充值标题恒在；不断言“无通道”空态——共享租户里别的用例会建通道）
   await win.locator('.page-tabs button', { hasText: '充值' }).click()
   await expect(win.getByRole('heading', { name: '充值', exact: true })).toBeVisible()
+
+  // 字符消耗页：剩余、累计消耗和翻译次数均正常展示。
+  await win.locator('.page-tabs button', { hasText: '字符消耗' }).click()
+  await expect(win.locator('.stat-card').filter({ hasText: '剩余字符' })).toBeVisible()
+  await expect(win.locator('.stat-card').filter({ hasText: '累计消耗' })).toBeVisible()
+  await expect(win.locator('.stat-card').filter({ hasText: '翻译次数' })).toBeVisible()
 
   // 账单页：充值订单表头渲染
   await win.locator('.page-tabs button', { hasText: '账单' }).click()

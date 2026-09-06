@@ -230,8 +230,12 @@ async function bootstrap(migratedLegacyUserData: boolean): Promise<void> {
     }
   })
 
+  const billingApi = new BillingApi(() => settings.get().sync, logger)
   const translatorRegistry = createTranslatorRegistry()
   const pipeline = new TranslationPipeline(new PassthroughTranslator())
+  pipeline.setUsageRecorder(async (usage) => {
+    await billingApi.chargeTranslation(usage)
+  })
   const pipelineExtras = {
     getBackend: () => ({
       serverUrl: settings.get().sync.serverUrl,
@@ -680,7 +684,6 @@ async function bootstrap(migratedLegacyUserData: boolean): Promise<void> {
   configSync.start()
   // 工单数据落后台（看板要能被团队公开访问），复用同步配置里的地址与登录令牌
   const campaignApi = new CampaignApi(() => settings.get().sync, logger)
-  const billingApi = new BillingApi(() => settings.get().sync, logger)
 
   // 自动更新：更新源 = 后台地址 + /updates；未登录后台时禁用
   const updater = new AppUpdater({

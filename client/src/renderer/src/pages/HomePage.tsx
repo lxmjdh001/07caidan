@@ -28,6 +28,8 @@ interface BillingMe {
   subscription?: { planId: string; expiresAt: number; autoRenew: boolean; status: string } | null
   plan?: { name: string; maxAccounts: number; priceCents: number } | null
   accountQuota?: number
+  membershipTier?: 'free' | 'vip1' | 'vip2' | 'vip3' | 'custom'
+  entitlements?: { characters: number; bonusPorts: number }
 }
 
 interface Announcement {
@@ -132,13 +134,13 @@ export function HomePage({ settings, channels, plugins, onOpenApp, onOpenManagem
             <div className="member-avatar">{(settings.sync.email || 'U').slice(0, 1).toUpperCase()}</div>
             <div>
               <strong>{settings.sync.email || t('home.notSignedIn')}</strong>
-              <span>{billing?.plan?.name || t('home.noPlan')}</span>
+              <span>{billing?.plan?.name || t('home.freePlan')}</span>
             </div>
           </div>
           <div className="member-stat"><span>{t('home.balance')}</span><strong>{money(billing?.balance?.balanceCents)}</strong></div>
-          <div className="member-stat"><span>{t('home.credits')}</span><strong>{(billing?.balance?.credits ?? 0).toLocaleString()}</strong></div>
-          <div className="member-stat"><span>{t('home.quota')}</span><strong>{billing?.accountQuota || billing?.plan?.maxAccounts || 0}</strong></div>
-          <div className="member-meta"><span>{t('home.expires')}</span><strong>{dateText(billing?.subscription?.expiresAt)}</strong></div>
+          <div className="member-stat"><span>{t('home.credits')}</span><strong>{(billing?.entitlements?.characters ?? 0).toLocaleString()}</strong></div>
+          <div className="member-stat"><span>{t('home.quota')}</span><strong>{billing?.accountQuota === 0 ? t('home.unlimited') : (billing?.accountQuota ?? 10)}</strong></div>
+          <div className="member-meta"><span>{t('home.expires')}</span><strong>{billing?.subscription ? dateText(billing.subscription.expiresAt) : t('home.permanent')}</strong></div>
         </div>
       </section>
 

@@ -467,6 +467,7 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
     requirePerm: (req, reply, perm) => requirePerm(req, reply, perm as Permission),
     emailOf: (userId) => clientAuth.emailOf(userId),
     userIdOf: (email) => clientAuth.userIdOf(email),
+    billingUserIdOf: (userId) => clientAuth.billingUserIdOf(userId),
     invites: inviteRepo,
     publicBase
   })
@@ -705,20 +706,39 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
   })
 
   app.put('/api/client/accounts/:accountKey', async (req, reply) => {
-    if (!ctxOf(req).isSyncClient) return reply.code(403).send({ error: '需要同步客户端令牌' })
+    const ctx = ctxOf(req)
+    if (!ctx.isSyncClient) return reply.code(403).send({ error: '需要同步客户端令牌' })
     const accountKey = (req.params as { accountKey: string }).accountKey
     const b = (req.body ?? {}) as { channel?: string; accountId?: string; label?: unknown; defaultLang?: unknown }
     if (!validAccountIdentity(accountKey, b.channel, b.accountId)) {
       return reply.code(400).send({ error: '账号标识无效' })
     }
+    const input = {
+      accountKey,
+      channel: b.channel!,
+      accountId: b.accountId!,
+      label: cleanOptionalText(b.label, 200),
+      defaultLang: cleanOptionalText(b.defaultLang, 32)
+    }
+    // 静态同步令牌保持旧版自托管语义；SaaS 登录用户由服务器强制执行套餐端口上限。
+    if (ctx.billingUserId !== undefined) {
+      const result = workspaceAccounts.upsertWithinQuota(
+        workspaceOf(req),
+        input,
+        billingRepo.accountQuota(ctx.tenant, ctx.billingUserId)
+      )
+      if (!result.ok) {
+        return reply.code(409).send({
+          error: '端口数量已达到当前会员等级上限',
+          code: result.reason,
+          accountQuota: result.accountQuota,
+          activeAccounts: result.activeAccounts
+        })
+      }
+      return { account: result.account, activeAccounts: result.activeAccounts }
+    }
     return {
-      account: workspaceAccounts.upsert(workspaceOf(req), {
-        accountKey,
-        channel: b.channel!,
-        accountId: b.accountId!,
-        label: cleanOptionalText(b.label, 200),
-        defaultLang: cleanOptionalText(b.defaultLang, 32)
-      })
+      account: workspaceAccounts.upsert(workspaceOf(req), input)
     }
   })
 
@@ -1085,11 +1105,18 @@ export function buildServer(config: ServerConfig, overrides: ServerOverrides = {
         const subscription = billingRepo.getSubscription(tenant, billingUserId)
         const plan = subscription ? billingRepo.getPlan(tenant, subscription.planId) : null
         const balance = billingRepo.getBalance(tenant, billingUserId)
+        const entitlements = billingRepo.getEntitlements(tenant, billingUserId)
         return {
           ...u,
           ownerEmail: u.ownerId ? byId.get(u.ownerId) : undefined,
           balanceCents: balance.balanceCents,
           credits: balance.credits,
+          characters: entitlements.characters,
+          bonusPorts: entitlements.bonusPorts,
+          accountQuota: billingRepo.accountQuota(tenant, billingUserId),
+          membershipTier: subscription && subscription.status === 'active' && subscription.expiresAt > Date.now()
+            ? (plan?.tier ?? 'custom')
+            : 'free',
           subscription: subscription
             ? { ...subscription, planName: plan?.name ?? subscription.planId }
             : null

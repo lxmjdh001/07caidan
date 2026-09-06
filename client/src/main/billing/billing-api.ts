@@ -75,6 +75,25 @@ export class BillingApi {
     return this.request('POST', '/api/billing/exchange-credits', { cents })
   }
 
+  exchangeCharacters(cents: number): Promise<unknown> {
+    return this.request('POST', '/api/billing/exchange-characters', { cents })
+  }
+
+  chargeTranslation(body: {
+    requestId: string
+    characters: number
+    engine: string
+    channel?: string
+    accountId?: string
+    direction: 'in' | 'out'
+  }): Promise<unknown> {
+    return this.request('POST', '/api/billing/translation/charge', body)
+  }
+
+  translationUsage(): Promise<unknown> {
+    return this.request('GET', '/api/billing/translation-usage')
+  }
+
   // ── 支持工单 ──
   listTickets(): Promise<unknown> {
     return this.request('GET', '/api/support/tickets')

@@ -134,7 +134,133 @@ describe('余额与流水', () => {
   })
 })
 
+describe('翻译字符与赠送端口', () => {
+  test('免费用户永久 10 端口，赠送端口在基础额度上累加', () => {
+    assert.equal(repo.accountQuota(T, U, NOW), 10)
+    const gift = repo.mutateEntitlements(T, {
+      userId: U,
+      kind: 'admin_gift',
+      charactersDelta: 20_000,
+      portsDelta: 7,
+      note: '活动赠送',
+      now: NOW
+    })
+    assert.equal(gift.ok, true)
+    assert.deepEqual(repo.getEntitlements(T, U), { userId: U, characters: 20_000, bonusPorts: 7 })
+    assert.equal(repo.accountQuota(T, U, NOW), 17)
+    assert.equal(repo.listEntitlementLedger(T, U)[0]?.kind, 'admin_gift')
+  })
+
+  test('VIP1/VIP2 端口由套餐配置，VIP3 的 0 表示无限制', () => {
+    const vip1 = plan({ tier: 'vip1', maxAccounts: 200, includedCharacters: 1000, priceCents: 0 })
+    repo.changePlan(T, U, vip1.id, NOW)
+    assert.equal(repo.accountQuota(T, U, NOW), 200)
+    assert.equal(repo.getEntitlements(T, U).characters, 1000)
+
+    repo.mutateEntitlements(T, { userId: U, kind: 'admin_gift', portsDelta: 5, now: NOW + 1 })
+    assert.equal(repo.accountQuota(T, U, NOW + 1), 205)
+
+    const vip3 = plan({ tier: 'vip3', maxAccounts: 0, priceCents: 0 })
+    repo.changePlan(T, U, vip3.id, NOW + 2)
+    assert.equal(repo.accountQuota(T, U, NOW + 2), 0)
+    assert.equal(repo.checkAccountQuota(T, U, 100_000, NOW + 2).canAddMore, true)
+  })
+
+  test('成功翻译扣源字符；requestId 重试幂等且余额不足不记账', () => {
+    repo.mutateEntitlements(T, { userId: U, kind: 'admin_gift', charactersDelta: 10, now: NOW })
+    const first = repo.chargeTranslation(T, {
+      userId: U,
+      actorUserId: U,
+      requestId: 'translation-1',
+      characters: 4,
+      engine: 'google-free',
+      channel: 'telegram',
+      direction: 'out',
+      now: NOW + 1
+    })
+    assert.equal(first.ok, true)
+    assert.equal(first.remaining, 6)
+
+    const duplicate = repo.chargeTranslation(T, {
+      userId: U,
+      actorUserId: U,
+      requestId: 'translation-1',
+      characters: 4,
+      now: NOW + 2
+    })
+    assert.equal(duplicate.duplicate, true)
+    assert.equal(duplicate.remaining, 6)
+
+    const insufficient = repo.chargeTranslation(T, {
+      userId: U,
+      actorUserId: U,
+      requestId: 'translation-2',
+      characters: 7,
+      now: NOW + 3
+    })
+    assert.equal(insufficient.ok, false)
+    assert.equal(repo.getEntitlements(T, U).characters, 6)
+    assert.equal(repo.listEntitlementLedger(T, U).filter((r) => r.kind === 'translation_usage').length, 1)
+    assert.deepEqual(repo.translationUsageSummary(T, U), {
+      totalCharacters: 4,
+      totalTranslations: 1,
+      byEngine: [{ engine: 'google-free', characters: 4, calls: 1 }],
+      byChannel: [{ channel: 'telegram', characters: 4, calls: 1 }],
+      recent: [{
+        userId: U,
+        requestId: 'translation-1',
+        engine: 'google-free',
+        channel: 'telegram',
+        direction: 'out',
+        sourceCharacters: 4,
+        createdAt: NOW + 1
+      }]
+    })
+  })
+
+  test('余额按后台比例兑换字符并留下两套账本', () => {
+    topup(500)
+    const result = repo.purchaseCharacters(T, U, 200, 12_000, NOW + 1)
+    assert.equal(result.ok, true)
+    assert.equal(result.characters, 24_000)
+    assert.equal(result.balance.balanceCents, 300)
+    assert.equal(result.entitlements.characters, 24_000)
+    assert.equal(repo.listLedger(T, U)[0]?.kind, 'character_purchase')
+    assert.equal(repo.listEntitlementLedger(T, U)[0]?.kind, 'character_purchase')
+  })
+
+  test('管理员重复保存同一有效套餐不会重复赠送字符', () => {
+    const vip = plan({ tier: 'vip2', maxAccounts: 1000, includedCharacters: 5000, priceCents: 0 })
+    repo.setSubscriptionByAdmin(T, U, { planId: vip.id }, NOW)
+    repo.setSubscriptionByAdmin(T, U, { planId: vip.id, autoRenew: true }, NOW + 1000)
+    assert.equal(repo.getEntitlements(T, U).characters, 5000)
+    assert.equal(repo.listEntitlementLedger(T, U).filter((r) => r.kind === 'plan_grant').length, 1)
+  })
+
+  test('不同用户可复用同一 requestId，各自正常扣费', () => {
+    const other = U + 1
+    repo.mutateEntitlements(T, { userId: U, kind: 'admin_gift', charactersDelta: 10, now: NOW })
+    repo.mutateEntitlements(T, { userId: other, kind: 'admin_gift', charactersDelta: 10, now: NOW })
+    const input = { actorUserId: U, requestId: 'shared-platform-message', characters: 3, now: NOW + 1 }
+    assert.equal(repo.chargeTranslation(T, { ...input, userId: U }).ok, true)
+    assert.equal(repo.chargeTranslation(T, { ...input, userId: other, actorUserId: other }).ok, true)
+    assert.equal(repo.getEntitlements(T, U).characters, 7)
+    assert.equal(repo.getEntitlements(T, other).characters, 7)
+  })
+})
+
 describe('购买与升降级', () => {
+  test('有效套餐不能重复购买，升降级也不会重复领取套餐字符', () => {
+    const basic = plan({ priceCents: 0, includedCharacters: 1000 })
+    const pro = plan({ priceCents: 0, includedCharacters: 5000 })
+    assert.equal(repo.changePlan(T, U, basic.id, NOW).ok, true)
+    const repeat = repo.changePlan(T, U, basic.id, NOW + 1)
+    assert.equal(repeat.ok, false)
+    assert.equal(repeat.ok === false && repeat.reason, 'already_subscribed')
+    assert.equal(repo.changePlan(T, U, pro.id, NOW + 2).ok, true)
+    assert.equal(repo.getEntitlements(T, U).characters, 1000)
+  })
+
   test('余额够就扣款并生成订阅', () => {
     const p = plan({ priceCents: 3000 })
     topup(10000)
@@ -260,11 +386,11 @@ describe('自动续费与到期', () => {
     assert.equal(repo.getBalance(T, U).balanceCents, 0, '不得扣成负数')
   })
 
-  test('过期后账号配额归零', () => {
+  test('过期后回落到永久免费 10 端口', () => {
     const p = plan({ priceCents: 0, maxAccounts: 10 })
     repo.changePlan(T, U, p.id, NOW)
     assert.equal(repo.accountQuota(T, U, NOW), 10)
-    assert.equal(repo.accountQuota(T, U, NOW + 31 * DAY), 0, '到期即失去配额')
+    assert.equal(repo.accountQuota(T, U, NOW + 31 * DAY), 10, '到期后保留免费用户端口')
   })
 
   test('expireIfDue 只对已到期的生效', () => {

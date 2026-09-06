@@ -224,4 +224,41 @@ describe('同步客户端服务端回填', () => {
     assert.equal((claim1.json() as { claimed: boolean }).claimed, true)
     assert.equal((claim2.json() as { claimed: boolean }).claimed, false)
   })
+
+  test('免费用户端口上限由服务器强制执行，更新和删除后重建不误拦截', async () => {
+    const registered = await app.inject({
+      method: 'POST', url: '/api/client/register',
+      payload: { email: 'quota@test.com', password: 'password123' }
+    })
+    const headers = { authorization: `Bearer ${(registered.json() as { token: string }).token}` }
+    for (let index = 1; index <= 10; index += 1) {
+      const saved = await app.inject({
+        method: 'PUT', url: `/api/client/accounts/telegram%3Aaccount-${index}`, headers,
+        payload: { channel: 'telegram', accountId: `account-${index}`, label: `账号 ${index}` }
+      })
+      assert.equal(saved.statusCode, 200, saved.body)
+    }
+
+    const blocked = await app.inject({
+      method: 'PUT', url: '/api/client/accounts/telegram%3Aaccount-11', headers,
+      payload: { channel: 'telegram', accountId: 'account-11' }
+    })
+    assert.equal(blocked.statusCode, 409)
+    assert.equal((blocked.json() as { code: string }).code, 'account_quota_reached')
+
+    const update = await app.inject({
+      method: 'PUT', url: '/api/client/accounts/telegram%3Aaccount-1', headers,
+      payload: { channel: 'telegram', accountId: 'account-1', label: '更新后的账号' }
+    })
+    assert.equal(update.statusCode, 200, update.body)
+
+    await app.inject({
+      method: 'DELETE', url: '/api/client/accounts/telegram%3Aaccount-2', headers
+    })
+    const replacement = await app.inject({
+      method: 'PUT', url: '/api/client/accounts/telegram%3Aaccount-11', headers,
+      payload: { channel: 'telegram', accountId: 'account-11' }
+    })
+    assert.equal(replacement.statusCode, 200, replacement.body)
+  })
 })

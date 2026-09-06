@@ -12,9 +12,8 @@ const ELECTRON_PATH = createRequire(join(CLIENT_DIR, 'package.json'))('electron'
 const USER_DATA = mkdtempSync(join(tmpdir(), 'omni-e2e-'))
 const API = 'http://127.0.0.1:8798'
 
-// M12 兑换积分余额不足护栏：兑换额 > 余额 → 服务端 400「余额不足」→ 客户端提示、
-// 余额与积分不变。client-exchange-credits 只覆盖成功路径，余额不足这条错误护栏没测。
-test('客户端钱包：兑换积分超出余额时提示余额不足且不扣款', async () => {
+// 购买字符余额不足护栏：购买额 > 余额 → 客户端提示，余额与字符都不变。
+test('客户端会员：购买字符超出余额时提示余额不足且不扣款', async () => {
   mkdirSync(USER_DATA, { recursive: true })
   writeFileSync(join(USER_DATA, 'settings.json'), JSON.stringify({ locale: 'zh-CN' }), 'utf8')
 
@@ -50,17 +49,17 @@ test('客户端钱包：兑换积分超出余额时提示余额不足且不扣�
   await win.getByTestId('client-nav-trigger').click()
   await win.getByTestId('client-nav-billing').click()
   const balance = win.locator('.stat-card').filter({ hasText: '余额' }).locator('.v')
-  const credits = win.locator('.stat-card').filter({ hasText: '模型积分' }).locator('.v')
+  const characters = win.locator('.stat-card').filter({ hasText: '翻译字符' }).locator('.v')
   await expect(balance).toHaveText('$1.00', { timeout: 10_000 })
-  await expect(credits).toHaveText('0')
+  await expect(characters).toHaveText('0')
 
-  // 兑换 $5（超过 $1 余额）→ 余额不足提示，且余额/积分不变
+  // 兑换 $5（超过 $1 余额）→ 余额不足提示，且余额/字符不变。
   await win.locator('label.field', { hasText: '金额（美元）' }).locator('input').fill('5.00')
   await win.getByRole('button', { name: '兑换', exact: true }).click()
 
   await expect(win.getByText(/余额不足/).first()).toBeVisible({ timeout: 10_000 })
   await expect(balance).toHaveText('$1.00')
-  await expect(credits).toHaveText('0')
+  await expect(characters).toHaveText('0')
 
   await win.waitForTimeout(300)
   await win.screenshot({ path: `${SHOT_DIR}/client-96-exchange-insufficient.png` })

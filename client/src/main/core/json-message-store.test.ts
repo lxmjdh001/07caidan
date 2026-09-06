@@ -97,10 +97,17 @@ describe('JsonMessageStore', () => {
     expect(await store.listMessages('whatsapp:main:123@s.whatsapp.net')).toHaveLength(1)
   })
 
-  it('无 externalId 的消息不参与去重', async () => {
+  it('无 externalId 但内部 id 不同的消息分别保留', async () => {
     await store.recordMessage(msg())
     await store.recordMessage(msg())
     expect(await store.listMessages('whatsapp:main:123@s.whatsapp.net')).toHaveLength(2)
+  })
+
+  it('无 externalId 时仍按稳定内部 id 去重', async () => {
+    await store.recordMessage(msg({ id: 'same-id' }))
+    const second = await store.recordMessage(msg({ id: 'same-id' }))
+    expect(second.duplicated).toBe(true)
+    expect(await store.listMessages('whatsapp:main:123@s.whatsapp.net')).toHaveLength(1)
   })
 
   it('会话按最后消息时间倒序', async () => {

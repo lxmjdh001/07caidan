@@ -136,18 +136,27 @@ describe('模型管理', () => {
 })
 
 describe('计费参数', () => {
-  test('默认 1000 积分/美元且开启自动补足', () => {
-    assert.deepEqual(ai.getSettings(T), { creditsPerUsd: 1000, autoTopUpCredits: true })
+  test('默认积分与翻译字符兑换比例正确', () => {
+    assert.deepEqual(ai.getSettings(T), {
+      creditsPerUsd: 1000,
+      autoTopUpCredits: true,
+      charactersPerUsd: 10000
+    })
   })
 
   test('可修改并持久化', () => {
-    ai.updateSettings(T, { creditsPerUsd: 500, autoTopUpCredits: false })
-    assert.deepEqual(ai.getSettings(T), { creditsPerUsd: 500, autoTopUpCredits: false })
+    ai.updateSettings(T, { creditsPerUsd: 500, autoTopUpCredits: false, charactersPerUsd: 20000 })
+    assert.deepEqual(ai.getSettings(T), {
+      creditsPerUsd: 500,
+      autoTopUpCredits: false,
+      charactersPerUsd: 20000
+    })
   })
 
   test('兑换比例至少为 1，防止除零', () => {
-    ai.updateSettings(T, { creditsPerUsd: 0 })
+    ai.updateSettings(T, { creditsPerUsd: 0, charactersPerUsd: 0 })
     assert.equal(ai.getSettings(T).creditsPerUsd, 1)
+    assert.equal(ai.getSettings(T).charactersPerUsd, 1)
   })
 })
 

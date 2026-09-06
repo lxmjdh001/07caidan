@@ -640,9 +640,8 @@ export function App({ onLogout }: { onLogout?: () => void }): React.JSX.Element 
   const accountCount = settings
     ? Object.keys(settings.accounts).length
     : Object.keys(channels).length
-  // 已达套餐账号配额：有套餐（配额>0）且账号数已达配额时拦。
-  // 配额未知(null)或无套餐(0)不拦：新用户加首批账号/未订阅的引导流程不受影响，
-  // 本护栏只针对「有套餐的老板超出其套餐账号上限」这一实际问题。
+  // 已达端口配额时在界面先拦一次；0 表示 VIP3 不限，最终仍由服务器强制校验。
+  // 配额未知(null)只是不在界面误拦，不能绕过服务端额度。
   const atAccountQuota = accountQuota !== null && accountQuota > 0 && accountCount >= accountQuota
 
   return (

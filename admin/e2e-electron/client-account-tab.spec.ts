@@ -11,8 +11,8 @@ const MAIN = join(CLIENT_DIR, 'out', 'main', 'index.js')
 const ELECTRON_PATH = createRequire(join(CLIENT_DIR, 'package.json'))('electron') as string
 const USER_DATA = mkdtempSync(join(tmpdir(), 'omni-e2e-'))
 
-// 设置「账号」页：显示登录邮箱/后台地址 + 同步媒体开关持久化
-test('客户端设置账号页：显示账号信息且同步媒体开关持久化', async () => {
+// 面向客户的「账号」页只显示账号安全与通知，不暴露后台地址、同步策略等内部配置。
+test('客户端设置账号页：仅显示客户设置且通知开关持久化', async () => {
   mkdirSync(USER_DATA, { recursive: true })
   writeFileSync(join(USER_DATA, 'settings.json'), JSON.stringify({ locale: 'zh-CN' }), 'utf8')
   const app = await electron.launch({ executablePath: ELECTRON_PATH, args: [MAIN, `--user-data-dir=${join(tmpdir(), 'omni-acctab-ignored')}`], env: { ...process.env, OMNI_USER_DATA: USER_DATA } })
@@ -34,27 +34,31 @@ test('客户端设置账号页：显示账号信息且同步媒体开关持久�
   await win.getByTestId('client-nav-settings').click()
   await win.locator('.page-tabs button', { hasText: '账号' }).click()
 
-  // 账号信息：登录邮箱 + 后台地址
+  // 账号信息与安全设置可见；后台地址、云同步和媒体归档等内部选项不可见。
   await expect(win.getByText(email)).toBeVisible({ timeout: 10_000 })
-  await expect(win.locator('.account-key', { hasText: '127.0.0.1:8798' })).toBeVisible()
+  await expect(win.getByRole('heading', { name: '修改密码', exact: true })).toBeVisible()
+  await expect(win.getByRole('heading', { name: '消息提醒', exact: true })).toBeVisible()
+  await expect(win.getByText('127.0.0.1:8798')).toHaveCount(0)
+  await expect(win.getByText('同时上传媒体文件')).toHaveCount(0)
+  await expect(win.getByText('云端漫游偏好设置')).toHaveCount(0)
 
-  // 同步媒体开关（默认开）→ 关掉 → 保存
-  const syncMedia = win.locator('label.checkbox', { hasText: '同时上传媒体文件' }).locator('input[type="checkbox"]')
-  await expect(syncMedia).toBeChecked()
-  await syncMedia.uncheck()
+  // 通知声音（默认开）→ 关掉 → 保存。
+  const notifySound = win.locator('label.checkbox', { hasText: '通知提示音' }).locator('input[type="checkbox"]')
+  await expect(notifySound).toBeChecked()
+  await notifySound.uncheck()
   await win.getByRole('button', { name: '保存', exact: true }).click()
   await expect(win.locator('.save-ok')).toBeVisible({ timeout: 10_000 })
   await win.waitForTimeout(300)
   await win.screenshot({ path: `${SHOT_DIR}/client-58-account-tab.png` })
 
-  // 跳走再回：同步媒体仍为关
+  // 跳走再回：通知偏好仍为关。
   await win.getByTestId('client-nav-trigger').click()
   await win.getByTestId('client-nav-settings').click()
   await win.getByTestId('client-nav-trigger').click()
   await win.getByTestId('client-nav-settings').click()
   await win.locator('.page-tabs button', { hasText: '账号' }).click()
   await expect(
-    win.locator('label.checkbox', { hasText: '同时上传媒体文件' }).locator('input[type="checkbox"]')
+    win.locator('label.checkbox', { hasText: '通知提示音' }).locator('input[type="checkbox"]')
   ).not.toBeChecked()
 
   await app.close()

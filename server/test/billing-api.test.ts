@@ -420,6 +420,113 @@ describe('管理员手动补单与调余额', () => {
   })
 })
 
+describe('会员字符与端口（HTTP 层）', () => {
+  test('管理员赠送字符和端口，客户端立即看到免费等级与叠加配额', async () => {
+    const gift = await api(
+      'POST',
+      '/api/admin/entitlements-adjust',
+      { email: 'u@test.com', characters: 50_000, ports: 8, note: '新用户赠送' },
+      adminToken
+    )
+    assert.equal(gift.status, 200, gift.text)
+    const me = (await api('GET', '/api/billing/me')).json
+    assert.equal(me.membershipTier, 'free')
+    assert.equal(me.entitlements.characters, 50_000)
+    assert.equal(me.entitlements.bonusPorts, 8)
+    assert.equal(me.accountQuota, 18)
+    const entitlementLedger = (await api('GET', '/api/billing/ledger')).json.entitlementLedger
+    assert.equal(entitlementLedger[0].kind, 'admin_gift')
+  })
+
+  test('套餐等级、端口与套餐赠送字符均由后台配置', async () => {
+    const plan = (
+      await api(
+        'POST',
+        '/api/admin/plans',
+        {
+          name: 'VIP2 年付',
+          tier: 'vip2',
+          priceCents: 0,
+          periodUnit: 'year',
+          maxAccounts: 1000,
+          includedCharacters: 300_000
+        },
+        adminToken
+      )
+    ).json.plan
+    const users = (await api('GET', '/api/admin/client-users', undefined, adminToken)).json.users
+    const user = users.find((item: any) => item.email === 'u@test.com')
+    const assigned = await api(
+      'PATCH',
+      `/api/admin/client-users/${user.id}/subscription`,
+      { planId: plan.id },
+      adminToken
+    )
+    assert.equal(assigned.status, 200, assigned.text)
+    const me = (await api('GET', '/api/billing/me')).json
+    assert.equal(me.membershipTier, 'vip2')
+    assert.equal(me.accountQuota, 1000)
+    assert.equal(me.entitlements.characters, 300_000)
+
+    // 管理员只改自动续费时，不应再次赠送套餐字符。
+    await api(
+      'PATCH',
+      `/api/admin/client-users/${user.id}/subscription`,
+      { planId: plan.id, autoRenew: true },
+      adminToken
+    )
+    assert.equal((await api('GET', '/api/billing/me')).json.entitlements.characters, 300_000)
+  })
+
+  test('翻译扣费接口按 requestId 幂等，并提供平台统计', async () => {
+    await api(
+      'POST',
+      '/api/admin/entitlements-adjust',
+      { email: 'u@test.com', characters: 12 },
+      adminToken
+    )
+    const body = {
+      requestId: 'http-translation-1',
+      characters: 5,
+      engine: 'google-free',
+      channel: 'line',
+      accountId: 'line-1',
+      direction: 'in'
+    }
+    assert.equal((await api('POST', '/api/billing/translation/charge', body)).json.remaining, 7)
+    const duplicate = await api('POST', '/api/billing/translation/charge', body)
+    assert.equal(duplicate.status, 200)
+    assert.equal(duplicate.json.duplicate, true)
+    assert.equal(duplicate.json.remaining, 7)
+
+    const rejected = await api('POST', '/api/billing/translation/charge', {
+      ...body,
+      requestId: 'http-translation-2',
+      characters: 8
+    })
+    assert.equal(rejected.status, 402)
+    assert.equal(rejected.json.reason, 'insufficient_characters')
+
+    const usage = (await api('GET', '/api/billing/translation-usage')).json
+    assert.equal(usage.summary.totalCharacters, 5)
+    assert.deepEqual(usage.summary.byChannel, [{ channel: 'line', characters: 5, calls: 1 }])
+  })
+
+  test('余额按管理员设置的比例兑换翻译字符', async () => {
+    const ch = await mockChannel()
+    const order = (
+      await api('POST', '/api/billing/orders', { kind: 'topup', amountCents: 500, channelId: ch })
+    ).json.order
+    await notify(ch, order.id, { amount_minor: '500' })
+    await api('PUT', '/api/admin/billing-settings', { charactersPerUsd: 20_000 }, adminToken)
+    const exchange = await api('POST', '/api/billing/exchange-characters', { cents: 250 })
+    assert.equal(exchange.status, 200, exchange.text)
+    assert.equal(exchange.json.characters, 50_000)
+    assert.equal(exchange.json.balance.balanceCents, 250)
+    assert.equal(exchange.json.entitlements.characters, 50_000)
+  })
+})
+
 describe('积分与模型计费（HTTP 层）', () => {
   async function setupModel(): Promise<string> {
     const p = (
@@ -565,15 +672,31 @@ describe('AI 翻译与语音识别（假供应商）', () => {
     }
   }
 
-  test('翻译成功：走假 fetch，返回译文并按真实用量扣费', async () => {
+  async function giftCharacters(characters: number): Promise<void> {
+    const r = await api(
+      'POST',
+      '/api/admin/entitlements-adjust',
+      { email: 'u@test.com', characters },
+      adminToken
+    )
+    assert.equal(r.status, 200, r.text)
+  }
+
+  test('翻译成功：走假 fetch，返回译文并按 Unicode 源字符扣费', async () => {
     await setup()
-    await fund(1000)
+    await giftCharacters(10)
     const r = await api('POST', '/api/ai/translate', { text: '你好', targetLang: 'en' })
     assert.equal(r.status, 200, r.text)
     assert.equal(r.json.text, 'FAKE_TRANSLATION')
-    assert.equal(r.json.credits, 1, '10+5 token 向上取整为 1 积分')
+    assert.equal(r.json.characters, 2)
+    assert.equal(r.json.remaining, 8)
+    assert.equal(r.json.metered, true)
     const usage = (await api('GET', '/api/billing/usage')).json.usage
     assert.equal(usage[0].purpose, 'translate')
+    assert.equal(usage[0].credits, 0, '翻译只扣字符，不再重复扣模型积分')
+    const translation = (await api('GET', '/api/billing/translation-usage')).json
+    assert.equal(translation.entitlements.characters, 8)
+    assert.equal(translation.summary.totalCharacters, 2)
   })
 
   test('未配置模型回 501 —— 客户端据此回落免费引擎', async () => {
@@ -585,7 +708,7 @@ describe('AI 翻译与语音识别（假供应商）', () => {
     await setup()
     const r = await api('POST', '/api/ai/translate', { text: '你好', targetLang: 'en' })
     assert.equal(r.status, 402)
-    assert.equal(r.json.reason, 'insufficient_credits')
+    assert.equal(r.json.reason, 'insufficient_characters')
   })
 
   test('语音识别按时长计费', async () => {

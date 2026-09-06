@@ -34,6 +34,7 @@ test('客户端通知设置：主开关关闭时子开关联动禁用并持久�
 
   await win.getByTestId('client-nav-trigger').click()
   await win.getByTestId('client-nav-settings').click()
+  await win.locator('.page-tabs button', { hasText: '账号' }).click()
   const master = win.locator('label.field.checkbox', { hasText: '窗口未聚焦时弹系统通知' }).locator('input')
   const preview = win.locator('label.field.checkbox', { hasText: '通知中显示消息内容' }).locator('input')
   const sound = win.locator('label.field.checkbox', { hasText: '通知提示音' }).locator('input')
@@ -59,6 +60,7 @@ test('客户端通知设置：主开关关闭时子开关联动禁用并持久�
   await win.getByTestId('client-nav-billing').click()
   await win.getByTestId('client-nav-trigger').click()
   await win.getByTestId('client-nav-settings').click()
+  await win.locator('.page-tabs button', { hasText: '账号' }).click()
   const master2 = win.locator('label.field.checkbox', { hasText: '窗口未聚焦时弹系统通知' }).locator('input')
   const preview2 = win.locator('label.field.checkbox', { hasText: '通知中显示消息内容' }).locator('input')
   await expect(master2).not.toBeChecked({ timeout: 10_000 })

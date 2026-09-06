@@ -32,6 +32,7 @@ test('客户端设置：消息提醒开关持久化', async () => {
 
   await win.getByTestId('client-nav-trigger').click()
   await win.getByTestId('client-nav-settings').click()
+  await win.locator('.page-tabs button', { hasText: '账号' }).click()
   // 消息提醒：三开关默认开，关掉“通知中显示消息内容”
   const preview = win.locator('label.field', { hasText: '通知中显示消息内容' }).locator('input[type="checkbox"]')
   await expect(preview).toBeChecked({ timeout: 10_000 })
@@ -43,9 +44,10 @@ test('客户端设置：消息提醒开关持久化', async () => {
 
   // 跳走再回：仍为关
   await win.getByTestId('client-nav-trigger').click()
-  await win.getByTestId('client-nav-settings').click()
+  await win.getByTestId('client-nav-billing').click()
   await win.getByTestId('client-nav-trigger').click()
   await win.getByTestId('client-nav-settings').click()
+  await win.locator('.page-tabs button', { hasText: '账号' }).click()
   await expect(
     win.locator('label.field', { hasText: '通知中显示消息内容' }).locator('input[type="checkbox"]')
   ).not.toBeChecked()

@@ -51,13 +51,8 @@ export class JsonMessageStore implements MessageStore {
   ): Promise<RecordMessageResult> {
     const list = (this.data.messages[msg.conversationId] ??= [])
 
-    if (msg.externalId) {
-      const start = Math.max(0, list.length - DEDUPE_WINDOW)
-      for (let i = list.length - 1; i >= start; i--) {
-        if (list[i]!.externalId === msg.externalId) {
-          return { conversation: this.ensureConversation(msg), duplicated: true }
-        }
-      }
+    if (await this.hasMessage(msg)) {
+      return { conversation: this.ensureConversation(msg), duplicated: true }
     }
 
     list.push(msg)
@@ -69,6 +64,16 @@ export class JsonMessageStore implements MessageStore {
     if (opts.incrementUnread) conv.unreadCount += 1
     this.scheduleFlush()
     return { conversation: conv, duplicated: false }
+  }
+
+  async hasMessage(msg: Pick<UnifiedMessage, 'conversationId' | 'externalId' | 'id'>): Promise<boolean> {
+    const list = this.data.messages[msg.conversationId] ?? []
+    const start = Math.max(0, list.length - DEDUPE_WINDOW)
+    for (let i = list.length - 1; i >= start; i--) {
+      const existing = list[i]!
+      if (msg.externalId ? existing.externalId === msg.externalId : existing.id === msg.id) return true
+    }
+    return false
   }
 
   async updateMessage(msg: UnifiedMessage): Promise<boolean> {

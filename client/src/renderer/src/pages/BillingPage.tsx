@@ -14,6 +14,8 @@ interface Plan {
   periodUnit: string
   periodCount: number
   maxAccounts: number
+  tier: 'free' | 'vip1' | 'vip2' | 'vip3' | 'custom'
+  includedCharacters: number
   description?: string
 }
 
@@ -32,7 +34,9 @@ interface Me {
   subscription: { planId: string; expiresAt: number; autoRenew: boolean; status: string } | null
   plan: Plan | null
   accountQuota: number
-  settings: { creditsPerUsd: number }
+  membershipTier: Plan['tier']
+  entitlements: { characters: number; bonusPorts: number }
+  settings: { creditsPerUsd: number; charactersPerUsd: number }
 }
 
 interface OrderRow {
@@ -52,6 +56,17 @@ interface LedgerRow {
   amountCents: number
   creditsDelta: number
   balanceAfter: number
+  note?: string
+  createdAt: number
+}
+
+interface EntitlementLedgerRow {
+  id: number
+  kind: string
+  charactersDelta: number
+  portsDelta: number
+  charactersAfter: number
+  portsAfter: number
   note?: string
   createdAt: number
 }
@@ -147,7 +162,14 @@ function fmt(ts?: number): string {
   return ts ? new Date(ts).toLocaleString() : '—'
 }
 
-type Tab = 'overview' | 'plans' | 'topup' | 'history'
+type Tab = 'overview' | 'plans' | 'topup' | 'usage' | 'history'
+type UsageSummary = {
+  totalCharacters: number
+  totalTranslations: number
+  byEngine: Array<{ engine: string; characters: number; calls: number }>
+  byChannel: Array<{ channel: string; characters: number; calls: number }>
+  recent: Array<{ userId: number; requestId: string; engine: string; channel: string; direction: string; sourceCharacters: number; createdAt: number }>
+}
 
 /**
  * 套餐与余额 —— 客户端侧的钱包页。
@@ -181,6 +203,7 @@ export function BillingPage(): React.JSX.Element {
     { id: 'overview', label: t('bill.overview') },
     { id: 'plans', label: t('bill.plans') },
     { id: 'topup', label: t('bill.topup') },
+    { id: 'usage', label: t('bill.characterUsage') },
     { id: 'history', label: t('bill.history') }
   ]
 
@@ -206,6 +229,7 @@ export function BillingPage(): React.JSX.Element {
         {tab === 'overview' && <Overview me={me} onChanged={load} />}
         {tab === 'plans' && <PlansTab me={me} onChanged={load} />}
         {tab === 'topup' && <TopupTab onChanged={load} />}
+        {tab === 'usage' && <CharacterUsageTab />}
         {tab === 'history' && <HistoryTab />}
       </div>
     </div>
@@ -228,12 +252,12 @@ function Overview({ me, onChanged }: { me: Me | null; onChanged: () => Promise<v
           <span className="v">{usd(me.balance.balanceCents)}</span>
         </div>
         <div className="stat-card">
-          <span className="k">{t('bill.credits')}</span>
-          <span className="v">{me.balance.credits}</span>
+          <span className="k">{t('bill.characters')}</span>
+          <span className="v">{me.entitlements.characters.toLocaleString()}</span>
         </div>
         <div className="stat-card">
           <span className="k">{t('bill.accountQuota')}</span>
-          <span className="v">{me.accountQuota}</span>
+          <span className="v">{me.accountQuota === 0 ? t('bill.unlimited') : me.accountQuota}</span>
         </div>
       </div>
 
@@ -243,7 +267,7 @@ function Overview({ me, onChanged }: { me: Me | null; onChanged: () => Promise<v
           <>
             <p>
               <strong>{me.plan.name}</strong> · {usd(me.plan.priceCents)} ·{' '}
-              {t('bill.maxAccounts')} {me.plan.maxAccounts} ·{' '}
+              {t('bill.maxAccounts')} {me.plan.maxAccounts === 0 ? t('bill.unlimited') : me.plan.maxAccounts} ·{' '}
               {me.subscription.status === 'active'
                 ? `${fmt(me.subscription.expiresAt)} ${t('bill.expires')}`
                 : t('bill.expired')}
@@ -269,7 +293,7 @@ function Overview({ me, onChanged }: { me: Me | null; onChanged: () => Promise<v
       <section className="form-card">
         <h3>{t('bill.exchange')}</h3>
         <p className="field-hint">
-          {t('bill.exchangeHint').replace('{n}', String(me.settings.creditsPerUsd))}
+          {t('bill.exchangeHint').replace('{n}', String(me.settings.charactersPerUsd))}
         </p>
         <div className="field-row">
           <label className="field">
@@ -286,7 +310,7 @@ function Overview({ me, onChanged }: { me: Me | null; onChanged: () => Promise<v
               if (!Number.isFinite(v) || v < 1) return setMsg(t('bill.errAmount'))
               setBusy(true)
               try {
-                await api.billing('exchangeCredits', v)
+                await api.billing('exchangeCharacters', v)
                 setMsg(t('bill.exchanged'))
                 await onChanged()
               } catch (e) {
@@ -347,8 +371,9 @@ function PlansTab({ me, onChanged }: { me: Me | null; onChanged: () => Promise<v
                 <span className="plan-unit">/ {unitLabel(p)}</span>
               </div>
               <p className="field-hint">
-                {t('bill.maxAccounts')} {p.maxAccounts}
+                {t('bill.level')} {p.tier === 'free' ? t('bill.free') : p.tier.toUpperCase()} · {t('bill.maxAccounts')} {p.maxAccounts === 0 ? t('bill.unlimited') : p.maxAccounts}
               </p>
+              {p.includedCharacters > 0 && <p className="field-hint">{t('bill.includedCharacters').replace('{n}', p.includedCharacters.toLocaleString())}</p>}
               {p.description ? <Markdown text={p.description} /> : null}
               <button
                 type="button"
@@ -379,6 +404,22 @@ function PlansTab({ me, onChanged }: { me: Me | null; onChanged: () => Promise<v
       <p className="field-hint">{t('bill.prorationHint')}</p>
     </div>
   )
+}
+
+function CharacterUsageTab(): React.JSX.Element {
+  const { t } = useI18n()
+  const [data, setData] = useState<{ entitlements: { characters: number }; summary: UsageSummary } | null>(null)
+  useEffect(() => { void api.billing<NonNullable<typeof data>>('translationUsage').then(setData) }, [])
+  if (!data) return <p className="field-hint">{t('campaign.loading')}</p>
+  return <div className="form-page">
+    <div className="stat-cards">
+      <div className="stat-card"><span className="k">{t('bill.remainingCharacters')}</span><span className="v">{data.entitlements.characters.toLocaleString()}</span></div>
+      <div className="stat-card"><span className="k">{t('bill.usedCharacters')}</span><span className="v">{data.summary.totalCharacters.toLocaleString()}</span></div>
+      <div className="stat-card"><span className="k">{t('bill.translationCount')}</span><span className="v">{data.summary.totalTranslations.toLocaleString()}</span></div>
+    </div>
+    <section className="form-card"><h3>{t('bill.usageByPlatform')}</h3><table className="data-table"><thead><tr><th>{t('bill.platform')}</th><th className="num">{t('bill.translationCount')}</th><th className="num">{t('bill.usedCharacters')}</th></tr></thead><tbody>{data.summary.byChannel.map((row) => <tr key={row.channel}><td>{row.channel || '—'}</td><td className="num">{row.calls}</td><td className="num">{row.characters.toLocaleString()}</td></tr>)}</tbody></table></section>
+    <section className="form-card"><h3>{t('bill.recentUsage')}</h3><table className="data-table"><thead><tr><th>{t('bill.time')}</th><th>{t('bill.platform')}</th><th>{t('bill.engine')}</th><th>{t('bill.direction')}</th><th className="num">{t('bill.characters')}</th></tr></thead><tbody>{data.summary.recent.map((row) => <tr key={`${row.userId}:${row.requestId}`}><td>{fmt(row.createdAt)}</td><td>{row.channel || '—'}</td><td>{row.engine}</td><td>{row.direction === 'in' ? t('bill.inbound') : t('bill.outbound')}</td><td className="num">{row.sourceCharacters.toLocaleString()}</td></tr>)}</tbody></table></section>
+  </div>
 }
 
 /** 套餐直付：余额不够时不绕充值，直接对套餐下单付款 */
@@ -550,10 +591,11 @@ function HistoryTab(): React.JSX.Element {
   const { t } = useI18n()
   const [orders, setOrders] = useState<OrderRow[]>([])
   const [ledger, setLedger] = useState<LedgerRow[]>([])
+  const [entitlementLedger, setEntitlementLedger] = useState<EntitlementLedgerRow[]>([])
 
   useEffect(() => {
     void api.billing<{ orders: OrderRow[] }>('listOrders').then((r) => setOrders(r.orders))
-    void api.billing<{ ledger: LedgerRow[] }>('listLedger').then((r) => setLedger(r.ledger))
+    void api.billing<{ ledger: LedgerRow[]; entitlementLedger: EntitlementLedgerRow[] }>('listLedger').then((r) => { setLedger(r.ledger); setEntitlementLedger(r.entitlementLedger ?? []) })
   }, [])
 
   return (
@@ -614,6 +656,11 @@ function HistoryTab(): React.JSX.Element {
             </tbody>
           </table>
         )}
+      </section>
+
+      <section className="form-card">
+        <h3>{t('bill.characterLedger')}</h3>
+        {entitlementLedger.length === 0 ? <p className="empty-hint">{t('form.noOptions')}</p> : <table className="data-table"><thead><tr><th>{t('bill.time')}</th><th>{t('bill.kind')}</th><th className="num">{t('bill.characters')}</th><th className="num">{t('bill.accountQuota')}</th><th className="num">{t('bill.remainingCharacters')}</th><th>{t('bill.note')}</th></tr></thead><tbody>{entitlementLedger.map((row) => <tr key={row.id}><td>{fmt(row.createdAt)}</td><td>{row.kind}</td><td className="num">{row.charactersDelta || '—'}</td><td className="num">{row.portsDelta || '—'}</td><td className="num">{row.charactersAfter.toLocaleString()}</td><td>{row.note || '—'}</td></tr>)}</tbody></table>}
       </section>
     </div>
   )

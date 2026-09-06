@@ -43,6 +43,8 @@ export interface ConversationPatch {
  */
 export interface MessageStore {
   init(): Promise<void>
+  /** 在翻译/通知等有副作用前去重，避免平台断线重投产生重复消费。 */
+  hasMessage(msg: Pick<UnifiedMessage, 'conversationId' | 'externalId' | 'id'>): Promise<boolean>
   recordMessage(msg: UnifiedMessage, opts?: RecordMessageOptions): Promise<RecordMessageResult>
   /** 按内部 id 整体替换已存在的消息（媒体下载完成等场景）；不存在则忽略并返回 false */
   updateMessage(msg: UnifiedMessage): Promise<boolean>

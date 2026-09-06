@@ -127,6 +127,9 @@ export function accountQuotaState(
   currentAccounts: number,
   maxAccounts: number
 ): { withinQuota: boolean; canAddMore: boolean; overBy: number } {
+  if (maxAccounts === 0) {
+    return { withinQuota: true, canAddMore: true, overBy: 0 }
+  }
   const over = Math.max(0, currentAccounts - maxAccounts)
   return {
     withinQuota: over === 0,

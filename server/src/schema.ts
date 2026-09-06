@@ -675,6 +675,10 @@ export const plans = sqliteTable(
     maxAccounts: integer('max_accounts').notNull().default(1),
     /** 可同时登录的设备数上限；0 = 不限 */
     maxDevices: integer('max_devices').notNull().default(0),
+    /** free / vip1 / vip2 / vip3 / custom */
+    tier: text('tier').notNull().default('custom'),
+    /** 购买或续费该套餐时赠送的翻译字符 */
+    includedCharacters: integer('included_characters').notNull().default(0),
     /** 套餐描述（Markdown 源文本，客户端渲染） */
     description: text('description').notNull().default(''),
     enabled: integer('enabled').notNull().default(1),
@@ -719,6 +723,65 @@ export const balances = sqliteTable(
     updatedAt: integer('updated_at').notNull()
   },
   (t) => [primaryKey({ columns: [t.tenant, t.userId] })]
+)
+
+/**
+ * 客户可见的翻译字符与额外端口额度。
+ * 模型 credits 继续用于 ASR/自动回复的内部成本；翻译字符独立记账，避免两种口径混用。
+ */
+export const entitlements = sqliteTable(
+  'entitlements',
+  {
+    tenant: text('tenant').notNull(),
+    userId: integer('user_id').notNull(),
+    characters: integer('characters').notNull().default(0),
+    bonusPorts: integer('bonus_ports').notNull().default(0),
+    updatedAt: integer('updated_at').notNull()
+  },
+  (t) => [primaryKey({ columns: [t.tenant, t.userId] })]
+)
+
+/** 字符/端口额度流水，只增不改。 */
+export const entitlementLedger = sqliteTable(
+  'entitlement_ledger',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    tenant: text('tenant').notNull(),
+    userId: integer('user_id').notNull(),
+    /** admin_gift / character_purchase / plan_grant / translation_usage / adjust */
+    kind: text('kind').notNull(),
+    charactersDelta: integer('characters_delta').notNull().default(0),
+    portsDelta: integer('ports_delta').notNull().default(0),
+    charactersAfter: integer('characters_after').notNull(),
+    portsAfter: integer('ports_after').notNull(),
+    refType: text('ref_type'),
+    refId: text('ref_id'),
+    note: text('note'),
+    createdAt: integer('created_at').notNull()
+  },
+  (t) => [index('idx_entitlement_ledger_user').on(t.tenant, t.userId, t.createdAt)]
+)
+
+/** 每次成功翻译的字符消费明细；同一计费用户下 requestId 保证客户端重试不会重复扣费。 */
+export const translationUsage = sqliteTable(
+  'translation_usage',
+  {
+    tenant: text('tenant').notNull(),
+    requestId: text('request_id').notNull(),
+    userId: integer('user_id').notNull(),
+    actorUserId: integer('actor_user_id').notNull(),
+    engine: text('engine').notNull().default('unknown'),
+    channel: text('channel').notNull().default(''),
+    accountId: text('account_id').notNull().default(''),
+    direction: text('direction').notNull().default('unknown'),
+    sourceCharacters: integer('source_characters').notNull(),
+    createdAt: integer('created_at').notNull()
+  },
+  (t) => [
+    primaryKey({ columns: [t.tenant, t.userId, t.requestId] }),
+    index('idx_translation_usage_user').on(t.tenant, t.userId, t.createdAt),
+    index('idx_translation_usage_tenant').on(t.tenant, t.createdAt)
+  ]
 )
 
 /**
@@ -901,6 +964,8 @@ export const billingSettings = sqliteTable('billing_settings', {
   creditsPerUsd: integer('credits_per_usd').notNull().default(1000),
   /** 积分不足时是否自动从余额兑换补足 */
   autoTopUpCredits: integer('auto_top_up_credits').notNull().default(1),
+  /** 1 美元可兑换多少翻译字符 */
+  charactersPerUsd: integer('characters_per_usd').notNull().default(10000),
   updatedAt: integer('updated_at').notNull()
 })
 

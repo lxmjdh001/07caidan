@@ -13,7 +13,7 @@ const clientRequire = createRequire(join(CLIENT_DIR, 'package.json'))
 const ELECTRON_PATH = clientRequire('electron') as string
 const USER_DATA = mkdtempSync(join(tmpdir(), 'omni-e2e-'))
 
-test('客户端：设置里「云端漫游偏好」开关存在且默认开启', async () => {
+test('客户端：账号设置不暴露云同步内部配置', async () => {
   // 复位共享 userData 的 locale（前面的 RTL 用例留下了 locale=ar），保证英文界面可用结构选择器
   mkdirSync(USER_DATA, { recursive: true })
   writeFileSync(join(USER_DATA, 'settings.json'), JSON.stringify({ locale: 'en' }), 'utf8')
@@ -32,17 +32,18 @@ test('客户端：设置里「云端漫游偏好」开关存在且默认开启',
   await win.locator('.auth-submit').click()
   await expect(win.getByTestId('client-nav-trigger')).toBeVisible({ timeout: 20_000 })
 
-  // 打开「设置」→ 最后一个页签（后台账号），云同步开关在此
+  // 打开「设置」→ 最后一个页签（账号）。
   await win.getByTestId('client-nav-trigger').click()
   await win.getByTestId('client-nav-settings').click()
   await expect(win.locator('.page-tabs button')).not.toHaveCount(0)
   await win.locator('.page-tabs button').last().click()
 
-  const label = win.getByText(/云端漫游偏好|Roam preferences/)
-  await expect(label).toBeVisible({ timeout: 10_000 })
-  // 该项复选框默认勾选
-  const checkbox = label.locator('xpath=ancestor::label').locator('input[type="checkbox"]')
-  await expect(checkbox).toBeChecked()
+  await expect(win.getByText('Account information', { exact: true })).toBeVisible({ timeout: 10_000 })
+  await expect(win.getByRole('heading', { name: 'Change password', exact: true })).toBeVisible()
+  await expect(win.getByRole('heading', { name: 'Notifications', exact: true })).toBeVisible()
+  await expect(win.getByText(/Roam preferences|云端漫游偏好/)).toHaveCount(0)
+  await expect(win.getByText(/Upload media files|同时上传媒体文件/)).toHaveCount(0)
+  await expect(win.getByText('127.0.0.1:8798')).toHaveCount(0)
 
   await win.waitForTimeout(400)
   await win.screenshot({ path: `${SHOT_DIR}/client-04-cloudsync.png` })

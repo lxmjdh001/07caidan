@@ -81,6 +81,8 @@ export function BillingView({ client }: Props): React.JSX.Element {
 // ══════════ 套餐 ══════════
 
 const PERIOD_UNITS = ['month', 'quarter', 'half_year', 'year', 'day'] as const
+const TIER_DEFAULT_PORTS: Record<Plan['tier'], number> = { free: 10, vip1: 200, vip2: 1000, vip3: 0, custom: 10 }
+const TIER_LABELS: Record<Plan['tier'], string> = { free: '免费用户', vip1: 'VIP1', vip2: 'VIP2', vip3: 'VIP3', custom: '自定义' }
 
 function PlansTab({ client }: Props): React.JSX.Element {
   const { t } = useI18n()
@@ -90,16 +92,22 @@ function PlansTab({ client }: Props): React.JSX.Element {
   const [price, setPrice] = useState('9.90')
   const [unit, setUnit] = useState<string>('month')
   const [count, setCount] = useState('1')
-  const [maxAccounts, setMaxAccounts] = useState('10')
+  const [maxAccounts, setMaxAccounts] = useState('200')
   const [maxDevices, setMaxDevices] = useState('0')
+  const [tier, setTier] = useState<Plan['tier']>('vip1')
+  const [includedCharacters, setIncludedCharacters] = useState('0')
   const [desc, setDesc] = useState('')
+  const [charactersPerUsd, setCharactersPerUsd] = useState('10000')
+  const [rateMsg, setRateMsg] = useState('')
   /** 正在编辑描述的套餐（弹窗多行编辑，预填当前内容） */
   const [descEdit, setDescEdit] = useState<Plan | null>(null)
   const [planEdit, setPlanEdit] = useState<Plan | null>(null)
 
   const load = useCallback(async () => {
     try {
-      setPlans((await client.listPlans()).plans)
+      const [planData, billingData] = await Promise.all([client.listPlans(), client.billingSettings()])
+      setPlans(planData.plans)
+      setCharactersPerUsd(String(billingData.settings.charactersPerUsd))
     } catch (e) {
       setErr((e as Error).message)
     }
@@ -114,13 +122,16 @@ function PlansTab({ client }: Props): React.JSX.Element {
     const cents = parseUsd(price)
     if (!name.trim()) return setErr(t('billing.errName'))
     if (cents === null) return setErr(t('billing.errPrice'))
+    const portLimit = Number(maxAccounts)
     await client.createPlan({
       name: name.trim(),
       priceCents: cents,
       periodUnit: unit as Plan['periodUnit'],
       periodCount: Number(count) || 1,
-      maxAccounts: Number(maxAccounts) || 1,
+      maxAccounts: Number.isFinite(portLimit) ? Math.max(0, Math.floor(portLimit)) : 1,
       maxDevices: Math.max(0, Number(maxDevices) || 0),
+      tier,
+      includedCharacters: Math.max(0, Number(includedCharacters) || 0),
       description: desc
     })
     setName('')
@@ -131,8 +142,32 @@ function PlansTab({ client }: Props): React.JSX.Element {
   return (
     <>
       <section className="card">
+        <h3>翻译字符计费</h3>
+        <div className="form-row">
+          <label>
+            <span>1 美元兑换字符数</span>
+            <input type="number" min="1" step="1" value={charactersPerUsd} onChange={(e) => setCharactersPerUsd(e.target.value)} style={{ width: 150 }} />
+          </label>
+          <button className="primary" onClick={async () => {
+            const value = Math.max(1, Math.floor(Number(charactersPerUsd) || 1))
+            await client.updateBillingSettings({ charactersPerUsd: value })
+            setRateMsg('字符价格已保存')
+            await load()
+          }}>保存字符价格</button>
+          <span className="muted small">只计算成功翻译的源文本 Unicode 字符；失败、空内容和同语言原样返回不扣费。</span>
+        </div>
+        {rateMsg && <p className="ok small">{rateMsg}</p>}
+      </section>
+
+      <section className="card">
         <h3>{t('billing.newPlan')}</h3>
         <div className="form-row">
+          <label>
+            <span>会员等级</span>
+            <select value={tier} onChange={(e) => { const next = e.target.value as Plan['tier']; setTier(next); setMaxAccounts(String(TIER_DEFAULT_PORTS[next])) }}>
+              {Object.entries(TIER_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
           <label>
             <span>{t('billing.planName')}</span>
             <input value={name} onChange={(e) => setName(e.target.value)} />
@@ -172,6 +207,10 @@ function PlansTab({ client }: Props): React.JSX.Element {
               title={t('billing.maxDevicesHint')}
             />
           </label>
+          <label>
+            <span>套餐赠送字符</span>
+            <input value={includedCharacters} onChange={(e) => setIncludedCharacters(e.target.value)} style={{ width: 110 }} />
+          </label>
           <button className="primary" onClick={() => void create()}>
             {t('billing.create')}
           </button>
@@ -197,9 +236,11 @@ function PlansTab({ client }: Props): React.JSX.Element {
             <thead>
               <tr>
                 <th>{t('billing.planName')}</th>
+                <th>会员等级</th>
                 <th className="num">{t('billing.priceUsd')}</th>
                 <th>{t('billing.period')}</th>
                 <th className="num">{t('billing.maxAccounts')}</th>
+                <th className="num">赠送字符</th>
                 <th className="num">{t('billing.maxDevices')}</th>
                 <th>{t('billing.planDesc')}</th>
                 <th>{t('billing.enabled')}</th>
@@ -210,12 +251,14 @@ function PlansTab({ client }: Props): React.JSX.Element {
               {plans.map((p) => (
                 <tr key={p.id} className={p.enabled ? '' : 'row-off'}>
                   <td>{p.name}</td>
+                  <td><span className="pill on">{TIER_LABELS[p.tier] || p.tier}</span></td>
                   <td className="num">{usd(p.priceCents)}</td>
                   <td>
                     {p.periodCount > 1 ? `${p.periodCount} × ` : ''}
                     {t(`billing.unit.${p.periodUnit}` as 'billing.unit.month')}
                   </td>
-                  <td className="num">{p.maxAccounts}</td>
+                  <td className="num">{p.maxAccounts === 0 ? t('billing.unlimited') : p.maxAccounts}</td>
+                  <td className="num">{p.includedCharacters.toLocaleString()}</td>
                   <td className="num">{p.maxDevices ? p.maxDevices : t('billing.unlimited')}</td>
                   <td className="desc-cell" title={p.description || ''}>
                     <span>{(p.description || '').slice(0, 40) || '—'}</span>
@@ -278,6 +321,8 @@ function PlanEditModal({ plan, onClose, onSave }: { plan: Plan; onClose: () => v
   const [periodCount, setPeriodCount] = useState(String(plan.periodCount))
   const [maxAccounts, setMaxAccounts] = useState(String(plan.maxAccounts))
   const [maxDevices, setMaxDevices] = useState(String(plan.maxDevices || 0))
+  const [tier, setTier] = useState<Plan['tier']>(plan.tier)
+  const [includedCharacters, setIncludedCharacters] = useState(String(plan.includedCharacters || 0))
   const [sortOrder, setSortOrder] = useState(String(plan.sortOrder))
   const [description, setDescription] = useState(plan.description || '')
   const [busy, setBusy] = useState(false)
@@ -285,9 +330,9 @@ function PlanEditModal({ plan, onClose, onSave }: { plan: Plan; onClose: () => v
     const cents = parseUsd(price)
     if (!name.trim() || cents === null) return
     setBusy(true)
-    try { await onSave({ name: name.trim(), priceCents: cents, periodUnit, periodCount: Number(periodCount) || 1, maxAccounts: Number(maxAccounts) || 0, maxDevices: Math.max(0, Number(maxDevices) || 0), sortOrder: Number(sortOrder) || 0, description }) } finally { setBusy(false) }
+    try { await onSave({ name: name.trim(), priceCents: cents, periodUnit, periodCount: Number(periodCount) || 1, maxAccounts: Number(maxAccounts) || 0, maxDevices: Math.max(0, Number(maxDevices) || 0), tier, includedCharacters: Math.max(0, Number(includedCharacters) || 0), sortOrder: Number(sortOrder) || 0, description }) } finally { setBusy(false) }
   }
-  return <div className="modal-backdrop" onClick={onClose}><div className="modal plan-edit-modal" onClick={(e) => e.stopPropagation()}><h3>编辑套餐</h3><div className="form-row"><label><span>名称</span><input value={name} onChange={(e) => setName(e.target.value)} /></label><label><span>价格(USD)</span><input value={price} onChange={(e) => setPrice(e.target.value)} /></label><label><span>周期</span><select value={periodUnit} onChange={(e) => setPeriodUnit(e.target.value as Plan['periodUnit'])}>{PERIOD_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}</select></label><label><span>周期数</span><input value={periodCount} onChange={(e) => setPeriodCount(e.target.value)} /></label><label><span>账号上限</span><input value={maxAccounts} onChange={(e) => setMaxAccounts(e.target.value)} /></label><label><span>设备上限</span><input value={maxDevices} onChange={(e) => setMaxDevices(e.target.value)} /></label><label><span>排序</span><input value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} /></label></div><label className="block-label"><span>套餐描述</span><textarea rows={5} value={description} onChange={(e) => setDescription(e.target.value)} /></label><div className="modal-actions"><button className="ghost" onClick={onClose}>取消</button><button className="primary" disabled={busy || !name.trim()} onClick={() => void save()}>{busy ? '保存中…' : '保存'}</button></div></div></div>
+  return <div className="modal-backdrop" onClick={onClose}><div className="modal plan-edit-modal" onClick={(e) => e.stopPropagation()}><h3>编辑套餐</h3><div className="form-row"><label><span>会员等级</span><select value={tier} onChange={(e) => { const next = e.target.value as Plan['tier']; setTier(next); setMaxAccounts(String(TIER_DEFAULT_PORTS[next])) }}>{Object.entries(TIER_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label><span>名称</span><input value={name} onChange={(e) => setName(e.target.value)} /></label><label><span>价格(USD)</span><input value={price} onChange={(e) => setPrice(e.target.value)} /></label><label><span>周期</span><select value={periodUnit} onChange={(e) => setPeriodUnit(e.target.value as Plan['periodUnit'])}>{PERIOD_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}</select></label><label><span>周期数</span><input value={periodCount} onChange={(e) => setPeriodCount(e.target.value)} /></label><label><span>端口上限（0=不限）</span><input value={maxAccounts} onChange={(e) => setMaxAccounts(e.target.value)} /></label><label><span>套餐赠送字符</span><input value={includedCharacters} onChange={(e) => setIncludedCharacters(e.target.value)} /></label><label><span>设备上限</span><input value={maxDevices} onChange={(e) => setMaxDevices(e.target.value)} /></label><label><span>排序</span><input value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} /></label></div><label className="block-label"><span>套餐描述</span><textarea rows={5} value={description} onChange={(e) => setDescription(e.target.value)} /></label><div className="modal-actions"><button className="ghost" onClick={onClose}>取消</button><button className="primary" disabled={busy || !name.trim()} onClick={() => void save()}>{busy ? '保存中…' : '保存'}</button></div></div></div>
 }
 
 /** 套餐描述编辑弹窗：多行 Markdown，预填当前内容 */
@@ -629,7 +674,7 @@ function AiTab({ client }: Props): React.JSX.Element {
   const { t } = useI18n()
   const [providers, setProviders] = useState<AiProvider[]>([])
   const [models, setModels] = useState<AiModelRow[]>([])
-  const [settings, setSettings] = useState({ creditsPerUsd: 1000, autoTopUpCredits: true })
+  const [settings, setSettings] = useState({ creditsPerUsd: 1000, autoTopUpCredits: true, charactersPerUsd: 10000 })
   const [err, setErr] = useState('')
 
   const [pType, setPType] = useState('openai')
@@ -929,11 +974,13 @@ function UsageTab({ client }: Props): React.JSX.Element {
     Array<{ modelId: string; purpose: string; calls: number; credits: number }>
   >([])
   const [models, setModels] = useState<AiModelRow[]>([])
+  const [translation, setTranslation] = useState<Awaited<ReturnType<ApiClient['translationUsageSummary']>>['summary'] | null>(null)
 
   useEffect(() => {
-    void Promise.all([client.usageSummary(), client.listAiModels()]).then(([u, m]) => {
+    void Promise.all([client.usageSummary(), client.listAiModels(), client.translationUsageSummary()]).then(([u, m, translated]) => {
       setRows(u.summary)
       setModels(m.models)
+      setTranslation(translated.summary)
     })
   }, [client])
 
@@ -943,12 +990,25 @@ function UsageTab({ client }: Props): React.JSX.Element {
   }
 
   return (
-    <section className="card">
-      <h3>{t('billing.usage')}</h3>
-      {rows.length === 0 ? (
-        <p className="muted small">{t('common.empty')}</p>
-      ) : (
-        <table className="data-table">
+    <>
+      <section className="card">
+        <h3>翻译字符消耗</h3>
+        <div className="stat-cards">
+          <div className="stat-card"><span className="k">已消耗字符</span><span className="v">{(translation?.totalCharacters ?? 0).toLocaleString()}</span></div>
+          <div className="stat-card"><span className="k">成功翻译次数</span><span className="v">{(translation?.totalTranslations ?? 0).toLocaleString()}</span></div>
+        </div>
+        {translation && translation.byChannel.length > 0 ? <table className="data-table"><thead><tr><th>平台</th><th className="num">翻译次数</th><th className="num">消耗字符</th></tr></thead><tbody>{translation.byChannel.map((row) => <tr key={row.channel}><td>{row.channel || '未知'}</td><td className="num">{row.calls}</td><td className="num">{row.characters.toLocaleString()}</td></tr>)}</tbody></table> : <p className="muted small">{t('common.empty')}</p>}
+      </section>
+      <section className="card">
+        <h3>最近字符消费</h3>
+        {translation && translation.recent.length > 0 ? <table className="data-table"><thead><tr><th>时间</th><th>平台</th><th>引擎</th><th>方向</th><th className="num">字符</th></tr></thead><tbody>{translation.recent.map((row) => <tr key={`${row.userId}:${row.requestId}`}><td>{new Date(row.createdAt).toLocaleString()}</td><td>{row.channel || '未知'}</td><td>{row.engine}</td><td>{row.direction === 'in' ? '接收' : '发送'}</td><td className="num">{row.sourceCharacters.toLocaleString()}</td></tr>)}</tbody></table> : <p className="muted small">{t('common.empty')}</p>}
+      </section>
+      <section className="card">
+        <h3>AI 模型用量</h3>
+        {rows.length === 0 ? (
+          <p className="muted small">{t('common.empty')}</p>
+        ) : (
+          <table className="data-table">
           <thead>
             <tr>
               <th>{t('billing.modelName')}</th>
@@ -967,9 +1027,10 @@ function UsageTab({ client }: Props): React.JSX.Element {
               </tr>
             ))}
           </tbody>
-        </table>
-      )}
-    </section>
+          </table>
+        )}
+      </section>
+    </>
   )
 }
 

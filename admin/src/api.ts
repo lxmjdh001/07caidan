@@ -108,6 +108,8 @@ export interface Plan {
   maxAccounts: number
   /** 可同时登录的设备数上限；0 = 不限 */
   maxDevices?: number
+  tier: 'free' | 'vip1' | 'vip2' | 'vip3' | 'custom'
+  includedCharacters: number
   enabled: boolean
   sortOrder: number
   createdAt: number
@@ -241,6 +243,10 @@ export interface RegisteredUserAdmin {
   createdAt: number
   balanceCents: number
   credits: number
+  characters: number
+  bonusPorts: number
+  accountQuota: number
+  membershipTier: Plan['tier']
   subscription: {
     userId: number
     planId: string
@@ -582,14 +588,15 @@ export class ApiClient {
     return this.req(`/api/admin/proxy-vendors/${encodeURIComponent(id)}`, { method: 'DELETE' })
   }
 
-  billingSettings(): Promise<{ settings: { creditsPerUsd: number; autoTopUpCredits: boolean } }> {
+  billingSettings(): Promise<{ settings: { creditsPerUsd: number; autoTopUpCredits: boolean; charactersPerUsd: number } }> {
     return this.req('/api/admin/billing-settings')
   }
 
   updateBillingSettings(body: {
     creditsPerUsd?: number
     autoTopUpCredits?: boolean
-  }): Promise<{ settings: { creditsPerUsd: number; autoTopUpCredits: boolean } }> {
+    charactersPerUsd?: number
+  }): Promise<{ settings: { creditsPerUsd: number; autoTopUpCredits: boolean; charactersPerUsd: number } }> {
     return this.req('/api/admin/billing-settings', { method: 'PUT', body: JSON.stringify(body) })
   }
 
@@ -608,6 +615,18 @@ export class ApiClient {
     summary: Array<{ modelId: string; purpose: string; calls: number; credits: number }>
   }> {
     return this.req('/api/admin/usage-summary')
+  }
+
+  translationUsageSummary(userId?: number): Promise<{
+    summary: {
+      totalCharacters: number
+      totalTranslations: number
+      byEngine: Array<{ engine: string; characters: number; calls: number }>
+      byChannel: Array<{ channel: string; characters: number; calls: number }>
+      recent: Array<{ userId: number; requestId: string; engine: string; channel: string; direction: string; sourceCharacters: number; createdAt: number }>
+    }
+  }> {
+    return this.req(`/api/admin/translation-usage-summary${userId ? `?userId=${userId}` : ''}`)
   }
 
   // ── 运营公告与到期提醒（需 announcements:manage）──
@@ -653,6 +672,15 @@ export class ApiClient {
     note?: string
   }): Promise<{ ok: boolean; balance: { balanceCents: number; credits: number } }> {
     return this.req('/api/admin/balance-adjust', { method: 'POST', body: JSON.stringify(body) })
+  }
+
+  giftEntitlements(body: {
+    userId: number
+    characters?: number
+    ports?: number
+    note?: string
+  }): Promise<{ ok: boolean; entitlements: { userId: number; characters: number; bonusPorts: number } }> {
+    return this.req('/api/admin/entitlements-adjust', { method: 'POST', body: JSON.stringify(body) })
   }
 
   // ── 客户端日志（需 support:manage）──

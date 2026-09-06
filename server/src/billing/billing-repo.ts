@@ -5,10 +5,13 @@ import {
   balances,
   commissionLedger,
   commissionSettings,
+  entitlementLedger,
+  entitlements,
   ledger,
   plans,
   referrals,
-  subscriptions
+  subscriptions,
+  translationUsage
 } from '../schema.ts'
 import { deductCredits, type CreditRate } from './credits.ts'
 import type { Cents } from './money.ts'
@@ -30,6 +33,8 @@ export interface Plan {
   maxAccounts: number
   /** 可同时登录的设备数上限；0 = 不限 */
   maxDevices: number
+  tier: MembershipTier
+  includedCharacters: number
   /** Markdown 描述；空 = 不显示 */
   description: string
   enabled: boolean
@@ -44,9 +49,40 @@ export interface PlanInput {
   periodCount?: number
   maxAccounts: number
   maxDevices?: number
+  tier?: MembershipTier
+  includedCharacters?: number
   description?: string
   enabled?: boolean
   sortOrder?: number
+}
+
+export type MembershipTier = 'free' | 'vip1' | 'vip2' | 'vip3' | 'custom'
+export const MEMBERSHIP_TIERS: MembershipTier[] = ['free', 'vip1', 'vip2', 'vip3', 'custom']
+
+export interface Entitlements {
+  userId: number
+  characters: number
+  bonusPorts: number
+}
+
+export type EntitlementKind =
+  | 'admin_gift'
+  | 'character_purchase'
+  | 'plan_grant'
+  | 'translation_usage'
+  | 'adjust'
+
+export interface EntitlementEntry {
+  id: number
+  kind: EntitlementKind
+  charactersDelta: number
+  portsDelta: number
+  charactersAfter: number
+  portsAfter: number
+  refType?: string
+  refId?: string
+  note?: string
+  createdAt: number
 }
 
 export interface Subscription {
@@ -70,6 +106,7 @@ export type LedgerKind =
   | 'proration_refund'
   | 'renew'
   | 'credit_exchange'
+  | 'character_purchase'
   | 'model_usage'
   | 'commission'
   | 'adjust'
@@ -135,6 +172,8 @@ export class BillingRepo {
       periodCount: Math.max(1, Math.floor(input.periodCount ?? 1)),
       maxAccounts: Math.max(0, Math.floor(input.maxAccounts)),
       maxDevices: Math.max(0, Math.floor(input.maxDevices ?? 0)),
+      tier: MEMBERSHIP_TIERS.includes(input.tier ?? 'custom') ? (input.tier ?? 'custom') : 'custom',
+      includedCharacters: Math.max(0, Math.floor(input.includedCharacters ?? 0)),
       description: (input.description ?? '').slice(0, 4000),
       enabled: input.enabled === false ? 0 : 1,
       sortOrder: input.sortOrder ?? 0,
@@ -177,6 +216,10 @@ export class BillingRepo {
     }
     if (patch.maxAccounts !== undefined) set.maxAccounts = Math.max(0, Math.floor(patch.maxAccounts))
     if (patch.maxDevices !== undefined) set.maxDevices = Math.max(0, Math.floor(patch.maxDevices))
+    if (patch.tier !== undefined && MEMBERSHIP_TIERS.includes(patch.tier)) set.tier = patch.tier
+    if (patch.includedCharacters !== undefined) {
+      set.includedCharacters = Math.max(0, Math.floor(patch.includedCharacters))
+    }
     if (patch.description !== undefined) set.description = patch.description.slice(0, 4000)
     if (patch.enabled !== undefined) set.enabled = patch.enabled ? 1 : 0
     if (patch.sortOrder !== undefined) set.sortOrder = patch.sortOrder
@@ -220,6 +263,257 @@ export class BillingRepo {
     return r
       ? { userId, balanceCents: r.balanceCents, credits: r.credits }
       : { userId, balanceCents: 0, credits: 0 }
+  }
+
+  // ── 翻译字符与额外端口 ──
+
+  getEntitlements(tenant: string, userId: number): Entitlements {
+    const row = this.db
+      .select()
+      .from(entitlements)
+      .where(and(eq(entitlements.tenant, tenant), eq(entitlements.userId, userId)))
+      .get()
+    return row
+      ? { userId, characters: row.characters, bonusPorts: row.bonusPorts }
+      : { userId, characters: 0, bonusPorts: 0 }
+  }
+
+  mutateEntitlements(
+    tenant: string,
+    input: {
+      userId: number
+      kind: EntitlementKind
+      charactersDelta?: number
+      portsDelta?: number
+      refType?: string
+      refId?: string
+      note?: string
+      now?: number
+    }
+  ): { ok: boolean; entitlements: Entitlements; reason?: 'insufficient_characters' | 'insufficient_ports' } {
+    const now = input.now ?? Date.now()
+    const charactersDelta = Math.round(Number(input.charactersDelta ?? 0))
+    const portsDelta = Math.round(Number(input.portsDelta ?? 0))
+    return this.db.transaction((tx) => {
+      const current = tx
+        .select()
+        .from(entitlements)
+        .where(and(eq(entitlements.tenant, tenant), eq(entitlements.userId, input.userId)))
+        .get()
+      const characters = current?.characters ?? 0
+      const bonusPorts = current?.bonusPorts ?? 0
+      const nextCharacters = characters + charactersDelta
+      const nextPorts = bonusPorts + portsDelta
+      if (nextCharacters < 0) {
+        return {
+          ok: false as const,
+          entitlements: { userId: input.userId, characters, bonusPorts },
+          reason: 'insufficient_characters' as const
+        }
+      }
+      if (nextPorts < 0) {
+        return {
+          ok: false as const,
+          entitlements: { userId: input.userId, characters, bonusPorts },
+          reason: 'insufficient_ports' as const
+        }
+      }
+      tx.insert(entitlements)
+        .values({ tenant, userId: input.userId, characters: nextCharacters, bonusPorts: nextPorts, updatedAt: now })
+        .onConflictDoUpdate({
+          target: [entitlements.tenant, entitlements.userId],
+          set: {
+            characters: sql`excluded.characters`,
+            bonusPorts: sql`excluded.bonus_ports`,
+            updatedAt: sql`excluded.updated_at`
+          }
+        })
+        .run()
+      tx.insert(entitlementLedger)
+        .values({
+          tenant,
+          userId: input.userId,
+          kind: input.kind,
+          charactersDelta,
+          portsDelta,
+          charactersAfter: nextCharacters,
+          portsAfter: nextPorts,
+          refType: input.refType ?? null,
+          refId: input.refId ?? null,
+          note: input.note ?? null,
+          createdAt: now
+        })
+        .run()
+      return {
+        ok: true as const,
+        entitlements: { userId: input.userId, characters: nextCharacters, bonusPorts: nextPorts }
+      }
+    })
+  }
+
+  listEntitlementLedger(tenant: string, userId: number, limit = 100): EntitlementEntry[] {
+    return this.db
+      .select()
+      .from(entitlementLedger)
+      .where(and(eq(entitlementLedger.tenant, tenant), eq(entitlementLedger.userId, userId)))
+      .orderBy(desc(entitlementLedger.createdAt), desc(entitlementLedger.id))
+      .limit(limit)
+      .all()
+      .map((row) => ({
+        id: row.id,
+        kind: row.kind as EntitlementKind,
+        charactersDelta: row.charactersDelta,
+        portsDelta: row.portsDelta,
+        charactersAfter: row.charactersAfter,
+        portsAfter: row.portsAfter,
+        refType: row.refType ?? undefined,
+        refId: row.refId ?? undefined,
+        note: row.note ?? undefined,
+        createdAt: row.createdAt
+      }))
+  }
+
+  chargeTranslation(
+    tenant: string,
+    input: {
+      userId: number
+      actorUserId: number
+      requestId: string
+      characters: number
+      engine?: string
+      channel?: string
+      accountId?: string
+      direction?: string
+      now?: number
+    }
+  ): { ok: boolean; charged: number; remaining: number; duplicate?: boolean; reason?: 'insufficient_characters' } {
+    const characters = Math.max(0, Math.floor(Number(input.characters)))
+    const now = input.now ?? Date.now()
+    return this.db.transaction((tx) => {
+      const previous = tx
+        .select()
+        .from(translationUsage)
+        .where(and(
+          eq(translationUsage.tenant, tenant),
+          eq(translationUsage.userId, input.userId),
+          eq(translationUsage.requestId, input.requestId)
+        ))
+        .get()
+      if (previous) {
+        const current = tx
+          .select()
+          .from(entitlements)
+          .where(and(eq(entitlements.tenant, tenant), eq(entitlements.userId, input.userId)))
+          .get()
+        return { ok: true as const, charged: previous.sourceCharacters, remaining: current?.characters ?? 0, duplicate: true }
+      }
+      const current = tx
+        .select()
+        .from(entitlements)
+        .where(and(eq(entitlements.tenant, tenant), eq(entitlements.userId, input.userId)))
+        .get()
+      const available = current?.characters ?? 0
+      if (characters <= 0) return { ok: true as const, charged: 0, remaining: available }
+      if (available < characters) {
+        return { ok: false as const, charged: 0, remaining: available, reason: 'insufficient_characters' as const }
+      }
+      const bonusPorts = current?.bonusPorts ?? 0
+      const remaining = available - characters
+      tx.insert(entitlements)
+        .values({ tenant, userId: input.userId, characters: remaining, bonusPorts, updatedAt: now })
+        .onConflictDoUpdate({
+          target: [entitlements.tenant, entitlements.userId],
+          set: { characters: sql`excluded.characters`, updatedAt: sql`excluded.updated_at` }
+        })
+        .run()
+      tx.insert(entitlementLedger)
+        .values({
+          tenant,
+          userId: input.userId,
+          kind: 'translation_usage',
+          charactersDelta: -characters,
+          portsDelta: 0,
+          charactersAfter: remaining,
+          portsAfter: bonusPorts,
+          refType: 'translation',
+          refId: input.requestId,
+          note: `${input.engine || 'unknown'} · ${input.direction || 'unknown'}`,
+          createdAt: now
+        })
+        .run()
+      tx.insert(translationUsage)
+        .values({
+          tenant,
+          requestId: input.requestId,
+          userId: input.userId,
+          actorUserId: input.actorUserId,
+          engine: (input.engine || 'unknown').slice(0, 60),
+          channel: (input.channel || '').slice(0, 40),
+          accountId: (input.accountId || '').slice(0, 160),
+          direction: (input.direction || 'unknown').slice(0, 20),
+          sourceCharacters: characters,
+          createdAt: now
+        })
+        .run()
+      return { ok: true as const, charged: characters, remaining }
+    })
+  }
+
+  translationUsageSummary(tenant: string, userId?: number): {
+    totalCharacters: number
+    totalTranslations: number
+    byEngine: Array<{ engine: string; characters: number; calls: number }>
+    byChannel: Array<{ channel: string; characters: number; calls: number }>
+    recent: Array<{ userId: number; requestId: string; engine: string; channel: string; direction: string; sourceCharacters: number; createdAt: number }>
+  } {
+    const where = userId === undefined
+      ? eq(translationUsage.tenant, tenant)
+      : and(eq(translationUsage.tenant, tenant), eq(translationUsage.userId, userId))
+    const characterSum = sql<number>`coalesce(sum(${translationUsage.sourceCharacters}), 0)`
+    const callCount = sql<number>`count(*)`
+    const totals = this.db
+      .select({ characters: characterSum, calls: callCount })
+      .from(translationUsage)
+      .where(where)
+      .get()
+    const byEngine = this.db
+      .select({ engine: translationUsage.engine, characters: characterSum, calls: callCount })
+      .from(translationUsage)
+      .where(where)
+      .groupBy(translationUsage.engine)
+      .orderBy(desc(characterSum))
+      .all()
+      .map((row) => ({ engine: row.engine || 'unknown', characters: Number(row.characters), calls: Number(row.calls) }))
+    const byChannel = this.db
+      .select({ channel: translationUsage.channel, characters: characterSum, calls: callCount })
+      .from(translationUsage)
+      .where(where)
+      .groupBy(translationUsage.channel)
+      .orderBy(desc(characterSum))
+      .all()
+      .map((row) => ({ channel: row.channel || 'unknown', characters: Number(row.characters), calls: Number(row.calls) }))
+    const recent = this.db
+      .select({
+        userId: translationUsage.userId,
+        requestId: translationUsage.requestId,
+        engine: translationUsage.engine,
+        channel: translationUsage.channel,
+        direction: translationUsage.direction,
+        sourceCharacters: translationUsage.sourceCharacters,
+        createdAt: translationUsage.createdAt
+      })
+      .from(translationUsage)
+      .where(where)
+      .orderBy(desc(translationUsage.createdAt))
+      .limit(100)
+      .all()
+    return {
+      totalCharacters: Number(totals?.characters ?? 0),
+      totalTranslations: Number(totals?.calls ?? 0),
+      byEngine,
+      byChannel,
+      recent
+    }
   }
 
   /**
@@ -563,6 +857,19 @@ export class BillingRepo {
       status: input.status === 'cancelled' || input.status === 'expired' ? input.status : 'active'
     }
     this.putSubscription(tenant, subscription, now)
+    const startsNewPaidPeriod = subscription.status === 'active'
+      && (!current || current.planId !== plan.id || current.status !== 'active' || current.expiresAt <= now)
+    if (startsNewPaidPeriod && plan.includedCharacters > 0) {
+      this.mutateEntitlements(tenant, {
+        userId,
+        kind: 'plan_grant',
+        charactersDelta: plan.includedCharacters,
+        refType: 'plan',
+        refId: plan.id,
+        note: `${plan.name} 套餐赠送字符`,
+        now
+      })
+    }
     return subscription
   }
 
@@ -579,12 +886,19 @@ export class BillingRepo {
     now = Date.now()
   ):
     | { ok: true; subscription: Subscription; net: Cents; creditFromOld: Cents; balance: Balance }
-    | { ok: false; reason: 'plan_not_found' | 'plan_disabled' | 'insufficient_balance' } {
+    | { ok: false; reason: 'plan_not_found' | 'plan_disabled' | 'insufficient_balance' | 'already_subscribed' } {
     const newPlan = this.getPlan(tenant, newPlanId)
     if (!newPlan) return { ok: false, reason: 'plan_not_found' }
     if (!newPlan.enabled) return { ok: false, reason: 'plan_disabled' }
 
     const current = this.getSubscription(tenant, userId)
+    const hadActiveSubscription = Boolean(
+      current && current.status === 'active' && current.expiresAt > now
+    )
+    // 当前套餐由自动续费延长；禁止重复购买同一有效套餐，避免反复领取赠送字符。
+    if (hadActiveSubscription && current?.planId === newPlanId) {
+      return { ok: false, reason: 'already_subscribed' }
+    }
     const oldPlan = current ? this.getPlan(tenant, current.planId) : null
 
     const proration = computeProration(
@@ -651,6 +965,18 @@ export class BillingRepo {
       status: 'active'
     }
     this.putSubscription(tenant, subscription, now)
+    // 有效期内升降级保留已有字符，但不重复发放新套餐赠送；新购或过期后再购才发放。
+    if (!hadActiveSubscription && newPlan.includedCharacters > 0) {
+      this.mutateEntitlements(tenant, {
+        userId,
+        kind: 'plan_grant',
+        charactersDelta: newPlan.includedCharacters,
+        refType: 'plan',
+        refId: newPlan.id,
+        note: `${newPlan.name} 套餐赠送字符`,
+        now
+      })
+    }
 
     return {
       ok: true,
@@ -701,6 +1027,17 @@ export class BillingRepo {
       },
       now
     )
+    if (plan.includedCharacters > 0) {
+      this.mutateEntitlements(tenant, {
+        userId,
+        kind: 'plan_grant',
+        charactersDelta: plan.includedCharacters,
+        refType: 'plan',
+        refId: plan.id,
+        note: `${plan.name} 续费赠送字符`,
+        now
+      })
+    }
     return { ok: true }
   }
 
@@ -712,11 +1049,13 @@ export class BillingRepo {
     return true
   }
 
-  /** 当前可用的账号数上限；无有效订阅时为 0 */
+  /** 当前可用的端口数上限；免费用户永久 10 个，0 表示 VIP3 不限。 */
   accountQuota(tenant: string, userId: number, now = Date.now()): number {
     const sub = this.getSubscription(tenant, userId)
-    if (!sub || sub.status !== 'active' || sub.expiresAt <= now) return 0
-    return this.getPlan(tenant, sub.planId)?.maxAccounts ?? 0
+    const bonus = this.getEntitlements(tenant, userId).bonusPorts
+    if (!sub || sub.status !== 'active' || sub.expiresAt <= now) return 10 + bonus
+    const base = this.getPlan(tenant, sub.planId)?.maxAccounts ?? 10
+    return base === 0 ? 0 : base + bonus
   }
 
   /**
@@ -740,6 +1079,54 @@ export class BillingRepo {
   }
 
   // ── 积分 ──
+
+  /** 用余额购买翻译字符；1 美元兑换数量由管理员配置。 */
+  purchaseCharacters(
+    tenant: string,
+    userId: number,
+    cents: Cents,
+    charactersPerUsd: number,
+    now = Date.now()
+  ): { ok: boolean; characters: number; balance: Balance; entitlements: Entitlements; reason?: string } {
+    const amount = Math.max(0, Math.round(cents))
+    const characters = Math.floor((amount / 100) * Math.max(1, Math.floor(charactersPerUsd)))
+    const before = this.getBalance(tenant, userId)
+    const currentEntitlements = this.getEntitlements(tenant, userId)
+    if (amount <= 0 || characters <= 0) {
+      return { ok: false, reason: 'invalid_amount', characters: 0, balance: before, entitlements: currentEntitlements }
+    }
+    const charged = this.mutate(tenant, {
+      userId,
+      kind: 'character_purchase',
+      amountCents: -amount,
+      refType: 'characters',
+      note: `${amount} 分兑换 ${characters} 翻译字符`,
+      now
+    })
+    if (!charged.ok) {
+      return { ok: false, reason: charged.reason, characters: 0, balance: charged.balance, entitlements: currentEntitlements }
+    }
+    const granted = this.mutateEntitlements(tenant, {
+      userId,
+      kind: 'character_purchase',
+      charactersDelta: characters,
+      refType: 'balance',
+      note: `${amount} 分兑换 ${characters} 翻译字符`,
+      now
+    })
+    if (!granted.ok) {
+      this.mutate(tenant, {
+        userId,
+        kind: 'adjust',
+        amountCents: amount,
+        refType: 'characters',
+        note: '字符入账失败，自动退回余额',
+        now
+      })
+      return { ok: false, reason: granted.reason, characters: 0, balance: this.getBalance(tenant, userId), entitlements: currentEntitlements }
+    }
+    return { ok: true, characters, balance: charged.balance, entitlements: granted.entitlements }
+  }
 
   /** 用余额兑换积分 */
   exchangeCredits(
@@ -809,6 +1196,8 @@ function toPlan(r: typeof plans.$inferSelect): Plan {
     periodCount: r.periodCount,
     maxAccounts: r.maxAccounts,
     maxDevices: r.maxDevices,
+    tier: (MEMBERSHIP_TIERS.includes(r.tier as MembershipTier) ? r.tier : 'custom') as MembershipTier,
+    includedCharacters: r.includedCharacters,
     description: r.description,
     enabled: r.enabled === 1,
     sortOrder: r.sortOrder,
