@@ -3529,31 +3529,45 @@ body {
 
 /* 邀请码与返佣 */
 .invites-page { overflow: auto; background: var(--bg); }
-.invites-header { align-items: flex-end; }
-.invites-header p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+.invites-header { min-height: 98px; display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 15px 24px; }
+.invites-heading { min-width: 0; display: flex; align-items: center; gap: 13px; }
+.invites-heading-icon { width: 42px; height: 42px; flex: none; display: grid; place-items: center; border-radius: 12px; color: var(--accent); background: var(--accent-soft); }
+.invites-header h1 { margin: 3px 0 0; font-size: 21px; }
+.invites-header p { margin: 4px 0 0; color: var(--text-secondary); font-size: 12px; }
 .invites-header .ghost-btn, .invite-share-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
-.invites-body { display: grid; gap: 12px; padding-bottom: 36px; }
+.invite-refresh { flex: none; padding: 8px 12px; }
+.invites-body { width: 100%; max-width: 1480px; margin: 0 auto; display: grid; grid-auto-rows: max-content; gap: 12px; padding: 16px 24px 28px; }
+.invite-error { min-height: 42px; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0; padding: 7px 8px 7px 13px; }
 .invite-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.invite-stats > div { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 3px 10px; min-height: 82px; padding: 14px 18px; border: 1px solid var(--border); border-radius: 14px; background: var(--surface); }
-.invite-stats svg { grid-row: 1 / span 2; color: var(--accent); }
-.invite-stats span { color: var(--muted); font-size: 12px; }
-.invite-stats strong { font-size: 22px; }
-.invite-share-card { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 20px; border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border)); border-radius: 16px; background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+.invite-stat-card { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto auto; align-items: center; column-gap: 12px; min-height: 92px; padding: 13px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); box-shadow: 0 5px 16px rgb(16 24 40 / .035); }
+.invite-stat-icon { width: 36px; height: 36px; grid-row: 1 / span 3; display: grid; place-items: center; border-radius: 10px; color: var(--accent); background: var(--accent-soft); }
+.invite-stat-card > span:not(.invite-stat-icon) { color: var(--text-secondary); font-size: 11px; }
+.invite-stat-card strong { margin-top: 1px; font-size: 22px; line-height: 1.1; }
+.invite-stat-card small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.invite-share-card { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 15px 18px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); border-radius: 13px; background: linear-gradient(110deg, color-mix(in srgb, var(--accent) 10%, var(--panel)), var(--panel)); box-shadow: 0 6px 18px rgb(16 24 40 / .035); }
 .invite-share-card > div:first-child { display: grid; gap: 3px; }
 .invite-share-card span, .invite-share-card small { color: var(--muted); font-size: 12px; }
-.invite-share-card strong { color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 26px; letter-spacing: 2px; }
+.invite-share-card strong { color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 23px; letter-spacing: 1.5px; }
 .invite-share-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.invite-panel { overflow: hidden; border: 1px solid var(--border); border-radius: 15px; background: var(--surface); }
-.invite-panel-head { display: flex; justify-content: space-between; padding: 14px 18px 10px; }
-.invite-panel-head h2 { margin: 0; font-size: 17px; }
+.invite-panel { min-width: 0; overflow: hidden; border: 1px solid var(--border); border-radius: 12px; background: var(--panel); box-shadow: 0 5px 18px rgb(16 24 40 / .03); }
+.invite-panel-head { min-height: 60px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px 10px; }
+.invite-panel-title { display: flex; align-items: center; gap: 10px; }
+.invite-panel-icon { width: 32px; height: 32px; flex: none; display: grid; place-items: center; border-radius: 9px; color: var(--accent); background: var(--accent-soft); }
+.invite-panel-head h2 { margin: 0; font-size: 15px; }
 .invite-panel-head p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
-.invite-create-row { display: grid; grid-template-columns: minmax(220px, 1fr) 120px auto; gap: 8px; padding: 0 18px 14px; }
+.invite-count { min-width: 28px; height: 24px; display: grid; place-items: center; padding: 0 8px; border-radius: 999px; color: var(--accent); background: var(--accent-soft); font-size: 11px; font-weight: 700; }
+.invite-create-row { display: grid; grid-template-columns: minmax(220px, 1fr) 140px auto; align-items: end; gap: 8px; padding: 0 16px 12px; }
+.invite-create-row label { min-width: 0; display: grid; gap: 5px; }
+.invite-create-row label > span { color: var(--text-secondary); font-size: 10.5px; font-weight: 600; }
 .invite-create-row input { height: 38px; padding: 0 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--input-bg); color: var(--text); }
+.invite-create-row input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent); }
 .invite-create-row .primary-btn { min-height: 38px; padding: 0 18px; }
 .invite-table-scroll { overflow-x: auto; border-top: 1px solid var(--border); }
-.invite-table { width: 100%; border-collapse: collapse; min-width: 720px; }
-.invite-table th, .invite-table td { padding: 11px 18px; border-bottom: 1px solid var(--border); text-align: left; font-size: 13px; white-space: nowrap; }
+.invite-table { width: 100%; border-collapse: collapse; min-width: 690px; }
+.invite-table.compact { min-width: 610px; }
+.invite-table th, .invite-table td { height: 42px; padding: 8px 16px; border-bottom: 1px solid var(--border); text-align: left; font-size: 12px; white-space: nowrap; }
 .invite-table th { color: var(--muted); font-size: 11px; font-weight: 650; background: color-mix(in srgb, var(--surface) 85%, var(--bg)); }
+.invite-table tbody tr:hover { background: color-mix(in srgb, var(--accent) 4%, transparent); }
 .invite-table tbody tr:last-child td { border-bottom: 0; }
 .invite-table code { padding: 3px 7px; border-radius: 6px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); font-weight: 700; }
 .invite-status { display: inline-flex; padding: 3px 8px; border-radius: 999px; font-size: 11px; }
@@ -3561,7 +3575,13 @@ body {
 .invite-status.off { color: var(--muted); background: var(--bg); }
 .invite-money { color: var(--accent); font-weight: 700; }
 .invite-empty { height: 64px; text-align: center !important; color: var(--muted); }
+.invite-detail-grid { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1400px) {
+  .invite-detail-grid { grid-template-columns: 1fr; }
+}
 @media (max-width: 900px) {
+  .invites-header { align-items: flex-start; }
+  .invites-heading-icon { display: none; }
   .invite-stats { grid-template-columns: 1fr; }
   .invite-share-card { align-items: stretch; flex-direction: column; }
   .invite-create-row { grid-template-columns: 1fr; }

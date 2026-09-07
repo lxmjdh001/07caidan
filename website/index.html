@@ -156,9 +156,9 @@
       toggle?.addEventListener('click', () => { const open = nav.classList.toggle('open'); toggle.setAttribute('aria-expanded', String(open)); });
       nav?.querySelectorAll('a').forEach((a) => a.addEventListener('click', () => nav.classList.remove('open')));
       const downloads = {
-        windows: { href: 'https://wzzapp.cloud/updates/WzzScrm Setup 0.2.24.exe', title: 'Windows 客户端', subtitle: 'Windows 10 / 11 · x64', icon: '⊞' },
-        macArm: { href: 'https://wzzapp.cloud/updates/WzzScrm-0.2.24-arm64.dmg', title: 'macOS 客户端', subtitle: 'Apple 芯片版（arm64）', icon: '' },
-        macIntel: { href: 'https://wzzapp.cloud/updates/WzzScrm-0.2.24.dmg', title: 'macOS 客户端', subtitle: 'Intel 芯片版（x64）', icon: '' }
+        windows: { href: 'https://wzzapp.cloud/updates/WzzScrm Setup 0.2.25.exe', title: 'Windows 客户端', subtitle: 'Windows 10 / 11 · x64', icon: '⊞' },
+        macArm: { href: 'https://wzzapp.cloud/updates/WzzScrm-0.2.25-arm64.dmg', title: 'macOS 客户端', subtitle: 'Apple 芯片版（arm64）', icon: '' },
+        macIntel: { href: 'https://wzzapp.cloud/updates/WzzScrm-0.2.25.dmg', title: 'macOS 客户端', subtitle: 'Intel 芯片版（x64）', icon: '' }
       }
       async function applyRecommendedDownload() {
         const platform = String(navigator.userAgentData?.platform || navigator.platform || navigator.userAgent).toLowerCase()
