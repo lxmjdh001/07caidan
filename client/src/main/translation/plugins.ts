@@ -15,7 +15,7 @@ export function createTranslatorRegistry(): TranslatorRegistry {
 
   registry.register({
     id: 'google-free',
-    displayName: 'Google 翻译（免费）',
+    displayName: 'Google 翻译',
     create: () => new GoogleFreeTranslator()
   })
 
@@ -27,13 +27,13 @@ export function createTranslatorRegistry(): TranslatorRegistry {
 
   registry.register({
     id: 'google-cloud',
-    displayName: 'Google Cloud Translation（官方）',
+    displayName: 'Google Cloud Translation',
     create: (config) => new GoogleCloudTranslator(config as unknown as GoogleCloudConfig)
   })
 
   registry.register({
     id: 'llm',
-    displayName: 'LLM 翻译（OpenAI 兼容）',
+    displayName: 'LLM 翻译',
     create: (config) => new LlmTranslator(config as unknown as LlmConfig)
   })
 
@@ -45,7 +45,7 @@ export function createTranslatorRegistry(): TranslatorRegistry {
 
   registry.register({
     id: 'ai-server',
-    displayName: 'AI 翻译（后台按积分计费）',
+    displayName: 'AI 翻译',
     create: (config) =>
       new AiServerTranslator({
         ...(config as unknown as AiServerConfig),

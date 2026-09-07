@@ -268,11 +268,11 @@ function fmt(ts?: number): string {
 
 type Tab = 'overview' | 'plans' | 'topup' | 'usage' | 'history'
 type UsageSummary = {
-  totalCharacters: number
+  totalTokens: number
   totalTranslations: number
-  byEngine: Array<{ engine: string; characters: number; calls: number }>
-  byChannel: Array<{ channel: string; characters: number; calls: number }>
-  recent: Array<{ userId: number; requestId: string; engine: string; channel: string; direction: string; sourceCharacters: number; createdAt: number }>
+  byEngine: Array<{ engine: string; tokens: number; calls: number }>
+  byChannel: Array<{ channel: string; tokens: number; calls: number }>
+  recent: Array<{ userId: number; requestId: string; engine: string; channel: string; direction: string; inputTokens: number; outputTokens: number; billedTokens: number; createdAt: number }>
 }
 
 /**
@@ -518,11 +518,11 @@ function CharacterUsageTab(): React.JSX.Element {
   return <div className="form-page">
     <div className="stat-cards">
       <div className="stat-card"><span className="k">{t('bill.remainingCharacters')}</span><span className="v">{data.entitlements.characters.toLocaleString()}</span></div>
-      <div className="stat-card"><span className="k">{t('bill.usedCharacters')}</span><span className="v">{data.summary.totalCharacters.toLocaleString()}</span></div>
+      <div className="stat-card"><span className="k">{t('bill.usedCharacters')}</span><span className="v">{data.summary.totalTokens.toLocaleString()}</span></div>
       <div className="stat-card"><span className="k">{t('bill.translationCount')}</span><span className="v">{data.summary.totalTranslations.toLocaleString()}</span></div>
     </div>
-    <section className="form-card"><h3>{t('bill.usageByPlatform')}</h3><table className="data-table"><thead><tr><th>{t('bill.platform')}</th><th className="num">{t('bill.translationCount')}</th><th className="num">{t('bill.usedCharacters')}</th></tr></thead><tbody>{data.summary.byChannel.map((row) => <tr key={row.channel}><td>{row.channel || '—'}</td><td className="num">{row.calls}</td><td className="num">{row.characters.toLocaleString()}</td></tr>)}</tbody></table></section>
-    <section className="form-card"><h3>{t('bill.recentUsage')}</h3><table className="data-table"><thead><tr><th>{t('bill.time')}</th><th>{t('bill.platform')}</th><th>{t('bill.engine')}</th><th>{t('bill.direction')}</th><th className="num">{t('bill.characters')}</th></tr></thead><tbody>{data.summary.recent.map((row) => <tr key={`${row.userId}:${row.requestId}`}><td>{fmt(row.createdAt)}</td><td>{row.channel || '—'}</td><td>{row.engine}</td><td>{row.direction === 'in' ? t('bill.inbound') : t('bill.outbound')}</td><td className="num">{row.sourceCharacters.toLocaleString()}</td></tr>)}</tbody></table></section>
+    <section className="form-card"><h3>{t('bill.usageByPlatform')}</h3><table className="data-table"><thead><tr><th>{t('bill.platform')}</th><th className="num">{t('bill.translationCount')}</th><th className="num">{t('bill.usedCharacters')}</th></tr></thead><tbody>{data.summary.byChannel.map((row) => <tr key={row.channel}><td>{row.channel || '—'}</td><td className="num">{row.calls}</td><td className="num">{row.tokens.toLocaleString()}</td></tr>)}</tbody></table></section>
+    <section className="form-card"><h3>{t('bill.recentUsage')}</h3><table className="data-table"><thead><tr><th>{t('bill.time')}</th><th>{t('bill.platform')}</th><th>{t('bill.engine')}</th><th>{t('bill.direction')}</th><th className="num">输入 Token</th><th className="num">输出 Token</th><th className="num">{t('bill.characters')}</th></tr></thead><tbody>{data.summary.recent.map((row) => <tr key={`${row.userId}:${row.requestId}`}><td>{fmt(row.createdAt)}</td><td>{row.channel || '—'}</td><td>{row.engine}</td><td>{row.direction === 'in' ? t('bill.inbound') : t('bill.outbound')}</td><td className="num">{row.inputTokens.toLocaleString()}</td><td className="num">{row.outputTokens.toLocaleString()}</td><td className="num">{row.billedTokens.toLocaleString()}</td></tr>)}</tbody></table></section>
   </div>
 }
 

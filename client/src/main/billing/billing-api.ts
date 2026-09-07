@@ -85,7 +85,8 @@ export class BillingApi {
 
   chargeTranslation(body: {
     requestId: string
-    characters: number
+    inputTokens: number
+    outputTokens: number
     engine: string
     channel?: string
     accountId?: string

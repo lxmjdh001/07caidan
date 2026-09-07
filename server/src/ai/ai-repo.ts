@@ -10,6 +10,10 @@ import {
 } from '../billing/credits.ts'
 import type { Db } from '../db.ts'
 import { aiModels, aiProviders, billingSettings, modelUsage } from '../schema.ts'
+import {
+  normalizeTranslationTokenRates,
+  type TranslationTokenRates
+} from '../billing/translation-tokens.ts'
 import { isProviderType, maskApiKey, type ProviderConfig, type ProviderType } from './protocols.ts'
 
 export interface AiProvider {
@@ -63,6 +67,7 @@ export interface BillingSettings {
   creditsPerUsd: number
   autoTopUpCredits: boolean
   charactersPerUsd: number
+  translationTokenRates: TranslationTokenRates
 }
 
 export interface UsageRecord {
@@ -261,7 +266,8 @@ export class AiRepo {
     return {
       creditsPerUsd: r?.creditsPerUsd ?? 1000,
       autoTopUpCredits: (r?.autoTopUpCredits ?? 1) === 1,
-      charactersPerUsd: r?.charactersPerUsd ?? 10000
+      charactersPerUsd: r?.charactersPerUsd ?? 10000,
+      translationTokenRates: normalizeTranslationTokenRates(parseJson(r?.translationTokenRates))
     }
   }
 
@@ -271,7 +277,10 @@ export class AiRepo {
       // 兑换比例至少为 1，否则积分换钱会除零
       creditsPerUsd: Math.max(1, Math.floor(patch.creditsPerUsd ?? current.creditsPerUsd)),
       autoTopUpCredits: patch.autoTopUpCredits ?? current.autoTopUpCredits,
-      charactersPerUsd: Math.max(1, Math.floor(patch.charactersPerUsd ?? current.charactersPerUsd))
+      charactersPerUsd: Math.max(1, Math.floor(patch.charactersPerUsd ?? current.charactersPerUsd)),
+      translationTokenRates: normalizeTranslationTokenRates(
+        patch.translationTokenRates ?? current.translationTokenRates
+      )
     }
     this.db
       .insert(billingSettings)
@@ -280,6 +289,7 @@ export class AiRepo {
         creditsPerUsd: next.creditsPerUsd,
         autoTopUpCredits: next.autoTopUpCredits ? 1 : 0,
         charactersPerUsd: next.charactersPerUsd,
+        translationTokenRates: JSON.stringify(next.translationTokenRates),
         updatedAt: Date.now()
       })
       .onConflictDoUpdate({
@@ -288,6 +298,7 @@ export class AiRepo {
           creditsPerUsd: sql`excluded.credits_per_usd`,
           autoTopUpCredits: sql`excluded.auto_top_up_credits`,
           charactersPerUsd: sql`excluded.characters_per_usd`,
+          translationTokenRates: sql`excluded.translation_token_rates`,
           updatedAt: sql`excluded.updated_at`
         }
       })
@@ -297,7 +308,7 @@ export class AiRepo {
 
   // ── 用量计费 ──
 
-  /** 仅记录模型真实用量，不向客户扣模型积分；翻译请求由字符账本统一计费。 */
+  /** 仅记录模型真实用量，不向客户扣模型积分；翻译请求由 Token 账本统一计费。 */
   recordUsage(
     tenant: string,
     userId: number,
@@ -429,6 +440,11 @@ export class AiRepo {
         credits: Number(r.credits ?? 0)
       }))
   }
+}
+
+function parseJson(value: string | null | undefined): unknown {
+  if (!value) return undefined
+  try { return JSON.parse(value) } catch { return undefined }
 }
 
 function nonNeg(v: number | undefined): number {

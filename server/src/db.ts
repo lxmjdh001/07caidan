@@ -409,7 +409,9 @@ export function openDb(dbPath: string): Db {
       user_id INTEGER NOT NULL, actor_user_id INTEGER NOT NULL,
       engine TEXT NOT NULL DEFAULT 'unknown', channel TEXT NOT NULL DEFAULT '',
       account_id TEXT NOT NULL DEFAULT '', direction TEXT NOT NULL DEFAULT 'unknown',
-      source_characters INTEGER NOT NULL, created_at INTEGER NOT NULL,
+      source_characters INTEGER NOT NULL, input_tokens INTEGER NOT NULL DEFAULT 0,
+      output_tokens INTEGER NOT NULL DEFAULT 0, billed_tokens INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
       PRIMARY KEY (tenant, user_id, request_id)
     );
     CREATE INDEX IF NOT EXISTS idx_translation_usage_user
@@ -541,6 +543,7 @@ export function openDb(dbPath: string): Db {
       credits_per_usd INTEGER NOT NULL DEFAULT 1000,
       auto_top_up_credits INTEGER NOT NULL DEFAULT 1,
       characters_per_usd INTEGER NOT NULL DEFAULT 10000,
+      translation_token_rates TEXT NOT NULL DEFAULT '{}',
       updated_at INTEGER NOT NULL
     );
   `)
@@ -596,6 +599,10 @@ function migrate(sqlite: BetterSqlite3.Database): void {
     ['plans', 'tier', "TEXT NOT NULL DEFAULT 'custom'"],
     ['plans', 'included_characters', 'INTEGER NOT NULL DEFAULT 0'],
     ['billing_settings', 'characters_per_usd', 'INTEGER NOT NULL DEFAULT 10000'],
+    ['billing_settings', 'translation_token_rates', "TEXT NOT NULL DEFAULT '{}'"],
+    ['translation_usage', 'input_tokens', 'INTEGER NOT NULL DEFAULT 0'],
+    ['translation_usage', 'output_tokens', 'INTEGER NOT NULL DEFAULT 0'],
+    ['translation_usage', 'billed_tokens', 'INTEGER NOT NULL DEFAULT 0'],
     ['client_sessions', 'device_id', 'TEXT'],
     ['client_sessions', 'device_name', 'TEXT'],
     ['client_sessions', 'last_seen_at', 'INTEGER'],

@@ -145,15 +145,16 @@ describe('TranslationPipeline.processOutbound', () => {
   })
 })
 
-describe('TranslationPipeline 字符计费', () => {
-  it('只在得到不同译文后按 Unicode 源字符计费，并带平台与账号上下文', async () => {
+describe('TranslationPipeline Token 计费', () => {
+  it('只在得到不同译文后本地估算输入输出 Token，并带平台与账号上下文', async () => {
     const p = new TranslationPipeline(upperCaser, SETTINGS_ON)
     const recorder = vi.fn<(usage: TranslationUsageCharge) => Promise<void>>(async () => undefined)
     p.setUsageRecorder(recorder)
     await p.processInbound(textMsg('A😀b'))
     expect(recorder).toHaveBeenCalledTimes(1)
     expect(recorder.mock.calls[0]?.[0]).toMatchObject({
-      characters: 3,
+      inputTokens: 2,
+      outputTokens: 2,
       engine: 'upper',
       channel: 'whatsapp',
       accountId: 'main',
@@ -162,7 +163,7 @@ describe('TranslationPipeline 字符计费', () => {
     expect(recorder.mock.calls[0]?.[0].requestId).toMatch(/^in:[0-9a-f]{64}$/)
   })
 
-  it('同语言原样返回与服务失败都不扣字符', async () => {
+  it('同语言原样返回与服务失败都不扣 Token', async () => {
     const recorder = vi.fn<(usage: TranslationUsageCharge) => Promise<void>>(async () => undefined)
     const same = new TranslationPipeline(
       { name: 'same', translate: async (text) => ({ text }) },
@@ -191,7 +192,18 @@ describe('TranslationPipeline 字符计费', () => {
     expect(recorder).not.toHaveBeenCalled()
   })
 
-  it('字符不足导致扣费失败时，出站不发送未付费译文', async () => {
+  it('优先采用服务商返回的真实 Token', async () => {
+    const p = new TranslationPipeline(
+      { name: 'llm', translate: async () => ({ text: 'hello', usage: { inputTokens: 12, outputTokens: 3 } }) },
+      { ...SETTINGS_ON, outboundEnabled: true }
+    )
+    const recorder = vi.fn<(usage: TranslationUsageCharge) => Promise<void>>(async () => undefined)
+    p.setUsageRecorder(recorder)
+    await p.processOutbound('你好', 'en')
+    expect(recorder).toHaveBeenCalledWith(expect.objectContaining({ inputTokens: 12, outputTokens: 3, engine: 'llm' }))
+  })
+
+  it('Token 不足导致扣费失败时，出站不发送未付费译文', async () => {
     const p = new TranslationPipeline(upperCaser, { ...SETTINGS_ON, outboundEnabled: true })
     p.setUsageRecorder(async () => Promise.reject(new Error('insufficient_characters')))
     expect(await p.processOutbound('hello', 'en')).toEqual({
@@ -204,12 +216,12 @@ describe('TranslationPipeline 字符计费', () => {
 
 describe('createTranslatorRegistry / configurePipeline', () => {
   it('内置插件齐全（含 deepl / google-cloud / llm）', () => {
-    const ids = createTranslatorRegistry()
-      .list()
-      .map((p) => p.id)
+    const plugins = createTranslatorRegistry().list()
+    const ids = plugins.map((p) => p.id)
     for (const id of ['google-free', 'deepl', 'google-cloud', 'llm', 'custom-http', 'off']) {
       expect(ids).toContain(id)
     }
+    expect(plugins.every((p) => !/[（(].*[）)]/.test(p.displayName))).toBe(true)
   })
 
   it('engine=off 时强制关闭收发翻译', () => {

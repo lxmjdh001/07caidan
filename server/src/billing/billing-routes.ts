@@ -15,6 +15,7 @@ import { YipayGateway } from './gateways/yipay.ts'
 import type { OrderRepo } from './order-repo.ts'
 import type { PeriodUnit } from './plans.ts'
 import type { InviteRepo } from '../invite-repo.ts'
+import { estimateTextTokens } from './translation-tokens.ts'
 
 export interface BillingRouteDeps {
   billing: BillingRepo
@@ -327,7 +328,7 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     return { ok: true, balance: r.balance }
   })
 
-  /** 管理员给主账号赠送翻译字符或额外端口；子账号自动归到所属老板。 */
+  /** 管理员给主账号赠送翻译 Token 或额外端口；子账号自动归到所属老板。 */
   app.post('/api/admin/entitlements-adjust', async (req, reply) => {
     if (!requirePerm(req, reply, 'users:manage')) return
     const b = (req.body ?? {}) as {
@@ -343,7 +344,7 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     const characters = Math.floor(Number(b.characters ?? 0))
     const ports = Math.floor(Number(b.ports ?? 0))
     if (!Number.isFinite(characters) || !Number.isFinite(ports) || (characters === 0 && ports === 0)) {
-      return reply.code(400).send({ error: '赠送字符或赠送端口至少填写一项' })
+      return reply.code(400).send({ error: '赠送 Token 或赠送端口至少填写一项' })
     }
     if (characters < 0 || ports < 0) return reply.code(400).send({ error: '赠送数量不能为负数' })
     const billingUserId = billingUserIdOf?.(rawUserId) ?? rawUserId
@@ -692,7 +693,7 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     return r
   })
 
-  /** 余额兑换翻译字符；字符与 AI 模型积分是两套独立账本。 */
+  /** 余额兑换翻译 Token；数据库字段保留旧名以兼容既有余额。 */
   app.post('/api/billing/exchange-characters', async (req, reply) => {
     const userId = requireClientUser(req, reply, 'billing:manage')
     if (userId === null) return
@@ -711,6 +712,9 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     const ctx = ctxOf(req)
     const b = (req.body ?? {}) as {
       requestId?: string
+      inputTokens?: number
+      outputTokens?: number
+      /** 0.2.23 及更早客户端兼容；升级后不再发送。 */
       characters?: number
       engine?: string
       channel?: string
@@ -718,15 +722,22 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
       direction?: string
     }
     if (!b.requestId || b.requestId.length > 120) return reply.code(400).send({ error: 'requestId 不合法' })
-    const characters = Math.floor(Number(b.characters ?? 0))
-    if (!Number.isFinite(characters) || characters <= 0 || characters > 100000) {
-      return reply.code(400).send({ error: '字符数不合法' })
+    const legacyCharacters = Math.floor(Number(b.characters ?? 0))
+    const inputTokens = Math.floor(Number(b.inputTokens ?? legacyCharacters))
+    const outputTokens = Math.floor(Number(b.outputTokens ?? (legacyCharacters > 0 ? legacyCharacters : 0)))
+    if (
+      !Number.isFinite(inputTokens) || !Number.isFinite(outputTokens) ||
+      inputTokens < 0 || outputTokens < 0 || inputTokens + outputTokens <= 0 ||
+      inputTokens > 1_000_000 || outputTokens > 1_000_000
+    ) {
+      return reply.code(400).send({ error: 'Token 数不合法' })
     }
     const result = billing.chargeTranslation(ctx.tenant, {
       userId,
       actorUserId: ctx.clientUserId ?? userId,
       requestId: b.requestId,
-      characters,
+      inputTokens,
+      outputTokens,
       engine: b.engine,
       channel: b.channel,
       accountId: b.accountId,
@@ -734,7 +745,7 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     })
     return result.ok
       ? result
-      : reply.code(402).send({ error: '翻译字符不足', reason: result.reason, remaining: result.remaining })
+      : reply.code(402).send({ error: '翻译 Token 不足', reason: result.reason, remaining: result.remaining })
   })
 
   // ── 客户端可见的模型与计费 ──
@@ -799,9 +810,11 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     const provider = ai.providerConfig(tenant, model.providerId)
     if (!provider) return reply.code(501).send({ error: '模型所属供应商不可用' })
 
-    const characters = Array.from(b.text).length
-    if (billing.getEntitlements(tenant, userId).characters < characters) {
-      return reply.code(402).send({ error: '翻译字符不足', reason: 'insufficient_characters' })
+    const estimatedInput = estimateTextTokens(b.text)
+    const estimatedOutput = estimatedInput
+    const estimatedCharge = billing.previewTranslationCharge(tenant, 'ai-server', estimatedInput, estimatedOutput)
+    if (billing.getEntitlements(tenant, userId).characters < estimatedCharge) {
+      return reply.code(402).send({ error: '翻译 Token 不足', reason: 'insufficient_characters' })
     }
 
     const outcome = await aiClient.chat(provider, {
@@ -812,19 +825,22 @@ export function registerBillingRoutes(app: FastifyInstance, deps: BillingRouteDe
     })
     if (!outcome.ok) return reply.code(502).send({ error: outcome.error ?? '翻译失败' })
 
+    const inputTokens = Math.max(0, Math.floor(outcome.usage.inputTokens ?? 0)) || estimatedInput
+    const outputTokens = Math.max(0, Math.floor(outcome.usage.outputTokens ?? 0)) || estimateTextTokens(outcome.text)
     const charge = billing.chargeTranslation(tenant, {
       userId,
       actorUserId: ctxOf(req).clientUserId ?? userId,
       requestId: b.requestId || randomUUID(),
-      characters,
+      inputTokens,
+      outputTokens,
       engine: 'ai-server',
       channel: b.channel,
       accountId: b.accountId,
       direction: b.direction
     })
-    if (!charge.ok) return reply.code(402).send({ error: '翻译字符不足', reason: charge.reason })
-    ai.recordUsage(tenant, userId, model.id, 'translate', outcome.usage)
-    return { text: outcome.text, characters: charge.charged, remaining: charge.remaining, metered: true, usage: outcome.usage, modelId: model.id }
+    if (!charge.ok) return reply.code(402).send({ error: '翻译 Token 不足', reason: charge.reason })
+    ai.recordUsage(tenant, userId, model.id, 'translate', { inputTokens, outputTokens })
+    return { text: outcome.text, tokens: charge.charged, remaining: charge.remaining, metered: true, usage: { inputTokens, outputTokens }, modelId: model.id }
   })
 
   /**

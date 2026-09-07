@@ -1,10 +1,12 @@
 import type { UnifiedMessage } from '@shared/domain'
 import { createHash, randomUUID } from 'node:crypto'
 import type { Translator } from './translator'
+import { estimateTextTokens } from './token-estimator'
 
 export interface TranslationUsageCharge {
   requestId: string
-  characters: number
+  inputTokens: number
+  outputTokens: number
   engine: string
   channel?: string
   accountId?: string
@@ -88,7 +90,8 @@ export class TranslationPipeline {
       const detectedLang = normalizeDetectedLang(result.sourceLang)
       // 译文与原文相同（同语言/占位引擎）时不附加，避免 UI 重复展示
       if (result.text === msg.body.text) return { message: msg, detectedLang }
-      await this.recordUsage(text, result.metered, context)
+      const engine = result.billingEngine ?? this.translator.name
+      await this.recordUsage(text, result.text, result.usage, result.metered, engine, context)
       return {
         message: {
           ...msg,
@@ -96,7 +99,7 @@ export class TranslationPipeline {
             text: result.text,
             sourceLang: result.sourceLang,
             targetLang: this.settings.displayLang,
-            engine: this.translator.name
+            engine
           }
         },
         detectedLang
@@ -118,8 +121,9 @@ export class TranslationPipeline {
       const translateContext = { ...context, direction: 'out' as const, requestId: randomUUID() }
       const result = await this.translator.translate(text, targetLang, translateContext)
       if (result.text === text) return { send: text, original: text }
-      await this.recordUsage(text, result.metered, translateContext)
-      return { send: result.text, original: text, engine: this.translator.name }
+      const engine = result.billingEngine ?? this.translator.name
+      await this.recordUsage(text, result.text, result.usage, result.metered, engine, translateContext)
+      return { send: result.text, original: text, engine }
     } catch {
       return {
         send: text,
@@ -131,19 +135,29 @@ export class TranslationPipeline {
 
   private async recordUsage(
     source: string,
+    output: string,
+    usage: { inputTokens: number; outputTokens: number } | undefined,
     alreadyMetered: boolean | undefined,
+    engine: string,
     context: { channel?: string; accountId?: string; direction: 'in' | 'out'; requestId?: string }
   ): Promise<void> {
     if (alreadyMetered || !this.usageRecorder) return
-    const characters = Array.from(source).length
-    if (characters <= 0) return
+    const inputTokens = positiveTokens(usage?.inputTokens) ?? estimateTextTokens(source)
+    const outputTokens = positiveTokens(usage?.outputTokens) ?? estimateTextTokens(output)
+    if (inputTokens + outputTokens <= 0) return
     await this.usageRecorder({
       requestId: context.requestId ?? randomUUID(),
-      characters,
-      engine: this.translator.name,
+      inputTokens,
+      outputTokens,
+      engine,
       ...context
     })
   }
+}
+
+function positiveTokens(value: number | undefined): number | undefined {
+  if (!Number.isFinite(value) || Number(value) <= 0) return undefined
+  return Math.floor(Number(value))
 }
 
 /** 平台断线重投同一条来信时产生相同计费键；只存摘要，不暴露聊天内容。 */

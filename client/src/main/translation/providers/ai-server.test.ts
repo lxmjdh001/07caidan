@@ -38,6 +38,7 @@ describe('AiServerTranslator', () => {
   it('402 字符不足 → 回落免费引擎', async () => {
     const r = await make(402, { error: '字符不足' }).translate('你好', 'en')
     expect(r.text).toBe('FREE:你好')
+    expect(r.billingEngine).toBe('free')
   })
 
   it('501 未配模型 → 回落免费引擎', async () => {

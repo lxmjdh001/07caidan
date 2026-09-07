@@ -573,7 +573,8 @@ describe('会员字符与端口（HTTP 层）', () => {
     )
     const body = {
       requestId: 'http-translation-1',
-      characters: 5,
+      inputTokens: 15,
+      outputTokens: 10,
       engine: 'google-free',
       channel: 'line',
       accountId: 'line-1',
@@ -585,17 +586,21 @@ describe('会员字符与端口（HTTP 层）', () => {
     assert.equal(duplicate.json.duplicate, true)
     assert.equal(duplicate.json.remaining, 7)
 
+    await api('PUT', '/api/admin/billing-settings', {
+      translationTokenRates: { 'google-free': { inputRateBps: 10000, outputRateBps: 10000 } }
+    }, adminToken)
     const rejected = await api('POST', '/api/billing/translation/charge', {
       ...body,
       requestId: 'http-translation-2',
-      characters: 8
+      inputTokens: 4,
+      outputTokens: 4
     })
     assert.equal(rejected.status, 402)
     assert.equal(rejected.json.reason, 'insufficient_characters')
 
     const usage = (await api('GET', '/api/billing/translation-usage')).json
-    assert.equal(usage.summary.totalCharacters, 5)
-    assert.deepEqual(usage.summary.byChannel, [{ channel: 'line', characters: 5, calls: 1 }])
+    assert.equal(usage.summary.totalTokens, 5)
+    assert.deepEqual(usage.summary.byChannel, [{ channel: 'line', tokens: 5, calls: 1 }])
   })
 
   test('余额按管理员设置的比例兑换翻译字符', async () => {
@@ -610,6 +615,24 @@ describe('会员字符与端口（HTTP 层）', () => {
     assert.equal(exchange.json.characters, 50_000)
     assert.equal(exchange.json.balance.balanceCents, 250)
     assert.equal(exchange.json.entitlements.characters, 50_000)
+  })
+
+  test('旧客户端 characters 上报在升级期间仍可按 Token 规则计费', async () => {
+    await api(
+      'POST',
+      '/api/admin/entitlements-adjust',
+      { email: 'u@test.com', characters: 10 },
+      adminToken
+    )
+    const result = await api('POST', '/api/billing/translation/charge', {
+      requestId: 'legacy-client-charge',
+      characters: 2,
+      engine: 'google-free',
+      direction: 'in'
+    })
+    assert.equal(result.status, 200, result.text)
+    assert.equal(result.json.charged, 1)
+    assert.equal(result.json.remaining, 9)
   })
 })
 
@@ -768,21 +791,21 @@ describe('AI 翻译与语音识别（假供应商）', () => {
     assert.equal(r.status, 200, r.text)
   }
 
-  test('翻译成功：走假 fetch，返回译文并按 Unicode 源字符扣费', async () => {
+  test('翻译成功：走假 fetch，返回译文并按供应商真实 Token 扣费', async () => {
     await setup()
-    await giftCharacters(10)
+    await giftCharacters(20)
     const r = await api('POST', '/api/ai/translate', { text: '你好', targetLang: 'en' })
     assert.equal(r.status, 200, r.text)
     assert.equal(r.json.text, 'FAKE_TRANSLATION')
-    assert.equal(r.json.characters, 2)
-    assert.equal(r.json.remaining, 8)
+    assert.equal(r.json.tokens, 15)
+    assert.equal(r.json.remaining, 5)
     assert.equal(r.json.metered, true)
     const usage = (await api('GET', '/api/billing/usage')).json.usage
     assert.equal(usage[0].purpose, 'translate')
-    assert.equal(usage[0].credits, 0, '翻译只扣字符，不再重复扣模型积分')
+    assert.equal(usage[0].credits, 0, '翻译只扣 Token，不再重复扣模型积分')
     const translation = (await api('GET', '/api/billing/translation-usage')).json
-    assert.equal(translation.entitlements.characters, 8)
-    assert.equal(translation.summary.totalCharacters, 2)
+    assert.equal(translation.entitlements.characters, 5)
+    assert.equal(translation.summary.totalTokens, 15)
   })
 
   test('未配置模型回 501 —— 客户端据此回落免费引擎', async () => {

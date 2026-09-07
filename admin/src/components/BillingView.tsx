@@ -6,7 +6,8 @@ import type {
   ApiClient,
   ExRate,
   PayChannel,
-  Plan
+  Plan,
+  TranslationTokenRates
 } from '../api'
 import { useI18n } from '../i18n'
 import { CommissionTab } from './CommissionTab'
@@ -83,6 +84,14 @@ export function BillingView({ client }: Props): React.JSX.Element {
 const PERIOD_UNITS = ['month', 'quarter', 'half_year', 'year', 'day'] as const
 const TIER_DEFAULT_PORTS: Record<Plan['tier'], number> = { free: 10, vip1: 200, vip2: 1000, vip3: 0, custom: 10 }
 const TIER_LABELS: Record<Plan['tier'], string> = { free: '免费用户', vip1: 'VIP1', vip2: 'VIP2', vip3: 'VIP3', custom: '自定义' }
+const TRANSLATION_ENGINES = [
+  ['google-free', 'Google 翻译'],
+  ['deepl', 'DeepL'],
+  ['google-cloud', 'Google Cloud Translation'],
+  ['llm', 'LLM 翻译'],
+  ['custom-http', '自定义接口'],
+  ['ai-server', 'AI 翻译']
+] as const
 
 function PlansTab({ client }: Props): React.JSX.Element {
   const { t } = useI18n()
@@ -98,6 +107,7 @@ function PlansTab({ client }: Props): React.JSX.Element {
   const [includedCharacters, setIncludedCharacters] = useState('0')
   const [desc, setDesc] = useState('')
   const [charactersPerUsd, setCharactersPerUsd] = useState('10000')
+  const [translationTokenRates, setTranslationTokenRates] = useState<TranslationTokenRates>({})
   const [rateMsg, setRateMsg] = useState('')
   /** 正在编辑描述的套餐（弹窗多行编辑，预填当前内容） */
   const [descEdit, setDescEdit] = useState<Plan | null>(null)
@@ -108,6 +118,7 @@ function PlansTab({ client }: Props): React.JSX.Element {
       const [planData, billingData] = await Promise.all([client.listPlans(), client.billingSettings()])
       setPlans(planData.plans)
       setCharactersPerUsd(String(billingData.settings.charactersPerUsd))
+      setTranslationTokenRates(billingData.settings.translationTokenRates)
     } catch (e) {
       setErr((e as Error).message)
     }
@@ -142,20 +153,36 @@ function PlansTab({ client }: Props): React.JSX.Element {
   return (
     <>
       <section className="card">
-        <h3>翻译字符计费</h3>
+        <h3>翻译 Token 计费</h3>
         <div className="form-row">
           <label>
-            <span>1 美元兑换字符数</span>
+            <span>1 美元兑换 Token 数</span>
             <input type="number" min="1" step="1" value={charactersPerUsd} onChange={(e) => setCharactersPerUsd(e.target.value)} style={{ width: 150 }} />
           </label>
           <button className="primary" onClick={async () => {
             const value = Math.max(1, Math.floor(Number(charactersPerUsd) || 1))
             await client.updateBillingSettings({ charactersPerUsd: value })
-            setRateMsg('字符价格已保存')
+            setRateMsg('Token 价格已保存')
             await load()
-          }}>保存字符价格</button>
-          <span className="muted small">只计算成功翻译的源文本 Unicode 字符；失败、空内容和同语言原样返回不扣费。</span>
+          }}>保存 Token 价格</button>
+          <span className="muted small">成功翻译按输入与输出 Token 扣费；无服务商用量时由客户端本地估算，不上传聊天原文。</span>
         </div>
+        <table className="data-table" style={{ marginTop: 14 }}>
+          <thead><tr><th>翻译引擎</th><th className="num">输入系数</th><th className="num">输出系数</th></tr></thead>
+          <tbody>{TRANSLATION_ENGINES.map(([id, label]) => {
+            const rate = translationTokenRates[id] ?? { inputRateBps: 10000, outputRateBps: 10000 }
+            const setRate = (key: 'inputRateBps' | 'outputRateBps', value: string): void => {
+              const bps = Math.max(0, Math.min(1_000_000, Math.round((Number(value) || 0) * 10000)))
+              setTranslationTokenRates((current) => ({ ...current, [id]: { ...rate, [key]: bps } }))
+            }
+            return <tr key={id}><td>{label}</td><td className="num"><input type="number" min="0" max="100" step="0.1" value={rate.inputRateBps / 10000} onChange={(e) => setRate('inputRateBps', e.target.value)} style={{ width: 90 }} /> 倍</td><td className="num"><input type="number" min="0" max="100" step="0.1" value={rate.outputRateBps / 10000} onChange={(e) => setRate('outputRateBps', e.target.value)} style={{ width: 90 }} /> 倍</td></tr>
+          })}</tbody>
+        </table>
+        <div className="form-row" style={{ marginTop: 10 }}><button className="primary" onClick={async () => {
+          await client.updateBillingSettings({ translationTokenRates })
+          setRateMsg('引擎 Token 系数已保存')
+          await load()
+        }}>保存引擎系数</button><span className="muted small">1 倍表示输入或输出 1 Token 扣 1 Token 额度；Google 翻译默认 0.2 倍。</span></div>
         {rateMsg && <p className="ok small">{rateMsg}</p>}
       </section>
 
@@ -208,7 +235,7 @@ function PlansTab({ client }: Props): React.JSX.Element {
             />
           </label>
           <label>
-            <span>套餐赠送字符</span>
+            <span>套餐赠送 Token</span>
             <input value={includedCharacters} onChange={(e) => setIncludedCharacters(e.target.value)} style={{ width: 110 }} />
           </label>
           <button className="primary" onClick={() => void create()}>
@@ -240,7 +267,7 @@ function PlansTab({ client }: Props): React.JSX.Element {
                 <th className="num">{t('billing.priceUsd')}</th>
                 <th>{t('billing.period')}</th>
                 <th className="num">{t('billing.maxAccounts')}</th>
-                <th className="num">赠送字符</th>
+                <th className="num">赠送 Token</th>
                 <th className="num">{t('billing.maxDevices')}</th>
                 <th>{t('billing.planDesc')}</th>
                 <th>{t('billing.enabled')}</th>
@@ -332,7 +359,7 @@ function PlanEditModal({ plan, onClose, onSave }: { plan: Plan; onClose: () => v
     setBusy(true)
     try { await onSave({ name: name.trim(), priceCents: cents, periodUnit, periodCount: Number(periodCount) || 1, maxAccounts: Number(maxAccounts) || 0, maxDevices: Math.max(0, Number(maxDevices) || 0), tier, includedCharacters: Math.max(0, Number(includedCharacters) || 0), sortOrder: Number(sortOrder) || 0, description }) } finally { setBusy(false) }
   }
-  return <div className="modal-backdrop" onClick={onClose}><div className="modal plan-edit-modal" onClick={(e) => e.stopPropagation()}><h3>编辑套餐</h3><div className="form-row"><label><span>会员等级</span><select value={tier} onChange={(e) => { const next = e.target.value as Plan['tier']; setTier(next); setMaxAccounts(String(TIER_DEFAULT_PORTS[next])) }}>{Object.entries(TIER_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label><span>名称</span><input value={name} onChange={(e) => setName(e.target.value)} /></label><label><span>价格(USD)</span><input value={price} onChange={(e) => setPrice(e.target.value)} /></label><label><span>周期</span><select value={periodUnit} onChange={(e) => setPeriodUnit(e.target.value as Plan['periodUnit'])}>{PERIOD_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}</select></label><label><span>周期数</span><input value={periodCount} onChange={(e) => setPeriodCount(e.target.value)} /></label><label><span>端口上限（0=不限）</span><input value={maxAccounts} onChange={(e) => setMaxAccounts(e.target.value)} /></label><label><span>套餐赠送字符</span><input value={includedCharacters} onChange={(e) => setIncludedCharacters(e.target.value)} /></label><label><span>设备上限</span><input value={maxDevices} onChange={(e) => setMaxDevices(e.target.value)} /></label><label><span>排序</span><input value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} /></label></div><label className="block-label"><span>套餐描述</span><textarea rows={5} value={description} onChange={(e) => setDescription(e.target.value)} /></label><div className="modal-actions"><button className="ghost" onClick={onClose}>取消</button><button className="primary" disabled={busy || !name.trim()} onClick={() => void save()}>{busy ? '保存中…' : '保存'}</button></div></div></div>
+  return <div className="modal-backdrop" onClick={onClose}><div className="modal plan-edit-modal" onClick={(e) => e.stopPropagation()}><h3>编辑套餐</h3><div className="form-row"><label><span>会员等级</span><select value={tier} onChange={(e) => { const next = e.target.value as Plan['tier']; setTier(next); setMaxAccounts(String(TIER_DEFAULT_PORTS[next])) }}>{Object.entries(TIER_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label><span>名称</span><input value={name} onChange={(e) => setName(e.target.value)} /></label><label><span>价格(USD)</span><input value={price} onChange={(e) => setPrice(e.target.value)} /></label><label><span>周期</span><select value={periodUnit} onChange={(e) => setPeriodUnit(e.target.value as Plan['periodUnit'])}>{PERIOD_UNITS.map((u) => <option key={u} value={u}>{u}</option>)}</select></label><label><span>周期数</span><input value={periodCount} onChange={(e) => setPeriodCount(e.target.value)} /></label><label><span>端口上限（0=不限）</span><input value={maxAccounts} onChange={(e) => setMaxAccounts(e.target.value)} /></label><label><span>套餐赠送 Token</span><input value={includedCharacters} onChange={(e) => setIncludedCharacters(e.target.value)} /></label><label><span>设备上限</span><input value={maxDevices} onChange={(e) => setMaxDevices(e.target.value)} /></label><label><span>排序</span><input value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} /></label></div><label className="block-label"><span>套餐描述</span><textarea rows={5} value={description} onChange={(e) => setDescription(e.target.value)} /></label><div className="modal-actions"><button className="ghost" onClick={onClose}>取消</button><button className="primary" disabled={busy || !name.trim()} onClick={() => void save()}>{busy ? '保存中…' : '保存'}</button></div></div></div>
 }
 
 /** 套餐描述编辑弹窗：多行 Markdown，预填当前内容 */
@@ -764,7 +791,7 @@ function AiTab({ client }: Props): React.JSX.Element {
   const { t } = useI18n()
   const [providers, setProviders] = useState<AiProvider[]>([])
   const [models, setModels] = useState<AiModelRow[]>([])
-  const [settings, setSettings] = useState({ creditsPerUsd: 1000, autoTopUpCredits: true, charactersPerUsd: 10000 })
+  const [settings, setSettings] = useState({ creditsPerUsd: 1000, autoTopUpCredits: true, charactersPerUsd: 10000, translationTokenRates: {} as TranslationTokenRates })
   const [err, setErr] = useState('')
 
   const [pType, setPType] = useState('openai')
@@ -1082,16 +1109,16 @@ function UsageTab({ client }: Props): React.JSX.Element {
   return (
     <>
       <section className="card">
-        <h3>翻译字符消耗</h3>
+        <h3>翻译 Token 消耗</h3>
         <div className="stat-cards">
-          <div className="stat-card"><span className="k">已消耗字符</span><span className="v">{(translation?.totalCharacters ?? 0).toLocaleString()}</span></div>
+          <div className="stat-card"><span className="k">已消耗 Token</span><span className="v">{(translation?.totalTokens ?? 0).toLocaleString()}</span></div>
           <div className="stat-card"><span className="k">成功翻译次数</span><span className="v">{(translation?.totalTranslations ?? 0).toLocaleString()}</span></div>
         </div>
-        {translation && translation.byChannel.length > 0 ? <table className="data-table"><thead><tr><th>平台</th><th className="num">翻译次数</th><th className="num">消耗字符</th></tr></thead><tbody>{translation.byChannel.map((row) => <tr key={row.channel}><td>{row.channel || '未知'}</td><td className="num">{row.calls}</td><td className="num">{row.characters.toLocaleString()}</td></tr>)}</tbody></table> : <p className="muted small">{t('common.empty')}</p>}
+        {translation && translation.byChannel.length > 0 ? <table className="data-table"><thead><tr><th>平台</th><th className="num">翻译次数</th><th className="num">消耗 Token</th></tr></thead><tbody>{translation.byChannel.map((row) => <tr key={row.channel}><td>{row.channel || '未知'}</td><td className="num">{row.calls}</td><td className="num">{row.tokens.toLocaleString()}</td></tr>)}</tbody></table> : <p className="muted small">{t('common.empty')}</p>}
       </section>
       <section className="card">
-        <h3>最近字符消费</h3>
-        {translation && translation.recent.length > 0 ? <table className="data-table"><thead><tr><th>时间</th><th>平台</th><th>引擎</th><th>方向</th><th className="num">字符</th></tr></thead><tbody>{translation.recent.map((row) => <tr key={`${row.userId}:${row.requestId}`}><td>{new Date(row.createdAt).toLocaleString()}</td><td>{row.channel || '未知'}</td><td>{row.engine}</td><td>{row.direction === 'in' ? '接收' : '发送'}</td><td className="num">{row.sourceCharacters.toLocaleString()}</td></tr>)}</tbody></table> : <p className="muted small">{t('common.empty')}</p>}
+        <h3>最近 Token 消费</h3>
+        {translation && translation.recent.length > 0 ? <table className="data-table"><thead><tr><th>时间</th><th>平台</th><th>引擎</th><th>方向</th><th className="num">输入</th><th className="num">输出</th><th className="num">实际扣减</th></tr></thead><tbody>{translation.recent.map((row) => <tr key={`${row.userId}:${row.requestId}`}><td>{new Date(row.createdAt).toLocaleString()}</td><td>{row.channel || '未知'}</td><td>{row.engine}</td><td>{row.direction === 'in' ? '接收' : '发送'}</td><td className="num">{row.inputTokens.toLocaleString()}</td><td className="num">{row.outputTokens.toLocaleString()}</td><td className="num">{row.billedTokens.toLocaleString()}</td></tr>)}</tbody></table> : <p className="muted small">{t('common.empty')}</p>}
       </section>
       <section className="card">
         <h3>AI 模型用量</h3>

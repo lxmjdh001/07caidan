@@ -46,8 +46,18 @@ export class AiServerTranslator implements Translator {
         body: JSON.stringify({ text, targetLang, ...context, requestId: context?.requestId ?? randomUUID() })
       })
       if (res.ok) {
-        const json = (await res.json()) as { text?: string; metered?: boolean }
-        if (typeof json.text === 'string' && json.text) return { text: json.text, metered: json.metered === true }
+        const json = (await res.json()) as { text?: string; metered?: boolean; usage?: { inputTokens?: number; outputTokens?: number } }
+        if (typeof json.text === 'string' && json.text) {
+          return {
+            text: json.text,
+            metered: json.metered === true,
+            billingEngine: 'ai-server',
+            usage:
+              Number.isFinite(json.usage?.inputTokens) && Number.isFinite(json.usage?.outputTokens)
+                ? { inputTokens: Number(json.usage?.inputTokens), outputTokens: Number(json.usage?.outputTokens) }
+                : undefined
+          }
+        }
         return this.fallback(text, targetLang, '空响应')
       }
       // 付费/配置类失败进入冷却，别的错误只降级本次
@@ -65,7 +75,10 @@ export class AiServerTranslator implements Translator {
     targetLang: string,
     _reason: string
   ): Promise<TranslateResult> {
-    if (this.cfg.fallback) return this.cfg.fallback.translate(text, targetLang)
+    if (this.cfg.fallback) {
+      const result = await this.cfg.fallback.translate(text, targetLang)
+      return { ...result, billingEngine: result.billingEngine ?? this.cfg.fallback.name }
+    }
     // 没有降级引擎时原样返回 —— 发不出翻译也不能拦住消息本身
     return { text }
   }

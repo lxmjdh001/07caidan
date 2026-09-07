@@ -677,7 +677,7 @@ export const plans = sqliteTable(
     maxDevices: integer('max_devices').notNull().default(0),
     /** free / vip1 / vip2 / vip3 / custom */
     tier: text('tier').notNull().default('custom'),
-    /** 购买或续费该套餐时赠送的翻译字符 */
+    /** 购买或续费该套餐时赠送的翻译 Token（字段名为历史兼容名） */
     includedCharacters: integer('included_characters').notNull().default(0),
     /** 套餐描述（Markdown 源文本，客户端渲染） */
     description: text('description').notNull().default(''),
@@ -726,8 +726,8 @@ export const balances = sqliteTable(
 )
 
 /**
- * 客户可见的翻译字符与额外端口额度。
- * 模型 credits 继续用于 ASR/自动回复的内部成本；翻译字符独立记账，避免两种口径混用。
+ * 客户可见的翻译 Token 与额外端口额度。
+ * 模型 credits 继续用于 ASR/自动回复的内部成本；翻译 Token 独立记账。
  */
 export const entitlements = sqliteTable(
   'entitlements',
@@ -762,7 +762,7 @@ export const entitlementLedger = sqliteTable(
   (t) => [index('idx_entitlement_ledger_user').on(t.tenant, t.userId, t.createdAt)]
 )
 
-/** 每次成功翻译的字符消费明细；同一计费用户下 requestId 保证客户端重试不会重复扣费。 */
+/** 每次成功翻译的 Token 消费明细；sourceCharacters 仅为兼容历史数据保留。 */
 export const translationUsage = sqliteTable(
   'translation_usage',
   {
@@ -775,6 +775,9 @@ export const translationUsage = sqliteTable(
     accountId: text('account_id').notNull().default(''),
     direction: text('direction').notNull().default('unknown'),
     sourceCharacters: integer('source_characters').notNull(),
+    inputTokens: integer('input_tokens').notNull().default(0),
+    outputTokens: integer('output_tokens').notNull().default(0),
+    billedTokens: integer('billed_tokens').notNull().default(0),
     createdAt: integer('created_at').notNull()
   },
   (t) => [
@@ -964,8 +967,10 @@ export const billingSettings = sqliteTable('billing_settings', {
   creditsPerUsd: integer('credits_per_usd').notNull().default(1000),
   /** 积分不足时是否自动从余额兑换补足 */
   autoTopUpCredits: integer('auto_top_up_credits').notNull().default(1),
-  /** 1 美元可兑换多少翻译字符 */
+  /** 1 美元可兑换多少翻译 Token（字段名为历史兼容名） */
   charactersPerUsd: integer('characters_per_usd').notNull().default(10000),
+  /** 各翻译引擎 Token 计费系数 JSON；10000 = 1 倍 */
+  translationTokenRates: text('translation_token_rates').notNull().default('{}'),
   updatedAt: integer('updated_at').notNull()
 })
 

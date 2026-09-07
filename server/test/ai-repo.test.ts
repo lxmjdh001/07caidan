@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { after, before, beforeEach, describe, test } from 'node:test'
 import { AiRepo, type AiModel, type AiProvider } from '../src/ai/ai-repo.ts'
 import { BillingRepo } from '../src/billing/billing-repo.ts'
+import { DEFAULT_TRANSLATION_TOKEN_RATES } from '../src/billing/translation-tokens.ts'
 import { openDb } from '../src/db.ts'
 
 const T = 'tenant-1'
@@ -140,7 +141,8 @@ describe('计费参数', () => {
     assert.deepEqual(ai.getSettings(T), {
       creditsPerUsd: 1000,
       autoTopUpCredits: true,
-      charactersPerUsd: 10000
+      charactersPerUsd: 10000,
+      translationTokenRates: DEFAULT_TRANSLATION_TOKEN_RATES
     })
   })
 
@@ -149,7 +151,8 @@ describe('计费参数', () => {
     assert.deepEqual(ai.getSettings(T), {
       creditsPerUsd: 500,
       autoTopUpCredits: false,
-      charactersPerUsd: 20000
+      charactersPerUsd: 20000,
+      translationTokenRates: DEFAULT_TRANSLATION_TOKEN_RATES
     })
   })
 

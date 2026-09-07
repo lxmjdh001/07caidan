@@ -46,9 +46,23 @@ export class LlmTranslator implements Translator {
     if (!res.ok) throw new Error(`LLM HTTP ${res.status}`)
     const data = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>
+      usage?: {
+        prompt_tokens?: number
+        completion_tokens?: number
+        input_tokens?: number
+        output_tokens?: number
+      }
     }
     const out = data.choices?.[0]?.message?.content?.trim()
     if (!out) throw new Error('LLM 响应为空')
-    return { text: out }
+    const inputTokens = data.usage?.prompt_tokens ?? data.usage?.input_tokens
+    const outputTokens = data.usage?.completion_tokens ?? data.usage?.output_tokens
+    return {
+      text: out,
+      usage:
+        Number.isFinite(inputTokens) && Number.isFinite(outputTokens)
+          ? { inputTokens: Number(inputTokens), outputTokens: Number(outputTokens) }
+          : undefined
+    }
   }
 }

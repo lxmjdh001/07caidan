@@ -166,13 +166,14 @@ describe('翻译字符与赠送端口', () => {
     assert.equal(repo.checkAccountQuota(T, U, 100_000, NOW + 2).canAddMore, true)
   })
 
-  test('成功翻译扣源字符；requestId 重试幂等且余额不足不记账', () => {
+  test('成功翻译按输入输出 Token 与引擎系数扣费；requestId 重试幂等', () => {
     repo.mutateEntitlements(T, { userId: U, kind: 'admin_gift', charactersDelta: 10, now: NOW })
     const first = repo.chargeTranslation(T, {
       userId: U,
       actorUserId: U,
       requestId: 'translation-1',
-      characters: 4,
+      inputTokens: 10,
+      outputTokens: 10,
       engine: 'google-free',
       channel: 'telegram',
       direction: 'out',
@@ -185,7 +186,8 @@ describe('翻译字符与赠送端口', () => {
       userId: U,
       actorUserId: U,
       requestId: 'translation-1',
-      characters: 4,
+      inputTokens: 10,
+      outputTokens: 10,
       now: NOW + 2
     })
     assert.equal(duplicate.duplicate, true)
@@ -195,24 +197,28 @@ describe('翻译字符与赠送端口', () => {
       userId: U,
       actorUserId: U,
       requestId: 'translation-2',
-      characters: 7,
+      inputTokens: 20,
+      outputTokens: 20,
+      engine: 'google-free',
       now: NOW + 3
     })
     assert.equal(insufficient.ok, false)
     assert.equal(repo.getEntitlements(T, U).characters, 6)
     assert.equal(repo.listEntitlementLedger(T, U).filter((r) => r.kind === 'translation_usage').length, 1)
     assert.deepEqual(repo.translationUsageSummary(T, U), {
-      totalCharacters: 4,
+      totalTokens: 4,
       totalTranslations: 1,
-      byEngine: [{ engine: 'google-free', characters: 4, calls: 1 }],
-      byChannel: [{ channel: 'telegram', characters: 4, calls: 1 }],
+      byEngine: [{ engine: 'google-free', tokens: 4, calls: 1 }],
+      byChannel: [{ channel: 'telegram', tokens: 4, calls: 1 }],
       recent: [{
         userId: U,
         requestId: 'translation-1',
         engine: 'google-free',
         channel: 'telegram',
         direction: 'out',
-        sourceCharacters: 4,
+        inputTokens: 10,
+        outputTokens: 10,
+        billedTokens: 4,
         createdAt: NOW + 1
       }]
     })
@@ -241,7 +247,7 @@ describe('翻译字符与赠送端口', () => {
     const other = U + 1
     repo.mutateEntitlements(T, { userId: U, kind: 'admin_gift', charactersDelta: 10, now: NOW })
     repo.mutateEntitlements(T, { userId: other, kind: 'admin_gift', charactersDelta: 10, now: NOW })
-    const input = { actorUserId: U, requestId: 'shared-platform-message', characters: 3, now: NOW + 1 }
+    const input = { actorUserId: U, requestId: 'shared-platform-message', inputTokens: 2, outputTokens: 1, now: NOW + 1 }
     assert.equal(repo.chargeTranslation(T, { ...input, userId: U }).ok, true)
     assert.equal(repo.chargeTranslation(T, { ...input, userId: other, actorUserId: other }).ok, true)
     assert.equal(repo.getEntitlements(T, U).characters, 7)

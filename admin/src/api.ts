@@ -116,6 +116,13 @@ export interface Plan {
   description?: string
 }
 
+export interface TranslationTokenRate {
+  inputRateBps: number
+  outputRateBps: number
+}
+
+export type TranslationTokenRates = Record<string, TranslationTokenRate>
+
 export interface PayChannel {
   id: string
   type: 'yipay' | 'paypal' | 'usdt' | 'mock'
@@ -588,7 +595,7 @@ export class ApiClient {
     return this.req(`/api/admin/proxy-vendors/${encodeURIComponent(id)}`, { method: 'DELETE' })
   }
 
-  billingSettings(): Promise<{ settings: { creditsPerUsd: number; autoTopUpCredits: boolean; charactersPerUsd: number } }> {
+  billingSettings(): Promise<{ settings: { creditsPerUsd: number; autoTopUpCredits: boolean; charactersPerUsd: number; translationTokenRates: TranslationTokenRates } }> {
     return this.req('/api/admin/billing-settings')
   }
 
@@ -596,7 +603,8 @@ export class ApiClient {
     creditsPerUsd?: number
     autoTopUpCredits?: boolean
     charactersPerUsd?: number
-  }): Promise<{ settings: { creditsPerUsd: number; autoTopUpCredits: boolean; charactersPerUsd: number } }> {
+    translationTokenRates?: TranslationTokenRates
+  }): Promise<{ settings: { creditsPerUsd: number; autoTopUpCredits: boolean; charactersPerUsd: number; translationTokenRates: TranslationTokenRates } }> {
     return this.req('/api/admin/billing-settings', { method: 'PUT', body: JSON.stringify(body) })
   }
 
@@ -619,11 +627,11 @@ export class ApiClient {
 
   translationUsageSummary(userId?: number): Promise<{
     summary: {
-      totalCharacters: number
+      totalTokens: number
       totalTranslations: number
-      byEngine: Array<{ engine: string; characters: number; calls: number }>
-      byChannel: Array<{ channel: string; characters: number; calls: number }>
-      recent: Array<{ userId: number; requestId: string; engine: string; channel: string; direction: string; sourceCharacters: number; createdAt: number }>
+      byEngine: Array<{ engine: string; tokens: number; calls: number }>
+      byChannel: Array<{ channel: string; tokens: number; calls: number }>
+      recent: Array<{ userId: number; requestId: string; engine: string; channel: string; direction: string; inputTokens: number; outputTokens: number; billedTokens: number; createdAt: number }>
     }
   }> {
     return this.req(`/api/admin/translation-usage-summary${userId ? `?userId=${userId}` : ''}`)

@@ -3,6 +3,7 @@ import { and, desc, eq, sql } from 'drizzle-orm'
 import type { Db } from '../db.ts'
 import {
   balances,
+  billingSettings,
   commissionLedger,
   commissionSettings,
   entitlementLedger,
@@ -13,6 +14,11 @@ import {
   subscriptions,
   translationUsage
 } from '../schema.ts'
+import {
+  calculateBilledTokens,
+  normalizeTranslationTokenRates,
+  type TranslationTokenRate
+} from './translation-tokens.ts'
 import { deductCredits, type CreditRate } from './credits.ts'
 import type { Cents } from './money.ts'
 import {
@@ -265,7 +271,7 @@ export class BillingRepo {
       : { userId, balanceCents: 0, credits: 0 }
   }
 
-  // ── 翻译字符与额外端口 ──
+  // ── 翻译 Token 与额外端口（characters 字段为历史兼容名） ──
 
   getEntitlements(tenant: string, userId: number): Entitlements {
     const row = this.db
@@ -379,15 +385,19 @@ export class BillingRepo {
       userId: number
       actorUserId: number
       requestId: string
-      characters: number
+      inputTokens: number
+      outputTokens: number
       engine?: string
       channel?: string
       accountId?: string
       direction?: string
       now?: number
     }
-  ): { ok: boolean; charged: number; remaining: number; duplicate?: boolean; reason?: 'insufficient_characters' } {
-    const characters = Math.max(0, Math.floor(Number(input.characters)))
+  ): { ok: boolean; charged: number; inputTokens: number; outputTokens: number; remaining: number; duplicate?: boolean; reason?: 'insufficient_characters' } {
+    const inputTokens = Math.max(0, Math.floor(Number(input.inputTokens)))
+    const outputTokens = Math.max(0, Math.floor(Number(input.outputTokens)))
+    const engine = (input.engine || 'unknown').slice(0, 60)
+    const charged = calculateBilledTokens(inputTokens, outputTokens, this.translationTokenRate(tenant, engine))
     const now = input.now ?? Date.now()
     return this.db.transaction((tx) => {
       const previous = tx
@@ -405,7 +415,14 @@ export class BillingRepo {
           .from(entitlements)
           .where(and(eq(entitlements.tenant, tenant), eq(entitlements.userId, input.userId)))
           .get()
-        return { ok: true as const, charged: previous.sourceCharacters, remaining: current?.characters ?? 0, duplicate: true }
+        return {
+          ok: true as const,
+          charged: previous.billedTokens || previous.sourceCharacters,
+          inputTokens: previous.inputTokens,
+          outputTokens: previous.outputTokens,
+          remaining: current?.characters ?? 0,
+          duplicate: true
+        }
       }
       const current = tx
         .select()
@@ -413,12 +430,12 @@ export class BillingRepo {
         .where(and(eq(entitlements.tenant, tenant), eq(entitlements.userId, input.userId)))
         .get()
       const available = current?.characters ?? 0
-      if (characters <= 0) return { ok: true as const, charged: 0, remaining: available }
-      if (available < characters) {
-        return { ok: false as const, charged: 0, remaining: available, reason: 'insufficient_characters' as const }
+      if (charged <= 0) return { ok: true as const, charged: 0, inputTokens, outputTokens, remaining: available }
+      if (available < charged) {
+        return { ok: false as const, charged: 0, inputTokens, outputTokens, remaining: available, reason: 'insufficient_characters' as const }
       }
       const bonusPorts = current?.bonusPorts ?? 0
-      const remaining = available - characters
+      const remaining = available - charged
       tx.insert(entitlements)
         .values({ tenant, userId: input.userId, characters: remaining, bonusPorts, updatedAt: now })
         .onConflictDoUpdate({
@@ -431,13 +448,13 @@ export class BillingRepo {
           tenant,
           userId: input.userId,
           kind: 'translation_usage',
-          charactersDelta: -characters,
+          charactersDelta: -charged,
           portsDelta: 0,
           charactersAfter: remaining,
           portsAfter: bonusPorts,
           refType: 'translation',
           refId: input.requestId,
-          note: `${input.engine || 'unknown'} · ${input.direction || 'unknown'}`,
+          note: `${engine} · ${input.direction || 'unknown'} · ${inputTokens}+${outputTokens} Token`,
           createdAt: now
         })
         .run()
@@ -447,51 +464,71 @@ export class BillingRepo {
           requestId: input.requestId,
           userId: input.userId,
           actorUserId: input.actorUserId,
-          engine: (input.engine || 'unknown').slice(0, 60),
+          engine,
           channel: (input.channel || '').slice(0, 40),
           accountId: (input.accountId || '').slice(0, 160),
           direction: (input.direction || 'unknown').slice(0, 20),
-          sourceCharacters: characters,
+          sourceCharacters: 0,
+          inputTokens,
+          outputTokens,
+          billedTokens: charged,
           createdAt: now
         })
         .run()
-      return { ok: true as const, charged: characters, remaining }
+      return { ok: true as const, charged, inputTokens, outputTokens, remaining }
     })
   }
 
+  previewTranslationCharge(tenant: string, engine: string, inputTokens: number, outputTokens: number): number {
+    return calculateBilledTokens(inputTokens, outputTokens, this.translationTokenRate(tenant, engine))
+  }
+
+  private translationTokenRate(tenant: string, engine: string): TranslationTokenRate {
+    const row = this.db
+      .select({ translationTokenRates: billingSettings.translationTokenRates })
+      .from(billingSettings)
+      .where(eq(billingSettings.tenant, tenant))
+      .get()
+    let parsed: unknown
+    try { parsed = JSON.parse(row?.translationTokenRates || '{}') } catch { parsed = {} }
+    const rates = normalizeTranslationTokenRates(parsed)
+    return rates[engine] ?? { inputRateBps: 10000, outputRateBps: 10000 }
+  }
+
   translationUsageSummary(tenant: string, userId?: number): {
-    totalCharacters: number
+    totalTokens: number
     totalTranslations: number
-    byEngine: Array<{ engine: string; characters: number; calls: number }>
-    byChannel: Array<{ channel: string; characters: number; calls: number }>
-    recent: Array<{ userId: number; requestId: string; engine: string; channel: string; direction: string; sourceCharacters: number; createdAt: number }>
+    byEngine: Array<{ engine: string; tokens: number; calls: number }>
+    byChannel: Array<{ channel: string; tokens: number; calls: number }>
+    recent: Array<{ userId: number; requestId: string; engine: string; channel: string; direction: string; inputTokens: number; outputTokens: number; billedTokens: number; createdAt: number }>
   } {
     const where = userId === undefined
       ? eq(translationUsage.tenant, tenant)
       : and(eq(translationUsage.tenant, tenant), eq(translationUsage.userId, userId))
-    const characterSum = sql<number>`coalesce(sum(${translationUsage.sourceCharacters}), 0)`
+    const tokenValue = sql<number>`case when ${translationUsage.billedTokens} > 0 then ${translationUsage.billedTokens} else ${translationUsage.sourceCharacters} end`
+    const tokenSum = sql<number>`coalesce(sum(${tokenValue}), 0)`
     const callCount = sql<number>`count(*)`
     const totals = this.db
-      .select({ characters: characterSum, calls: callCount })
+      .select({ tokens: tokenSum, calls: callCount })
       .from(translationUsage)
       .where(where)
       .get()
     const byEngine = this.db
-      .select({ engine: translationUsage.engine, characters: characterSum, calls: callCount })
+      .select({ engine: translationUsage.engine, tokens: tokenSum, calls: callCount })
       .from(translationUsage)
       .where(where)
       .groupBy(translationUsage.engine)
-      .orderBy(desc(characterSum))
+      .orderBy(desc(tokenSum))
       .all()
-      .map((row) => ({ engine: row.engine || 'unknown', characters: Number(row.characters), calls: Number(row.calls) }))
+      .map((row) => ({ engine: row.engine || 'unknown', tokens: Number(row.tokens), calls: Number(row.calls) }))
     const byChannel = this.db
-      .select({ channel: translationUsage.channel, characters: characterSum, calls: callCount })
+      .select({ channel: translationUsage.channel, tokens: tokenSum, calls: callCount })
       .from(translationUsage)
       .where(where)
       .groupBy(translationUsage.channel)
-      .orderBy(desc(characterSum))
+      .orderBy(desc(tokenSum))
       .all()
-      .map((row) => ({ channel: row.channel || 'unknown', characters: Number(row.characters), calls: Number(row.calls) }))
+      .map((row) => ({ channel: row.channel || 'unknown', tokens: Number(row.tokens), calls: Number(row.calls) }))
     const recent = this.db
       .select({
         userId: translationUsage.userId,
@@ -499,7 +536,9 @@ export class BillingRepo {
         engine: translationUsage.engine,
         channel: translationUsage.channel,
         direction: translationUsage.direction,
-        sourceCharacters: translationUsage.sourceCharacters,
+        inputTokens: translationUsage.inputTokens,
+        outputTokens: translationUsage.outputTokens,
+        billedTokens: tokenValue,
         createdAt: translationUsage.createdAt
       })
       .from(translationUsage)
@@ -508,7 +547,7 @@ export class BillingRepo {
       .limit(100)
       .all()
     return {
-      totalCharacters: Number(totals?.characters ?? 0),
+      totalTokens: Number(totals?.tokens ?? 0),
       totalTranslations: Number(totals?.calls ?? 0),
       byEngine,
       byChannel,
@@ -866,7 +905,7 @@ export class BillingRepo {
         charactersDelta: plan.includedCharacters,
         refType: 'plan',
         refId: plan.id,
-        note: `${plan.name} 套餐赠送字符`,
+        note: `${plan.name} 套餐赠送 Token`,
         now
       })
     }
@@ -895,7 +934,7 @@ export class BillingRepo {
     const hadActiveSubscription = Boolean(
       current && current.status === 'active' && current.expiresAt > now
     )
-    // 当前套餐由自动续费延长；禁止重复购买同一有效套餐，避免反复领取赠送字符。
+    // 当前套餐由自动续费延长；禁止重复购买同一有效套餐，避免反复领取赠送 Token。
     if (hadActiveSubscription && current?.planId === newPlanId) {
       return { ok: false, reason: 'already_subscribed' }
     }
@@ -973,7 +1012,7 @@ export class BillingRepo {
         charactersDelta: newPlan.includedCharacters,
         refType: 'plan',
         refId: newPlan.id,
-        note: `${newPlan.name} 套餐赠送字符`,
+        note: `${newPlan.name} 套餐赠送 Token`,
         now
       })
     }
@@ -1034,7 +1073,7 @@ export class BillingRepo {
         charactersDelta: plan.includedCharacters,
         refType: 'plan',
         refId: plan.id,
-        note: `${plan.name} 续费赠送字符`,
+        note: `${plan.name} 续费赠送 Token`,
         now
       })
     }
@@ -1080,7 +1119,7 @@ export class BillingRepo {
 
   // ── 积分 ──
 
-  /** 用余额购买翻译字符；1 美元兑换数量由管理员配置。 */
+  /** 用余额购买翻译 Token；1 美元兑换数量由管理员配置。 */
   purchaseCharacters(
     tenant: string,
     userId: number,
@@ -1100,7 +1139,7 @@ export class BillingRepo {
       kind: 'character_purchase',
       amountCents: -amount,
       refType: 'characters',
-      note: `${amount} 分兑换 ${characters} 翻译字符`,
+      note: `${amount} 分兑换 ${characters} 翻译 Token`,
       now
     })
     if (!charged.ok) {
@@ -1111,7 +1150,7 @@ export class BillingRepo {
       kind: 'character_purchase',
       charactersDelta: characters,
       refType: 'balance',
-      note: `${amount} 分兑换 ${characters} 翻译字符`,
+      note: `${amount} 分兑换 ${characters} 翻译 Token`,
       now
     })
     if (!granted.ok) {
